@@ -1,7 +1,54 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+val versionCodeValue = (project.findProperty("PLACEPREP_VERSION_CODE") as String?)
+    ?.toIntOrNull()
+    ?: 1
+val versionNameValue = (project.findProperty("PLACEPREP_VERSION_NAME") as String?)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: "1.0.0"
+val defaultApiBaseUrl = (project.findProperty("PLACEPREP_API_BASE_URL") as String?)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: "http://10.0.2.2:5000/api/"
+val debugApiBaseUrl = (project.findProperty("PLACEPREP_API_BASE_URL_DEBUG") as String?)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: defaultApiBaseUrl
+val releaseApiBaseUrl = (project.findProperty("PLACEPREP_API_BASE_URL_RELEASE") as String?)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: defaultApiBaseUrl
+val appName = (project.findProperty("PLACEPREP_APP_NAME") as String?)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: "PlacePrep"
+val debugAppName = (project.findProperty("PLACEPREP_DEBUG_APP_NAME") as String?)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: "$appName Dev"
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use(keystoreProperties::load)
+}
+
+fun keystoreValue(key: String): String? =
+    keystoreProperties.getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
+
+val releaseStoreFilePath = keystoreValue("storeFile")
+val releaseStoreFile = releaseStoreFilePath?.let { rootProject.file(it) }
+val releaseSigningReady =
+    releaseStoreFile?.exists() == true
+        && !keystoreValue("storePassword").isNullOrBlank()
+        && !keystoreValue("keyAlias").isNullOrBlank()
+        && !keystoreValue("keyPassword").isNullOrBlank()
 
 android {
     namespace = "dev.placeprep.mobile"
@@ -11,20 +58,41 @@ android {
         applicationId = "dev.placeprep.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = versionCodeValue
+        versionName = versionNameValue
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField(
-            "String",
-            "API_BASE_URL",
-            "\"${project.findProperty("PLACEPREP_API_BASE_URL") ?: "http://10.0.2.2:5000/api/"}\""
-        )
+        resValue("string", "app_name", appName)
+        buildConfigField("String", "APP_ENV", "\"production\"")
+        buildConfigField("String", "API_BASE_URL", "\"$releaseApiBaseUrl\"")
+    }
+
+    signingConfigs {
+        create("release") {
+            if (releaseSigningReady) {
+                storeFile = releaseStoreFile
+                storePassword = keystoreValue("storePassword")
+                keyAlias = keystoreValue("keyAlias")
+                keyPassword = keystoreValue("keyPassword")
+                enableV1Signing = true
+                enableV2Signing = true
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            resValue("string", "app_name", debugAppName)
+            buildConfigField("String", "APP_ENV", "\"debug\"")
+            buildConfigField("String", "API_BASE_URL", "\"$debugApiBaseUrl\"")
+        }
         release {
             isMinifyEnabled = false
+            if (releaseSigningReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -55,6 +123,10 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+if (!releaseSigningReady) {
+    println("PlacePrep Android release signing is not configured. Add android/keystore.properties to build a signed APK.")
 }
 
 dependencies {
