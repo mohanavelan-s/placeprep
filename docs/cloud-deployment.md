@@ -24,7 +24,7 @@
 
 ## Invite Access
 
-- Use `BOOTSTRAP_INVITE_CODE` for the first private onboarding link if you are launching a new environment without seeded admin users.
+- Use `BOOTSTRAP_ADMIN_INVITE_CODE` and `BOOTSTRAP_USER_INVITE_CODE` if you want one fixed admin invite and one fixed user invite at startup. `BOOTSTRAP_INVITE_CODE` remains as a legacy single-code fallback.
 - Admin users can generate additional invites from Settings.
 
 ## Android

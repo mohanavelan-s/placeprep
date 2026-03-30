@@ -150,29 +150,82 @@ async function markInviteUsed(inviteId, userId, client = null) {
   return inviteRepository.markInviteUsed(inviteId, userId, client);
 }
 
-async function ensureBootstrapInvite() {
-  const code = normalizeInviteCode(env.bootstrapInviteCode);
-  if (!code) {
-    return null;
-  }
-
-  const existingInvite = await inviteRepository.findByCode(code);
-  if (existingInvite) {
-    return buildInviteView(existingInvite);
-  }
-
+function buildBootstrapInviteDefinitions() {
+  const definitions = [];
   const expiresAt = new Date(Date.now() + env.bootstrapInviteExpiresDays * 24 * 60 * 60 * 1000);
-  const invite = await inviteRepository.createInvite({
-    code,
-    role: env.bootstrapInviteRole === 'admin' ? 'admin' : 'user',
-    expiresAt: expiresAt.toISOString(),
-    metadata: {
-      bootstrap: true,
-      createdFrom: 'startup',
-    },
-  });
 
-  return buildInviteView(invite);
+  const adminCode = normalizeInviteCode(env.bootstrapAdminInviteCode);
+  if (adminCode) {
+    definitions.push({
+      code: adminCode,
+      role: 'admin',
+      expiresAt,
+      metadata: {
+        bootstrap: true,
+        bootstrapRole: 'admin',
+        createdFrom: 'startup',
+      },
+    });
+  }
+
+  const userCode = normalizeInviteCode(env.bootstrapUserInviteCode);
+  if (userCode) {
+    definitions.push({
+      code: userCode,
+      role: 'user',
+      expiresAt,
+      metadata: {
+        bootstrap: true,
+        bootstrapRole: 'user',
+        createdFrom: 'startup',
+      },
+    });
+  }
+
+  const legacyCode = normalizeInviteCode(env.bootstrapInviteCode);
+  if (legacyCode && !definitions.some((definition) => definition.code === legacyCode)) {
+    definitions.push({
+      code: legacyCode,
+      role: env.bootstrapInviteRole === 'admin' ? 'admin' : 'user',
+      expiresAt,
+      metadata: {
+        bootstrap: true,
+        bootstrapRole: env.bootstrapInviteRole === 'admin' ? 'admin' : 'user',
+        createdFrom: 'startup',
+        legacy: true,
+      },
+    });
+  }
+
+  return definitions;
+}
+
+async function ensureBootstrapInvites() {
+  const definitions = buildBootstrapInviteDefinitions();
+  if (!definitions.length) {
+    return [];
+  }
+
+  const invites = [];
+
+  for (const definition of definitions) {
+    const existingInvite = await inviteRepository.findByCode(definition.code);
+    if (existingInvite) {
+      invites.push(buildInviteView(existingInvite));
+      continue;
+    }
+
+    const invite = await inviteRepository.createInvite({
+      code: definition.code,
+      role: definition.role,
+      expiresAt: definition.expiresAt.toISOString(),
+      metadata: definition.metadata,
+    });
+
+    invites.push(buildInviteView(invite));
+  }
+
+  return invites;
 }
 
 module.exports = {
@@ -183,5 +236,5 @@ module.exports = {
   generateInvite,
   listInvites,
   markInviteUsed,
-  ensureBootstrapInvite,
+  ensureBootstrapInvites,
 };

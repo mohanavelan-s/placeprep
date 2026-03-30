@@ -63,6 +63,8 @@ const env = {
   notificationCron: process.env.NOTIFICATION_CRON || '0 20 * * *',
   notificationSchedulerEnabled: process.env.NOTIFICATION_SCHEDULER_ENABLED !== 'false',
   publicSignupEnabled: process.env.ALLOW_PUBLIC_SIGNUP === 'true',
+  bootstrapAdminInviteCode: process.env.BOOTSTRAP_ADMIN_INVITE_CODE || '',
+  bootstrapUserInviteCode: process.env.BOOTSTRAP_USER_INVITE_CODE || '',
   bootstrapInviteCode: process.env.BOOTSTRAP_INVITE_CODE || '',
   bootstrapInviteRole: process.env.BOOTSTRAP_INVITE_ROLE || 'admin',
   bootstrapInviteExpiresDays: Number(process.env.BOOTSTRAP_INVITE_EXPIRES_DAYS || 14),

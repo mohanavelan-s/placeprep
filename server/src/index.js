@@ -111,7 +111,7 @@ const app = require('./app');
 const env = require('./config/env');
 const { testConnection } = require('./config/database');
 const { initializeDatabase } = require('./db/init');
-const { ensureBootstrapInvite } = require('./services/invite.service');
+const { ensureBootstrapInvites } = require('./services/invite.service');
 const { startNotificationScheduler } = require('./schedulers/notification.scheduler');
 
 function formatErrorMessage(error) {
@@ -130,15 +130,17 @@ async function startServer() {
       await initializeDatabase();
     }
 
-    const bootstrapInvite = await ensureBootstrapInvite();
+    const bootstrapInvites = await ensureBootstrapInvites();
 
     app.listen(env.port, '0.0.0.0', () => {
       console.log(`PlacePrep API running on port ${env.port}`);
       console.log('Host binding: 0.0.0.0');
       console.log(`Health check available at /api/health`);
       console.log(`Environment: ${env.nodeEnv}`);
-      if (bootstrapInvite) {
-        console.log(`Bootstrap invite ready at ${bootstrapInvite.inviteLink}`);
+      if (bootstrapInvites.length) {
+        bootstrapInvites.forEach((invite) => {
+          console.log(`Bootstrap ${invite.role} invite ready at ${invite.inviteLink}`);
+        });
       }
       startNotificationScheduler();
     });
