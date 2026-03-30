@@ -2,7 +2,7 @@ export interface User {
   id: string;
   name: string;
   username?: string | null;
-  role: "admin" | "viewer";
+  role: "admin" | "user";
   email: string;
   weakAreas: string[];
   strongTopics: string[];
@@ -42,7 +42,7 @@ export interface InvitePreview {
   code: string;
   valid: boolean;
   status: "valid" | "used" | "expired" | "missing";
-  role?: "admin" | "viewer";
+  role?: "admin" | "user";
   expiresAt?: string | null;
   inviteLink?: string;
   message: string;
@@ -51,7 +51,7 @@ export interface InvitePreview {
 export interface InviteRecord {
   id: string;
   code: string;
-  role: "admin" | "viewer";
+  role: "admin" | "user";
   createdBy?: string | null;
   expiresAt: string;
   used: boolean;
@@ -525,7 +525,7 @@ export async function fetchInvites(limit = 25) {
 }
 
 export async function createInvite(payload: {
-  role: "admin" | "viewer";
+  role: "admin" | "user";
   expiresInDays?: number;
   label?: string;
 }) {

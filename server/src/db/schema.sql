@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY,
   name VARCHAR(120) NOT NULL,
   username VARCHAR(60),
-  role VARCHAR(20) NOT NULL DEFAULT 'viewer',
+  role VARCHAR(20) NOT NULL DEFAULT 'user',
   email VARCHAR(255) NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   weak_areas TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
@@ -21,11 +21,11 @@ CREATE TABLE IF NOT EXISTS users (
   last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT users_role_check CHECK (role IN ('admin', 'viewer'))
+  CONSTRAINT users_role_check CHECK (role IN ('admin', 'user'))
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(60);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'viewer';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS strong_topics TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 ALTER TABLE users ADD COLUMN IF NOT EXISTS solved_problems INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS average_time_per_problem NUMERIC(6, 2) NOT NULL DEFAULT 0;
@@ -37,17 +37,14 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS readiness_score NUMERIC(5, 2) NOT NUL
 ALTER TABLE users ADD COLUMN IF NOT EXISTS coach_metadata JSONB NOT NULL DEFAULT '{}'::JSONB;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check') THEN
-    ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'viewer'));
-  END IF;
-END $$;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+UPDATE users SET role = 'user' WHERE role = 'viewer';
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'user'));
 
 CREATE TABLE IF NOT EXISTS invites (
   id UUID PRIMARY KEY,
   code VARCHAR(120) NOT NULL UNIQUE,
-  role VARCHAR(20) NOT NULL DEFAULT 'viewer',
+  role VARCHAR(20) NOT NULL DEFAULT 'user',
   created_by UUID REFERENCES users(id) ON DELETE SET NULL,
   expires_at TIMESTAMPTZ NOT NULL,
   used BOOLEAN NOT NULL DEFAULT FALSE,
@@ -56,8 +53,12 @@ CREATE TABLE IF NOT EXISTS invites (
   metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT invites_role_check CHECK (role IN ('admin', 'viewer'))
+  CONSTRAINT invites_role_check CHECK (role IN ('admin', 'user'))
 );
+
+ALTER TABLE invites DROP CONSTRAINT IF EXISTS invites_role_check;
+UPDATE invites SET role = 'user' WHERE role = 'viewer';
+ALTER TABLE invites ADD CONSTRAINT invites_role_check CHECK (role IN ('admin', 'user'));
 
 CREATE TABLE IF NOT EXISTS tasks (
   id UUID PRIMARY KEY,

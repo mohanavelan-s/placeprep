@@ -57,7 +57,7 @@ async function createUser(payload, client = null) {
       randomUUID(),
       payload.name,
       payload.username || null,
-      payload.role || 'viewer',
+      payload.role || 'user',
       payload.email,
       payload.passwordHash,
       payload.weakAreas || [],

@@ -83,7 +83,7 @@ async function register(payload) {
     const createdUser = await userRepository.createUser({
       name: payload.name.trim(),
       username,
-      role: invite?.role || 'viewer',
+      role: invite?.role || 'user',
       email,
       passwordHash,
       weakAreas: payload.weakAreas || [],

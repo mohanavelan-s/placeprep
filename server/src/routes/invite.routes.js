@@ -24,7 +24,7 @@ router.post(
   requireAuth,
   requireAdmin,
   [
-    body('role').optional().isIn(['admin', 'viewer']),
+    body('role').optional().isIn(['admin', 'user']),
     body('code').optional().isString(),
     body('expiresAt').optional().isISO8601(),
     body('expiresInDays').optional().isInt({ min: 1, max: 90 }),

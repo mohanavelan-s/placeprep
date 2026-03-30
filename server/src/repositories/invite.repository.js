@@ -35,7 +35,7 @@ async function createInvite(payload, client = null) {
     [
       randomUUID(),
       payload.code,
-      payload.role || 'viewer',
+      payload.role || 'user',
       payload.createdBy || null,
       payload.expiresAt,
       payload.metadata || {},

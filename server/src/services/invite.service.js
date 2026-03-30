@@ -116,7 +116,7 @@ async function assertInviteAvailable(code, client = null) {
 }
 
 async function generateInvite(adminUser, payload = {}) {
-  const role = payload.role === 'admin' ? 'admin' : 'viewer';
+  const role = payload.role === 'admin' ? 'admin' : 'user';
   const expiresInDays = Math.min(Math.max(Number(payload.expiresInDays || 7), 1), 90);
   const code = normalizeInviteCode(payload.code) || generateInviteCode();
   const expiresAt = payload.expiresAt
@@ -164,7 +164,7 @@ async function ensureBootstrapInvite() {
   const expiresAt = new Date(Date.now() + env.bootstrapInviteExpiresDays * 24 * 60 * 60 * 1000);
   const invite = await inviteRepository.createInvite({
     code,
-    role: env.bootstrapInviteRole === 'viewer' ? 'viewer' : 'admin',
+    role: env.bootstrapInviteRole === 'admin' ? 'admin' : 'user',
     expiresAt: expiresAt.toISOString(),
     metadata: {
       bootstrap: true,

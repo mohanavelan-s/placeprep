@@ -32,7 +32,7 @@ function formatInviteDate(value: string) {
 
 export default function AdminInvitePanel() {
   const queryClient = useQueryClient();
-  const [role, setRole] = useState<"admin" | "viewer">("viewer");
+  const [role, setRole] = useState<"admin" | "user">("user");
   const [expiresInDays, setExpiresInDays] = useState("7");
   const [label, setLabel] = useState("");
 
@@ -89,12 +89,12 @@ export default function AdminInvitePanel() {
         <div className="rounded-[1.4rem] border border-border/80 bg-card/60 p-5">
           <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Generate invite</p>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <Select value={role} onValueChange={(value) => setRole(value as "admin" | "viewer")}>
+            <Select value={role} onValueChange={(value) => setRole(value as "admin" | "user")}>
               <SelectTrigger className="h-11 border-border/80 bg-background/70">
                 <SelectValue placeholder="Choose role" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="viewer">Viewer access</SelectItem>
+                <SelectItem value="user">User access</SelectItem>
                 <SelectItem value="admin">Admin access</SelectItem>
               </SelectContent>
             </Select>
