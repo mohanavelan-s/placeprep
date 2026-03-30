@@ -36,9 +36,30 @@ async function query(text, params) {
 const { Pool } = require('pg');
 const env = require('./env');
 
+function normalizeConnectionString(connectionString) {
+  try {
+    const parsed = new URL(connectionString);
+
+    // The pg connection-string parser treats sslmode as authoritative and can
+    // override the explicit ssl object below, which breaks Supabase/Railway TLS.
+    parsed.searchParams.delete('sslmode');
+    parsed.searchParams.delete('sslcert');
+    parsed.searchParams.delete('sslkey');
+    parsed.searchParams.delete('sslrootcert');
+
+    return parsed.toString();
+  } catch {
+    return connectionString;
+  }
+}
+
 const pool = new Pool({
-  connectionString: env.databaseUrl,
-  ssl: env.nodeEnv === 'production' ? { rejectUnauthorized: false } : false,
+  connectionString: normalizeConnectionString(env.databaseUrl),
+  ssl: env.nodeEnv === 'production'
+    ? {
+        rejectUnauthorized: false,
+      }
+    : false,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
