@@ -132,9 +132,10 @@ async function startServer() {
 
     const bootstrapInvite = await ensureBootstrapInvite();
 
-    app.listen(env.port, () => {
-      console.log(`PlacePrep API running on http://localhost:${env.port}`);
-      console.log(`Health check available at http://localhost:${env.port}/api/health`);
+    app.listen(env.port, '0.0.0.0', () => {
+      console.log(`PlacePrep API running on port ${env.port}`);
+      console.log('Host binding: 0.0.0.0');
+      console.log(`Health check available at /api/health`);
       console.log(`Environment: ${env.nodeEnv}`);
       if (bootstrapInvite) {
         console.log(`Bootstrap invite ready at ${bootstrapInvite.inviteLink}`);

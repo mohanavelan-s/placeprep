@@ -85,9 +85,10 @@ if (env.nodeEnv !== 'test') {
 
 app.use('/uploads', express.static(env.uploadDir));
 
-app.get('/api/health', (req, res) => {
+function buildHealthPayload() {
   const aiStatus = getAIStatus();
-  res.json({
+
+  return {
     success: true,
     data: {
       status: 'ok',
@@ -104,7 +105,19 @@ app.get('/api/health', (req, res) => {
       inviteOnlyAccess: env.inviteOnlyAccess,
       appUrl: env.appUrl,
     },
-  });
+  };
+}
+
+app.get('/', (req, res) => {
+  res.json(buildHealthPayload());
+});
+
+app.get('/healthz', (req, res) => {
+  res.json(buildHealthPayload());
+});
+
+app.get('/api/health', (req, res) => {
+  res.json(buildHealthPayload());
 });
 
 app.use('/api/auth', authRoutes);
