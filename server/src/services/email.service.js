@@ -349,6 +349,89 @@ function buildWelcomeHtml(user) {
   `;
 }
 
+function buildInviteSignupAlertText({ user, invite }) {
+  const signInUrl = `${env.clientUrl}/auth?mode=login`;
+  const weakAreas = Array.isArray(user.weakAreas) ? user.weakAreas.filter(Boolean).join(', ') : '';
+
+  return [
+    'A new PlacePrep account was created with an invite code.',
+    '',
+    `Name: ${compactText(user.name || 'Unknown')}`,
+    `Username: ${compactText(user.username || 'Not set')}`,
+    `Email: ${compactText(user.email || 'Unknown')}`,
+    `Assigned role: ${compactText(invite?.role || user.role || 'user')}`,
+    invite?.code ? `Invite code: ${compactText(invite.code)}` : null,
+    user.targetRole ? `Target role: ${compactText(user.targetRole)}` : null,
+    weakAreas ? `Weak areas: ${weakAreas}` : null,
+    `Created at: ${new Date().toISOString()}`,
+    '',
+    `Open PlacePrep: ${signInUrl}`,
+  ].filter(Boolean).join('\n');
+}
+
+function buildInviteSignupAlertHtml({ user, invite }) {
+  const weakAreas = Array.isArray(user.weakAreas) ? user.weakAreas.filter(Boolean) : [];
+  const signInUrl = `${env.clientUrl}/auth?mode=login`;
+
+  return `
+    <div style="background:#0a0a0d;padding:32px 0;font-family:Inter,Arial,sans-serif;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="100%" style="max-width:560px;background:#111116;border:1px solid rgba(255,255,255,0.07);border-radius:22px;overflow:hidden;">
+              <tr>
+                <td style="padding:30px 30px 14px 30px;">
+                  <div style="color:#9a9a9a;font-size:11px;letter-spacing:0.32em;text-transform:uppercase;">PlacePrep Admin Notice</div>
+                  <h1 style="margin:14px 0 0 0;color:#f2efef;font-family:'Cormorant Garamond',Georgia,serif;font-size:40px;font-weight:500;line-height:1.05;">
+                    Invite signup detected.
+                  </h1>
+                  <div style="margin-top:12px;color:#c7c1c1;font-size:15px;line-height:1.7;">
+                    A new user entered the system using an invite code.
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:4px 30px 0 30px;">
+                  <span style="display:inline-block;margin:0 10px 10px 0;padding:9px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:#d7d2d2;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">
+                    ${escapeHtml(invite?.role || user.role || 'user')}
+                  </span>
+                  ${invite?.code ? `
+                    <span style="display:inline-block;margin:0 10px 10px 0;padding:9px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:#d7d2d2;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">
+                      ${escapeHtml(invite.code)}
+                    </span>
+                  ` : ''}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:14px 30px 0 30px;">
+                  <div style="padding:18px;border:1px solid rgba(255,255,255,0.06);border-radius:18px;background:linear-gradient(180deg, rgba(140,41,41,0.10), rgba(255,255,255,0.02));">
+                    <div style="color:#9a9a9a;font-size:11px;letter-spacing:0.28em;text-transform:uppercase;">Account details</div>
+                    <div style="margin-top:12px;color:#f2efef;font-size:15px;line-height:1.85;">
+                      <div><strong>Name:</strong> ${escapeHtml(user.name || 'Unknown')}</div>
+                      <div><strong>Username:</strong> ${escapeHtml(user.username || 'Not set')}</div>
+                      <div><strong>Email:</strong> ${escapeHtml(user.email || 'Unknown')}</div>
+                      <div><strong>Assigned role:</strong> ${escapeHtml(invite?.role || user.role || 'user')}</div>
+                      ${user.targetRole ? `<div><strong>Target role:</strong> ${escapeHtml(user.targetRole)}</div>` : ''}
+                      ${weakAreas.length ? `<div><strong>Weak areas:</strong> ${escapeHtml(weakAreas.join(', '))}</div>` : ''}
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:24px 30px 30px 30px;">
+                  <a href="${escapeHtml(signInUrl)}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#8b0000;color:#f5eded;text-decoration:none;font-size:13px;letter-spacing:0.18em;text-transform:uppercase;">
+                    Open PlacePrep
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+}
+
 async function sendNotificationDigestEmail({ user, notifications, summary, context = {} }) {
   if (!notifications?.length) {
     return {
@@ -428,8 +511,52 @@ async function sendWelcomeEmail({ user }) {
   }
 }
 
+async function sendInviteSignupAlertEmail({ user, invite }) {
+  if (!isEmailDeliveryReady()) {
+    return {
+      attempted: false,
+      sent: false,
+      reason: 'email_not_configured',
+    };
+  }
+
+  if (!env.inviteSignupNotifyEmail) {
+    return {
+      attempted: false,
+      sent: false,
+      reason: 'no_recipient',
+    };
+  }
+
+  try {
+    const transport = getTransporter();
+
+    await transport.sendMail({
+      from: env.smtpFrom,
+      to: env.inviteSignupNotifyEmail,
+      subject: `PlacePrep | Invite signup: ${compactText(user.name || user.email || 'new user')}`,
+      text: buildInviteSignupAlertText({ user, invite }),
+      html: buildInviteSignupAlertHtml({ user, invite }),
+    });
+
+    return {
+      attempted: true,
+      sent: true,
+      reason: 'sent',
+    };
+  } catch (error) {
+    console.error('[auth] Failed to send invite signup alert email.', error);
+    return {
+      attempted: true,
+      sent: false,
+      reason: error?.message || 'invite_signup_alert_failed',
+    };
+  }
+}
+
 module.exports = {
   sendNotificationDigestEmail,
   sendWelcomeEmail,
+  sendInviteSignupAlertEmail,
   isEmailDeliveryReady,
 };

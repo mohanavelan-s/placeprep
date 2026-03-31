@@ -5,11 +5,17 @@ Live deployment:
 - Web app: [https://placeprep-nine.vercel.app/](https://placeprep-nine.vercel.app/)
 - Backend health: [https://placeprep-api-production.up.railway.app/api/health](https://placeprep-api-production.up.railway.app/api/health)
 
-PlacePrep now includes a modular Express + PostgreSQL backend inside [server/package.json](/D:/New%20folder/placement-powerhouse-main/placement-powerhouse-main/server/package.json) with JWT auth, task/log tracking, Power Pocket sessions, AI utilities, uploads, and progress analytics.
+Access:
+
+- Public signup is disabled.
+- Use the invite page on the live app to create an account: [https://placeprep-nine.vercel.app/invite](https://placeprep-nine.vercel.app/invite)
+- The current invite code is stored in [docs/invite-code.txt](docs/invite-code.txt).
+
+PlacePrep now includes a modular Express + PostgreSQL backend inside [server/package.json](server/package.json) with JWT auth, task/log tracking, Power Pocket sessions, AI utilities, uploads, resume analysis, and progress analytics.
 
 Backend quick start:
 
-1. Create `server/.env` from [server/.env.example](/D:/New%20folder/placement-powerhouse-main/placement-powerhouse-main/server/.env.example).
+1. Create `server/.env` from [server/.env.example](server/.env.example).
 2. Install dependencies with `npm install` inside `server`.
 3. Run `npm run db:init` or let startup auto-initialize the schema.
 4. Optionally seed demo data with `npm run db:seed`.

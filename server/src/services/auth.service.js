@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const env = require('../config/env');
 const { withTransaction } = require('../config/database');
 const userRepository = require('../repositories/user.repository');
-const { sendWelcomeEmail } = require('./email.service');
+const { sendInviteSignupAlertEmail, sendWelcomeEmail } = require('./email.service');
 const inviteService = require('./invite.service');
 const AppError = require('../utils/appError');
 const { signAccessToken } = require('../utils/jwt');
@@ -75,7 +75,7 @@ async function register(payload) {
     throw new AppError('An invite code is required to create an account.', 403);
   }
 
-  const user = await withTransaction(async (client) => {
+  const registration = await withTransaction(async (client) => {
     const invite = payload.inviteCode
       ? await inviteService.assertInviteAvailable(payload.inviteCode, client)
       : null;
@@ -96,8 +96,12 @@ async function register(payload) {
       await inviteService.markInviteUsed(invite.id, createdUser.id, client);
     }
 
-    return createdUser;
+    return {
+      user: createdUser,
+      invite,
+    };
   });
+  const { user, invite } = registration;
 
   sendWelcomeEmail({ user })
     .then((result) => {
@@ -108,6 +112,18 @@ async function register(payload) {
     .catch((error) => {
       console.error('[auth] Welcome email dispatch failed.', error);
     });
+
+  if (invite) {
+    sendInviteSignupAlertEmail({ user, invite })
+      .then((result) => {
+        if (result?.attempted && !result.sent) {
+          console.error('[auth] Invite signup alert email was not sent.', result.reason);
+        }
+      })
+      .catch((error) => {
+        console.error('[auth] Invite signup alert dispatch failed.', error);
+      });
+  }
 
   return {
     token: signAccessToken(user),

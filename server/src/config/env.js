@@ -60,6 +60,7 @@ const env = {
   smtpUser: process.env.SMTP_USER || '',
   smtpPass: process.env.SMTP_PASS || '',
   smtpFrom: process.env.SMTP_FROM || '',
+  inviteSignupNotifyEmail: process.env.INVITE_SIGNUP_NOTIFY_EMAIL || process.env.SMTP_USER || '',
   notificationCron: process.env.NOTIFICATION_CRON || '0 20 * * *',
   notificationSchedulerEnabled: process.env.NOTIFICATION_SCHEDULER_ENABLED !== 'false',
   publicSignupEnabled: process.env.ALLOW_PUBLIC_SIGNUP === 'true',
