@@ -9,7 +9,14 @@ function validate(req, res, next) {
     return;
   }
 
-  next(new AppError('Validation failed.', 400, validation.array()));
+  const details = validation.array();
+  const primaryIssue = details[0];
+  const field = primaryIssue?.path || primaryIssue?.param || 'field';
+  const issueMessage = primaryIssue?.msg && primaryIssue.msg !== 'Invalid value'
+    ? primaryIssue.msg
+    : `${field} is invalid.`;
+
+  next(new AppError(issueMessage, 400, details));
 }
 
 module.exports = validate;

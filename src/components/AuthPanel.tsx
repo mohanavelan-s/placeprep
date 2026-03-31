@@ -335,7 +335,14 @@ export default function AuthPanel({
                           setRegisterForm((current) => ({ ...current, username: event.target.value }))
                         }
                         placeholder="your-handle"
+                        minLength={3}
+                        maxLength={60}
+                        pattern="^[a-zA-Z0-9._-]{3,60}$"
+                        title="Use 3 to 60 letters, numbers, dot, underscore, or hyphen."
                       />
+                      <p className="text-xs text-muted-foreground">
+                        3 to 60 characters. Letters, numbers, dot, underscore, or hyphen only.
+                      </p>
                     </label>
 
                     <label className="block space-y-2">
