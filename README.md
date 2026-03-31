@@ -5,7 +5,7 @@ Live deployment:
 - Web app: [https://placeprep-nine.vercel.app/](https://placeprep-nine.vercel.app/)
 - Backend health: [https://placeprep-api-production.up.railway.app/api/health](https://placeprep-api-production.up.railway.app/api/health)
 
-PlacePrep now includes a modular Express + PostgreSQL backend inside [server/package.json](/D:/New%20folder/placement-powerhouse-main/placement-powerhouse-main/server/package.json) with JWT auth, task/log tracking, Power Pocket sessions, AI utilities, uploads, resume analysis, and progress analytics.
+PlacePrep now includes a modular Express + PostgreSQL backend inside [server/package.json](/D:/New%20folder/placement-powerhouse-main/placement-powerhouse-main/server/package.json) with JWT auth, task/log tracking, Power Pocket sessions, AI utilities, uploads, and progress analytics.
 
 Backend quick start:
 
