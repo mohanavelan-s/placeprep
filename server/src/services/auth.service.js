@@ -103,27 +103,36 @@ async function register(payload) {
   });
   const { user, invite } = registration;
 
-  sendWelcomeEmail({ user })
-    .then((result) => {
-      if (result?.attempted && !result.sent) {
-        console.error('[auth] Welcome email was not sent.', result.reason);
-      }
-    })
-    .catch((error) => {
-      console.error('[auth] Welcome email dispatch failed.', error);
-    });
+  const emailJobs = [
+    {
+      label: 'welcome email',
+      run: () => sendWelcomeEmail({ user }),
+    },
+  ];
 
   if (invite) {
-    sendInviteSignupAlertEmail({ user, invite })
-      .then((result) => {
-        if (result?.attempted && !result.sent) {
-          console.error('[auth] Invite signup alert email was not sent.', result.reason);
-        }
-      })
-      .catch((error) => {
-        console.error('[auth] Invite signup alert dispatch failed.', error);
-      });
+    emailJobs.push({
+      label: 'invite signup alert email',
+      run: () => sendInviteSignupAlertEmail({ user, invite }),
+    });
   }
+
+  const emailResults = await Promise.allSettled(
+    emailJobs.map((job) => job.run())
+  );
+
+  emailResults.forEach((result, index) => {
+    const job = emailJobs[index];
+
+    if (result.status === 'rejected') {
+      console.error(`[auth] ${job.label} dispatch failed.`, result.reason);
+      return;
+    }
+
+    if (result.value?.attempted && !result.value.sent) {
+      console.error(`[auth] ${job.label} was not sent.`, result.value.reason);
+    }
+  });
 
   return {
     token: signAccessToken(user),
