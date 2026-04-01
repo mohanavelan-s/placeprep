@@ -236,6 +236,13 @@ function buildNotificationCandidates({
   return candidates.sort(sortCandidates);
 }
 
+function buildNotificationKeys(candidates = []) {
+  return candidates.map((candidate) => ({
+    type: candidate.type,
+    dedupeKey: candidate.dedupeKey,
+  }));
+}
+
 function buildPlanSnapshot(plan) {
   if (!plan) {
     return null;
@@ -598,6 +605,7 @@ async function syncNotificationsForUser(userOrId, options = {}) {
     planSnapshot: buildPlanSnapshot(latestPlan),
   });
   const personalization = await personalizeNotificationCopies(candidates, notificationContext);
+  const notificationKeys = buildNotificationKeys(candidates);
 
   const deliveryChannels = [];
   if (profile.notificationEmailEnabled) {
@@ -711,16 +719,25 @@ async function syncNotificationsForUser(userOrId, options = {}) {
     }
   }
 
+  let notificationsForEmail = [];
+  if (options.deliverEmail && profile.notificationEmailEnabled) {
+    notificationsForEmail = await notificationRepository.findNotificationsByKeys(
+      user.id,
+      notificationKeys
+    );
+    notificationsForEmail = notificationsForEmail.filter((notification) => !notification.emailedAt);
+  }
+
   let emailResult = {
     attempted: false,
     sent: false,
     reason: profile.notificationEmailEnabled ? 'delivery_skipped' : 'email_disabled',
   };
 
-  if (created.length && options.deliverEmail && profile.notificationEmailEnabled) {
+  if (notificationsForEmail.length && options.deliverEmail && profile.notificationEmailEnabled) {
     emailResult = await sendNotificationDigestEmail({
       user,
-      notifications: created,
+      notifications: notificationsForEmail,
       summary,
       context: {
         ...notificationContext,
@@ -728,6 +745,18 @@ async function syncNotificationsForUser(userOrId, options = {}) {
         usedAiTailoring: !personalization.usedFallback,
       },
     });
+
+    if (emailResult.sent) {
+      await notificationRepository.markEmailed(
+        notificationsForEmail.map((notification) => notification.id)
+      );
+    }
+  } else if (options.deliverEmail && profile.notificationEmailEnabled && notificationKeys.length) {
+    emailResult = {
+      attempted: false,
+      sent: false,
+      reason: 'already_emailed',
+    };
   }
 
   return {

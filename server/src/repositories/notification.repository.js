@@ -7,6 +7,7 @@ const notificationColumns = `
   type,
   message,
   sent_at AS "sentAt",
+  metadata->>'emailedAt' AS "emailedAt",
   read,
   read_at AS "readAt",
   delivery_channels AS "deliveryChannels",
@@ -69,6 +70,31 @@ async function listNotifications(userId, filters = {}) {
   return result.rows;
 }
 
+async function findNotificationsByKeys(userId, notificationKeys = []) {
+  if (!notificationKeys.length) {
+    return [];
+  }
+
+  const types = [...new Set(notificationKeys.map((item) => item.type).filter(Boolean))];
+  const dedupeKeys = [...new Set(notificationKeys.map((item) => item.dedupeKey).filter(Boolean))];
+
+  if (!types.length || !dedupeKeys.length) {
+    return [];
+  }
+
+  const result = await query(
+    `SELECT ${notificationColumns}
+     FROM notifications
+     WHERE user_id = $1
+       AND type = ANY($2::TEXT[])
+       AND dedupe_key = ANY($3::TEXT[])
+     ORDER BY sent_at DESC`,
+    [userId, types, dedupeKeys]
+  );
+
+  return result.rows;
+}
+
 async function markRead(userId, notificationId) {
   const result = await query(
     `UPDATE notifications
@@ -97,10 +123,34 @@ async function markAllRead(userId) {
   return result.rowCount;
 }
 
+async function markEmailed(notificationIds = []) {
+  const ids = notificationIds.filter(Boolean);
+  if (!ids.length) {
+    return 0;
+  }
+
+  const result = await query(
+    `UPDATE notifications
+     SET metadata = jsonb_set(
+       COALESCE(metadata, '{}'::JSONB),
+       '{emailedAt}',
+       to_jsonb(NOW()::TEXT),
+       TRUE
+     )
+     WHERE id = ANY($1::UUID[])
+     RETURNING id`,
+    [ids]
+  );
+
+  return result.rowCount;
+}
+
 module.exports = {
   createNotification,
+  findNotificationsByKeys,
   listNotifications,
   markRead,
   markAllRead,
+  markEmailed,
   notificationColumns,
 };
