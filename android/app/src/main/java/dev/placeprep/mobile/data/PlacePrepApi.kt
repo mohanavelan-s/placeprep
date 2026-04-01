@@ -8,6 +8,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
 
 interface PlacePrepApi {
     @POST("auth/register")
@@ -24,6 +25,24 @@ interface PlacePrepApi {
 
     @GET("tasks/today")
     suspend fun getTodayTasks(): ApiEnvelope<List<TaskItem>>
+
+    @GET("ai/prep-architect/latest")
+    suspend fun getLatestPrepPlan(): ApiEnvelope<PrepPlan?>
+
+    @POST("ai/quick-task")
+    suspend fun generateQuickTask(@Body payload: QuickTaskRequest = QuickTaskRequest()): ApiEnvelope<AiQuickTaskResult>
+
+    @GET("power-pocket/active")
+    suspend fun getActivePowerPocket(): ApiEnvelope<PowerPocketSession?>
+
+    @POST("power-pocket/start")
+    suspend fun startPowerPocket(@Body payload: PowerPocketStartRequest): ApiEnvelope<PowerPocketSession>
+
+    @POST("power-pocket/{id}/end")
+    suspend fun endPowerPocket(
+        @Path("id") sessionId: String,
+        @Body payload: PowerPocketEndRequest = PowerPocketEndRequest(),
+    ): ApiEnvelope<PowerPocketSession>
 
     @GET("ai/chat")
     suspend fun getMentorHistory(): ApiEnvelope<List<MentorMessage>>

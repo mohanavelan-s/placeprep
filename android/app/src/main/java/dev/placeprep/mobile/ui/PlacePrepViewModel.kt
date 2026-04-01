@@ -3,9 +3,12 @@ package dev.placeprep.mobile.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import dev.placeprep.mobile.data.AiQuickTaskResult
 import dev.placeprep.mobile.data.MentorMessage
 import dev.placeprep.mobile.data.MobileUser
+import dev.placeprep.mobile.data.PrepPlan
 import dev.placeprep.mobile.data.PlacePrepRepository
+import dev.placeprep.mobile.data.PowerPocketSession
 import dev.placeprep.mobile.data.ProgressSummary
 import dev.placeprep.mobile.data.TaskItem
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +22,9 @@ data class PlacePrepUiState(
     val progress: ProgressSummary? = null,
     val tasks: List<TaskItem> = emptyList(),
     val mentorHistory: List<MentorMessage> = emptyList(),
+    val prepPlan: PrepPlan? = null,
+    val activePowerPocket: PowerPocketSession? = null,
+    val quickTask: AiQuickTaskResult? = null,
     val currentTab: MobileTab = MobileTab.Dashboard,
     val authStage: AuthStage = AuthStage.Landing,
     val isBootstrapping: Boolean = true,
@@ -152,17 +158,21 @@ class PlacePrepViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             runCatching {
-                Triple(
-                    repository.loadProgress(),
-                    repository.loadTasks(),
-                    repository.loadMentorHistory(),
+                WorkspacePayload(
+                    progress = repository.loadProgress(),
+                    tasks = repository.loadTasks(),
+                    history = repository.loadMentorHistory(),
+                    prepPlan = repository.loadLatestPrepPlan(),
+                    activePowerPocket = repository.loadActivePowerPocket(),
                 )
-            }.onSuccess { (progress, tasks, history) ->
+            }.onSuccess { result ->
                 _uiState.update {
                     it.copy(
-                        progress = progress,
-                        tasks = tasks,
-                        mentorHistory = history,
+                        progress = result.progress,
+                        tasks = result.tasks,
+                        mentorHistory = result.history,
+                        prepPlan = result.prepPlan,
+                        activePowerPocket = result.activePowerPocket,
                         isLoading = false,
                     )
                 }
@@ -176,6 +186,14 @@ class PlacePrepViewModel(
             }
         }
     }
+
+    private data class WorkspacePayload(
+        val progress: ProgressSummary,
+        val tasks: List<TaskItem>,
+        val history: List<MentorMessage>,
+        val prepPlan: PrepPlan?,
+        val activePowerPocket: PowerPocketSession?,
+    )
 
     fun sendMentorMessage(message: String) {
         viewModelScope.launch {
@@ -195,6 +213,60 @@ class PlacePrepViewModel(
                         it.copy(
                             isLoading = false,
                             errorMessage = error.message ?: "Unable to contact Nocturne Mentor.",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun engagePowerPocket() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            runCatching {
+                val suggestion = repository.generateQuickTask()
+                val session = repository.startPowerPocket(
+                    title = suggestion.task.title,
+                    notes = suggestion.suggestionLine,
+                )
+                suggestion to session
+            }.onSuccess { (suggestion, session) ->
+                _uiState.update {
+                    it.copy(
+                        quickTask = suggestion,
+                        activePowerPocket = session,
+                        isLoading = false,
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = error.message ?: "Unable to engage Power Pocket.",
+                    )
+                }
+            }
+        }
+    }
+
+    fun endPowerPocket() {
+        val activeSession = _uiState.value.activePowerPocket ?: return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            runCatching { repository.endPowerPocket(activeSession.id) }
+                .onSuccess {
+                    _uiState.update {
+                        it.copy(
+                            activePowerPocket = null,
+                            isLoading = false,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = error.message ?: "Unable to end Power Pocket.",
                         )
                     }
                 }

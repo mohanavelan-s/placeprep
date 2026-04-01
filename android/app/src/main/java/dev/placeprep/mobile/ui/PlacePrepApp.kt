@@ -147,6 +147,8 @@ fun PlacePrepApp(viewModel: PlacePrepViewModel) {
                         state = state,
                         onRefresh = viewModel::refreshWorkspace,
                         onSendMentorMessage = viewModel::sendMentorMessage,
+                        onEngagePowerPocket = viewModel::engagePowerPocket,
+                        onEndPowerPocket = viewModel::endPowerPocket,
                         onSwitchTab = viewModel::switchTab,
                         onLogout = viewModel::logout,
                     )
@@ -572,6 +574,8 @@ private fun WorkspaceScreen(
     state: PlacePrepUiState,
     onRefresh: () -> Unit,
     onSendMentorMessage: (String) -> Unit,
+    onEngagePowerPocket: () -> Unit,
+    onEndPowerPocket: () -> Unit,
     onSwitchTab: (MobileTab) -> Unit,
     onLogout: () -> Unit,
 ) {
@@ -705,7 +709,15 @@ private fun WorkspaceScreen(
                     label = "placeprep-mobile-tab",
                 ) { tab ->
                     when (tab) {
-                        MobileTab.Dashboard -> DashboardTab(progress = state.progress, tasks = state.tasks)
+                        MobileTab.Dashboard -> DashboardTab(
+                            progress = state.progress,
+                            tasks = state.tasks,
+                            prepPlan = state.prepPlan,
+                            activePowerPocket = state.activePowerPocket,
+                            quickTask = state.quickTask,
+                            onEngagePowerPocket = onEngagePowerPocket,
+                            onEndPowerPocket = onEndPowerPocket,
+                        )
                         MobileTab.Tasks -> TasksTab(tasks = state.tasks)
                         MobileTab.Mentor -> MentorTab(messages = state.mentorHistory, onSend = onSendMentorMessage)
                         MobileTab.Settings -> SettingsTab(user = state.user, onLogout = onLogout, onRefresh = onRefresh)
@@ -1006,7 +1018,15 @@ private fun OverlayWorkflowCard(
 }
 
 @Composable
-private fun DashboardTab(progress: ProgressSummary?, tasks: List<TaskItem>) {
+private fun DashboardTab(
+    progress: ProgressSummary?,
+    tasks: List<TaskItem>,
+    prepPlan: dev.placeprep.mobile.data.PrepPlan?,
+    activePowerPocket: dev.placeprep.mobile.data.PowerPocketSession?,
+    quickTask: dev.placeprep.mobile.data.AiQuickTaskResult?,
+    onEngagePowerPocket: () -> Unit,
+    onEndPowerPocket: () -> Unit,
+) {
     LazyColumn(
         contentPadding = PaddingValues(bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -1056,6 +1076,17 @@ private fun DashboardTab(progress: ProgressSummary?, tasks: List<TaskItem>) {
                 subtitle = "Priority tasks lined up from your live dashboard feed.",
             )
         }
+        item {
+            PowerPocketCard(
+                activePowerPocket = activePowerPocket,
+                quickTask = quickTask,
+                onEngage = onEngagePowerPocket,
+                onEnd = onEndPowerPocket,
+            )
+        }
+        item {
+            PrepArchitectPreviewCard(prepPlan = prepPlan)
+        }
         if (tasks.isEmpty()) {
             item {
                 EmptyStateCard(
@@ -1092,6 +1123,141 @@ private fun MetricCard(
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(value, color = TextPrimary, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
                 Text(suffix, color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 5.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PowerPocketCard(
+    activePowerPocket: dev.placeprep.mobile.data.PowerPocketSession?,
+    quickTask: dev.placeprep.mobile.data.AiQuickTaskResult?,
+    onEngage: () -> Unit,
+    onEnd: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(26.dp),
+        color = SurfaceBase.copy(alpha = 0.96f),
+        tonalElevation = 6.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            AccentStrip(text = "Power pocket / Engage mode")
+            Text(
+                text = activePowerPocket?.title ?: "Use time others waste.",
+                color = TextPrimary,
+                fontSize = 22.sp,
+                lineHeight = 26.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = activePowerPocket?.notes
+                    ?: quickTask?.suggestionLine
+                    ?: "Generate a sharp 30-minute move and turn a spare window into measurable progress.",
+                color = TextSecondary,
+                fontSize = 14.sp,
+                lineHeight = 21.sp,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                InfoPill(
+                    icon = Icons.Outlined.Timelapse,
+                    text = quickTask?.task?.estimatedMinutes?.let(::formatDurationLabel)
+                        ?: activePowerPocket?.durationMinutes?.let(::formatDurationLabel)
+                        ?: "30 min",
+                )
+                InfoPill(
+                    icon = Icons.Outlined.AutoAwesome,
+                    text = quickTask?.task?.difficulty ?: activePowerPocket?.status ?: "Ready",
+                )
+            }
+            Button(
+                onClick = if (activePowerPocket == null) onEngage else onEnd,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (activePowerPocket == null) Crimson else SurfaceRaised,
+                    contentColor = TextPrimary,
+                ),
+            ) {
+                Text(
+                    if (activePowerPocket == null) "Engage Power Pocket" else "Complete current sprint",
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PrepArchitectPreviewCard(
+    prepPlan: dev.placeprep.mobile.data.PrepPlan?,
+) {
+    Surface(
+        shape = RoundedCornerShape(26.dp),
+        color = SurfaceBase.copy(alpha = 0.96f),
+        tonalElevation = 6.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            AccentStrip(text = "Prep architect / Live plan")
+            Text(
+                text = prepPlan?.targetRole ?: "Structured roadmap ready when you are.",
+                color = TextPrimary,
+                fontSize = 21.sp,
+                lineHeight = 25.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = when {
+                    prepPlan == null ->
+                        "Build a plan on the web app and the roadmap, focus topics, and daily structure will appear here."
+                    prepPlan.targetTopics.isNotEmpty() ->
+                        "Current focus: ${prepPlan.targetTopics.take(3).joinToString(", ")}"
+                    else ->
+                        "Your latest architect plan is synced to mobile."
+                },
+                color = TextSecondary,
+                fontSize = 14.sp,
+                lineHeight = 21.sp,
+            )
+
+            if (prepPlan != null) {
+                prepPlan.roadmap.take(2).forEach { week ->
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = SurfaceRaised.copy(alpha = 0.82f),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                text = "Week ${week.week} / ${week.title}",
+                                color = TextPrimary,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Text(
+                                text = week.focusTopics.joinToString(", "),
+                                color = TextSecondary,
+                                fontSize = 13.sp,
+                                lineHeight = 20.sp,
+                            )
+                        }
+                    }
+                }
             }
         }
     }

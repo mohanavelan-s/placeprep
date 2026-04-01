@@ -57,15 +57,32 @@ async function uploadApk(user, file, payload) {
     throw new AppError('APK file is required.', 400);
   }
 
-  const uploadResult = isCloudinaryConfigured
-    ? await uploadBuffer({
+  let uploadResult;
+
+  if (isCloudinaryConfigured) {
+    try {
+      uploadResult = await uploadBuffer({
         buffer: file.buffer,
         folder: 'apk',
         mimeType: file.mimetype,
         originalName: file.originalname,
         resourceType: 'raw',
-      })
-    : await uploadApkLocally(file);
+      });
+    } catch (error) {
+      const cloudinaryMessage = String(error?.message || '');
+      const shouldFallbackToLocal =
+        /File size too large/i.test(cloudinaryMessage)
+        || /Maximum is 10485760/i.test(cloudinaryMessage);
+
+      if (!shouldFallbackToLocal) {
+        throw error;
+      }
+
+      uploadResult = await uploadApkLocally(file);
+    }
+  } else {
+    uploadResult = await uploadApkLocally(file);
+  }
 
   const savedVersion = await withTransaction(async (client) => {
     await apkVersionRepository.deactivateAll(client);

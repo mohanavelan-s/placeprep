@@ -47,6 +47,26 @@ class PlacePrepRepository(
 
     suspend fun loadTasks(): List<TaskItem> = api.getTodayTasks().data
 
+    suspend fun loadLatestPrepPlan(): PrepPlan? = api.getLatestPrepPlan().data
+
+    suspend fun loadActivePowerPocket(): PowerPocketSession? = api.getActivePowerPocket().data
+
+    suspend fun generateQuickTask(): AiQuickTaskResult = api.generateQuickTask().data
+
+    suspend fun startPowerPocket(title: String?, notes: String?): PowerPocketSession {
+        return api.startPowerPocket(
+            PowerPocketStartRequest(
+                title = title,
+                notes = notes,
+                source = "ai",
+            )
+        ).data
+    }
+
+    suspend fun endPowerPocket(sessionId: String): PowerPocketSession {
+        return api.endPowerPocket(sessionId).data
+    }
+
     suspend fun loadMentorHistory(): List<MentorMessage> = api.getMentorHistory().data
 
     suspend fun sendMentorMessage(message: String): MentorReply {
