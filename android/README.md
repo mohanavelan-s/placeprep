@@ -6,6 +6,7 @@
 - Screens: Login, Dashboard, Tasks, Nocturne Mentor
 
 Set `PLACEPREP_API_BASE_URL` in `~/.gradle/gradle.properties` or project `gradle.properties`.
+For a stable live APK, point both debug and release to the Railway production API.
 
 Examples:
 
@@ -17,8 +18,14 @@ Release-ready project properties already live in `android/gradle.properties`:
 
 - `PLACEPREP_VERSION_CODE`
 - `PLACEPREP_VERSION_NAME`
+- `PLACEPREP_API_BASE_URL`
 - `PLACEPREP_API_BASE_URL_RELEASE`
 - `PLACEPREP_API_BASE_URL_DEBUG`
+
+Current project default:
+
+- `PLACEPREP_API_BASE_URL_RELEASE=https://placeprep-api-production.up.railway.app/api/`
+- `PLACEPREP_API_BASE_URL_DEBUG=https://placeprep-api-production.up.railway.app/api/`
 
 To build a signed APK:
 

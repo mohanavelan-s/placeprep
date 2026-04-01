@@ -1,0 +1,7 @@
+<resources>
+    <color name="ic_launcher_background">#0A0A0D</color>
+    <color name="placeprep_surface">#111116</color>
+    <color name="placeprep_stroke">#662626</color>
+    <color name="placeprep_crimson">#D44B4B</color>
+    <color name="placeprep_monochrome">#F0ECEC</color>
+</resources>

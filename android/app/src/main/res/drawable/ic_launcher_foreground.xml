@@ -1,0 +1,22 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:bottom="18dp"
+        android:left="18dp"
+        android:right="18dp"
+        android:top="18dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/placeprep_surface" />
+            <stroke
+                android:width="1.5dp"
+                android:color="@color/placeprep_stroke" />
+            <corners android:radius="18dp" />
+        </shape>
+    </item>
+
+    <item
+        android:bottom="26dp"
+        android:left="26dp"
+        android:right="26dp"
+        android:top="26dp"
+        android:drawable="@drawable/ic_launcher_p_mark" />
+</layer-list>
