@@ -1,13 +1,22 @@
 package dev.placeprep.mobile.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,17 +24,22 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ListAlt
-import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Timelapse
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -61,7 +75,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.placeprep.mobile.BuildConfig
 import dev.placeprep.mobile.data.MentorMessage
+import dev.placeprep.mobile.data.MobileUser
 import dev.placeprep.mobile.data.ProgressSummary
 import dev.placeprep.mobile.data.TaskItem
 
@@ -103,12 +119,29 @@ fun PlacePrepApp(viewModel: PlacePrepViewModel) {
             contentColor = TextPrimary,
         ) {
             BackgroundChrome {
-                if (state.user == null) {
-                    LoginScreen(
-                        isLoading = state.isLoading,
-                        errorMessage = state.errorMessage,
-                        onLogin = viewModel::login,
-                    )
+                if (state.isBootstrapping) {
+                    LoadingScreen()
+                } else if (state.user == null) {
+                    when (state.authStage) {
+                        AuthStage.Landing -> LandingScreen(
+                            onLogin = { viewModel.setAuthStage(AuthStage.Login) },
+                            onSignup = { viewModel.setAuthStage(AuthStage.Signup) },
+                        )
+                        AuthStage.Login -> LoginScreen(
+                            isLoading = state.isLoading,
+                            errorMessage = state.errorMessage,
+                            onLogin = viewModel::login,
+                            onBack = { viewModel.setAuthStage(AuthStage.Landing) },
+                            onSwitchToSignup = { viewModel.setAuthStage(AuthStage.Signup) },
+                        )
+                        AuthStage.Signup -> SignupScreen(
+                            isLoading = state.isLoading,
+                            errorMessage = state.errorMessage,
+                            onRegister = viewModel::register,
+                            onBack = { viewModel.setAuthStage(AuthStage.Landing) },
+                            onSwitchToLogin = { viewModel.setAuthStage(AuthStage.Login) },
+                        )
+                    }
                 } else {
                     WorkspaceScreen(
                         state = state,
@@ -168,19 +201,126 @@ private fun BackgroundChrome(content: @Composable () -> Unit) {
 }
 
 @Composable
+private fun LoadingScreen() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(30.dp),
+            color = SurfaceBase.copy(alpha = 0.95f),
+            tonalElevation = 8.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CircularProgressIndicator(color = Lavender, strokeWidth = 2.5.dp)
+                Text("Booting PlacePrep", color = TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                Text("Restoring your command space.", color = TextSecondary, fontSize = 14.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun LandingScreen(
+    onLogin: () -> Unit,
+    onSignup: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 22.dp, vertical = 28.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(34.dp),
+            color = SurfaceBase.copy(alpha = 0.96f),
+            tonalElevation = 8.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                AccentStrip(text = "Private / Invite only / Mobile live")
+                Text(
+                    text = "Discipline builds systems.",
+                    color = TextPrimary,
+                    fontSize = 38.sp,
+                    lineHeight = 42.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Enter PlacePrep from a cleaner mobile command center with dashboard, mentor, tasks, and account controls.",
+                    color = TextSecondary,
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp,
+                )
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = SurfaceRaised.copy(alpha = 0.95f),
+                    tonalElevation = 4.dp,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text("What opens inside", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+                        Text("Command chamber, mission queue, Nocturne Mentor, and mobile account settings.", color = TextSecondary, fontSize = 14.sp, lineHeight = 22.sp)
+                    }
+                }
+                Button(
+                    onClick = onLogin,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Lavender,
+                        contentColor = Background,
+                    ),
+                ) {
+                    Text("Sign in", fontWeight = FontWeight.SemiBold)
+                }
+                Button(
+                    onClick = onSignup,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SurfaceRaised,
+                        contentColor = TextPrimary,
+                    ),
+                ) {
+                    Text("Create account", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun LoginScreen(
     isLoading: Boolean,
     errorMessage: String?,
     onLogin: (String, String) -> Unit,
+    onBack: () -> Unit,
+    onSwitchToSignup: () -> Unit,
 ) {
     var identifier by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 22.dp, vertical = 28.dp),
-        contentAlignment = Alignment.Center,
+            .padding(horizontal = 22.dp, vertical = 28.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Center,
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -263,6 +403,164 @@ private fun LoginScreen(
                         Text("Initialize session", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(
+                        onClick = onBack,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SurfaceRaised,
+                            contentColor = TextSecondary,
+                        ),
+                    ) {
+                        Text("Back")
+                    }
+                    Button(
+                        onClick = onSwitchToSignup,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Transparent,
+                            contentColor = Lavender,
+                        ),
+                    ) {
+                        Text("Need an account?")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SignupScreen(
+    isLoading: Boolean,
+    errorMessage: String?,
+    onRegister: (String, String, String, String, String) -> Unit,
+    onBack: () -> Unit,
+    onSwitchToLogin: () -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var inviteCode by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 22.dp, vertical = 28.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(34.dp),
+            color = SurfaceBase.copy(alpha = 0.96f),
+            tonalElevation = 8.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 26.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                AccentStrip(text = "Invite access / Account creation")
+                Text(
+                    text = "Create your workspace.",
+                    color = TextPrimary,
+                    fontSize = 34.sp,
+                    lineHeight = 38.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Use your invite code to create a mobile session linked to the live PlacePrep system.",
+                    color = TextSecondary,
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp,
+                )
+
+                PremiumTextField(value = inviteCode, onValueChange = { inviteCode = it }, label = "Invite code")
+                PremiumTextField(value = name, onValueChange = { name = it }, label = "Full name")
+                PremiumTextField(value = username, onValueChange = { username = it }, label = "Username")
+                PremiumTextField(value = email, onValueChange = { email = it }, label = "Email")
+                PremiumTextField(value = password, onValueChange = { password = it }, label = "Password", password = true)
+
+                if (!errorMessage.isNullOrBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = Crimson.copy(alpha = 0.12f),
+                    ) {
+                        Text(
+                            text = errorMessage,
+                            color = CrimsonSoft,
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        onRegister(
+                            name.trim(),
+                            username.trim(),
+                            email.trim(),
+                            password,
+                            inviteCode.trim(),
+                        )
+                    },
+                    enabled = !isLoading
+                        && listOf(name, username, email, password, inviteCode).all { it.isNotBlank() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Lavender,
+                        contentColor = Background,
+                        disabledContainerColor = SurfaceMuted,
+                        disabledContentColor = TextMuted,
+                    ),
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = Background,
+                        )
+                    } else {
+                        Text("Create account", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(
+                        onClick = onBack,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SurfaceRaised,
+                            contentColor = TextSecondary,
+                        ),
+                    ) {
+                        Text("Back")
+                    }
+                    Button(
+                        onClick = onSwitchToLogin,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Transparent,
+                            contentColor = Lavender,
+                        ),
+                    ) {
+                        Text("Already inside?")
+                    }
+                }
             }
         }
     }
@@ -277,6 +575,8 @@ private fun WorkspaceScreen(
     onSwitchTab: (MobileTab) -> Unit,
     onLogout: () -> Unit,
 ) {
+    var drawerOpen by remember { mutableStateOf(false) }
+
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
@@ -297,30 +597,36 @@ private fun WorkspaceScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "PlacePrep",
-                            color = TextSecondary,
-                            letterSpacing = 3.sp,
-                            fontSize = 11.sp,
-                        )
-                        Text(
-                            text = state.user?.name ?: "Workspace",
-                            color = TextPrimary,
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            PremiumIconAction(
+                                icon = Icons.Outlined.Menu,
+                                contentDescription = "Open workspace menu",
+                                onClick = { drawerOpen = true },
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = "PlacePrep",
+                                    color = TextSecondary,
+                                    letterSpacing = 3.sp,
+                                    fontSize = 11.sp,
+                                )
+                                Text(
+                                    text = state.user?.name ?: "Workspace",
+                                    color = TextPrimary,
+                                    fontSize = 26.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         PremiumIconAction(
                             icon = Icons.Outlined.Refresh,
                             contentDescription = "Refresh",
                             onClick = onRefresh,
-                        )
-                        PremiumIconAction(
-                            icon = Icons.AutoMirrored.Outlined.Logout,
-                            contentDescription = "Logout",
-                            tint = CrimsonSoft,
-                            onClick = onLogout,
                         )
                     }
                 }
@@ -348,12 +654,13 @@ private fun WorkspaceScreen(
                             MobileTab.Dashboard to Icons.Outlined.BarChart,
                             MobileTab.Tasks to Icons.AutoMirrored.Outlined.ListAlt,
                             MobileTab.Mentor to Icons.Outlined.ChatBubbleOutline,
+                            MobileTab.Settings to Icons.Outlined.Settings,
                         ).forEach { (tab, icon) ->
                             NavigationBarItem(
                                 selected = state.currentTab == tab,
                                 onClick = { onSwitchTab(tab) },
                                 icon = { Icon(icon, contentDescription = null) },
-                                label = { Text(tab.name) },
+                                label = { Text(mobileTabLabel(tab)) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = Background,
                                     selectedTextColor = TextPrimary,
@@ -401,6 +708,7 @@ private fun WorkspaceScreen(
                         MobileTab.Dashboard -> DashboardTab(progress = state.progress, tasks = state.tasks)
                         MobileTab.Tasks -> TasksTab(tasks = state.tasks)
                         MobileTab.Mentor -> MentorTab(messages = state.mentorHistory, onSend = onSendMentorMessage)
+                        MobileTab.Settings -> SettingsTab(user = state.user, onLogout = onLogout, onRefresh = onRefresh)
                     }
                 }
             }
@@ -427,6 +735,271 @@ private fun WorkspaceScreen(
                         Text("Syncing workspace", color = TextSecondary, fontSize = 12.sp)
                     }
                 }
+            }
+
+            OverlayCommandDrawer(
+                isVisible = drawerOpen,
+                user = state.user,
+                currentTab = state.currentTab,
+                onDismiss = { drawerOpen = false },
+                onSelectTab = { tab ->
+                    drawerOpen = false
+                    onSwitchTab(tab)
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverlayCommandDrawer(
+    isVisible: Boolean,
+    user: MobileUser?,
+    currentTab: MobileTab,
+    onDismiss: () -> Unit,
+    onSelectTab: (MobileTab) -> Unit,
+) {
+    AnimatedVisibility(
+        visible = isVisible,
+        enter = fadeIn(animationSpec = tween(220)) + slideInHorizontally(animationSpec = tween(240), initialOffsetX = { -it / 3 }),
+        exit = fadeOut(animationSpec = tween(180)) + slideOutHorizontally(animationSpec = tween(200), targetOffsetX = { -it / 5 }),
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xC20A0A0D))
+                    .clickable(onClick = onDismiss),
+            )
+
+            Surface(
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(start = 12.dp, top = 12.dp, bottom = 16.dp)
+                    .fillMaxHeight(0.92f)
+                    .width(318.dp),
+                shape = RoundedCornerShape(36.dp),
+                color = Color(0xF114141B),
+                tonalElevation = 14.dp,
+                shadowElevation = 22.dp,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .border(1.dp, Border.copy(alpha = 0.72f), RoundedCornerShape(36.dp))
+                        .padding(horizontal = 18.dp, vertical = 18.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(48.dp),
+                            shape = RoundedCornerShape(18.dp),
+                            color = Color(0xFFE49B2B),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "P",
+                                    color = Background,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 22.sp,
+                                )
+                            }
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = user?.name ?: "PlacePrep",
+                                color = TextPrimary,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = "CLOUD WORKSPACE / ${user?.role?.uppercase() ?: "ACTIVE"}",
+                                color = TextSecondary,
+                                fontSize = 11.sp,
+                                letterSpacing = 2.sp,
+                            )
+                        }
+                    }
+
+                    OverlaySectionLabel("Core")
+
+                    OverlayTabButton(
+                        title = "Command Chamber",
+                        subtitle = "Signals, readiness, and mission control.",
+                        icon = Icons.Outlined.BarChart,
+                        selected = currentTab == MobileTab.Dashboard,
+                        onClick = { onSelectTab(MobileTab.Dashboard) },
+                    )
+                    OverlayTabButton(
+                        title = "Mission Queue",
+                        subtitle = "Active tasks and execution windows.",
+                        icon = Icons.AutoMirrored.Outlined.ListAlt,
+                        selected = currentTab == MobileTab.Tasks,
+                        onClick = { onSelectTab(MobileTab.Tasks) },
+                    )
+                    OverlayTabButton(
+                        title = "Nocturne Mentor",
+                        subtitle = "Direct answers without clutter.",
+                        icon = Icons.Outlined.ChatBubbleOutline,
+                        selected = currentTab == MobileTab.Mentor,
+                        onClick = { onSelectTab(MobileTab.Mentor) },
+                    )
+                    OverlayTabButton(
+                        title = "Settings",
+                        subtitle = "Account, backend, and session controls.",
+                        icon = Icons.Outlined.Settings,
+                        selected = currentTab == MobileTab.Settings,
+                        onClick = { onSelectTab(MobileTab.Settings) },
+                    )
+
+                    OverlaySectionLabel("Flows")
+
+                    OverlayWorkflowCard(
+                        title = "Quick focus reset",
+                        description = "Refresh tasks, recover context, and get back into motion fast.",
+                        icon = Icons.Outlined.Refresh,
+                    )
+                    OverlayWorkflowCard(
+                        title = "Mentor recovery",
+                        description = "Open the mentor thread when you need a direct next step.",
+                        icon = Icons.Outlined.AutoAwesome,
+                    )
+                    OverlayWorkflowCard(
+                        title = "Timed sprint",
+                        description = "Use tasks and quick blocks to turn short windows into progress.",
+                        icon = Icons.Outlined.Timelapse,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OverlaySectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        color = TextMuted,
+        fontSize = 11.sp,
+        letterSpacing = 2.sp,
+    )
+}
+
+@Composable
+private fun OverlayTabButton(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        color = if (selected) Color(0xFFE49B2B) else Color(0xFF17171E),
+        tonalElevation = if (selected) 8.dp else 3.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(36.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = if (selected) Color(0x26FFFFFF) else SurfaceMuted,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (selected) Background else TextSecondary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(
+                    text = title,
+                    color = if (selected) Background else TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = subtitle,
+                    color = if (selected) Background.copy(alpha = 0.72f) else TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                )
+            }
+            Icon(
+                imageVector = Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = if (selected) Background.copy(alpha = 0.72f) else TextMuted,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverlayWorkflowCard(
+    title: String,
+    description: String,
+    icon: ImageVector,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = SurfaceBase.copy(alpha = 0.92f),
+        tonalElevation = 5.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Surface(
+                modifier = Modifier.size(34.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = Crimson.copy(alpha = 0.18f),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = CrimsonSoft,
+                        modifier = Modifier.size(17.dp),
+                    )
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = title,
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = description,
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp,
+                )
             }
         }
     }
@@ -563,29 +1136,29 @@ private fun MentorTab(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Surface(
-            shape = RoundedCornerShape(30.dp),
+            shape = RoundedCornerShape(24.dp),
             color = SurfaceRaised.copy(alpha = 0.96f),
-            tonalElevation = 8.dp,
+            tonalElevation = 6.dp,
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 AccentStrip(text = "Nocturne mentor / Live guidance")
                 Text(
-                    text = "Direct guidance. No noise.",
+                    text = "Direct guidance for the next move.",
                     color = TextPrimary,
-                    fontSize = 28.sp,
-                    lineHeight = 32.sp,
+                    fontSize = 22.sp,
+                    lineHeight = 26.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "Ask for strategy, weak-area recovery, or the next high-value move.",
+                    text = "Ask once. Read clearly. Move fast.",
                     color = TextSecondary,
-                    fontSize = 14.sp,
-                    lineHeight = 22.sp,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
                 )
             }
         }
@@ -646,6 +1219,133 @@ private fun MentorTab(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SettingsTab(
+    user: MobileUser?,
+    onLogout: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    LazyColumn(
+        contentPadding = PaddingValues(bottom = 96.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Surface(
+                shape = RoundedCornerShape(30.dp),
+                color = SurfaceRaised.copy(alpha = 0.96f),
+                tonalElevation = 8.dp,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(22.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    AccentStrip(text = "Settings / Account / App")
+                    Text(
+                        text = "Control your mobile session.",
+                        color = TextPrimary,
+                        fontSize = 28.sp,
+                        lineHeight = 32.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "Review account identity, build channel, and sign out cleanly when you need to.",
+                        color = TextSecondary,
+                        fontSize = 14.sp,
+                        lineHeight = 22.sp,
+                    )
+                }
+            }
+        }
+        item {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = SurfaceBase.copy(alpha = 0.96f),
+                tonalElevation = 6.dp,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Account", color = TextPrimary, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+                    SettingsValueRow(label = "Name", value = user?.name ?: "Unavailable")
+                    SettingsValueRow(label = "Username", value = user?.username ?: "Not set")
+                    SettingsValueRow(label = "Email", value = user?.email ?: "Unavailable")
+                    SettingsValueRow(label = "Role", value = user?.role?.replaceFirstChar { it.uppercase() } ?: "Unknown")
+                    SettingsValueRow(label = "Target role", value = user?.targetRole ?: "Not set")
+                    SettingsValueRow(label = "Placement date", value = user?.placementDate ?: "Not set")
+                }
+            }
+        }
+        item {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = SurfaceBase.copy(alpha = 0.96f),
+                tonalElevation = 6.dp,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("App", color = TextPrimary, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+                    SettingsValueRow(label = "Version", value = BuildConfig.VERSION_NAME)
+                    SettingsValueRow(label = "Environment", value = BuildConfig.APP_ENV.replaceFirstChar { it.uppercase() })
+                    SettingsValueRow(label = "Backend", value = BuildConfig.API_BASE_URL.removeSuffix("/"))
+                }
+            }
+        }
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Button(
+                    onClick = onRefresh,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(54.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SurfaceRaised,
+                        contentColor = TextPrimary,
+                    ),
+                ) {
+                    Text("Refresh", fontWeight = FontWeight.SemiBold)
+                }
+                Button(
+                    onClick = onLogout,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(54.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Crimson,
+                        contentColor = TextPrimary,
+                    ),
+                ) {
+                    Text("Logout", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsValueRow(
+    label: String,
+    value: String,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, color = TextMuted, fontSize = 11.sp, letterSpacing = 1.sp)
+        Text(value, color = TextPrimary, fontSize = 15.sp, lineHeight = 22.sp)
     }
 }
 
@@ -891,3 +1591,11 @@ private fun formatDurationLabel(minutes: Int): String {
     }
     return "$rounded hrs"
 }
+
+private fun mobileTabLabel(tab: MobileTab): String =
+    when (tab) {
+        MobileTab.Dashboard -> "Home"
+        MobileTab.Tasks -> "Tasks"
+        MobileTab.Mentor -> "Mentor"
+        MobileTab.Settings -> "Settings"
+    }

@@ -20,14 +20,23 @@ data class PlacePrepUiState(
     val tasks: List<TaskItem> = emptyList(),
     val mentorHistory: List<MentorMessage> = emptyList(),
     val currentTab: MobileTab = MobileTab.Dashboard,
+    val authStage: AuthStage = AuthStage.Landing,
+    val isBootstrapping: Boolean = true,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
 )
+
+enum class AuthStage {
+    Landing,
+    Login,
+    Signup,
+}
 
 enum class MobileTab {
     Dashboard,
     Tasks,
     Mentor,
+    Settings,
 }
 
 class PlacePrepViewModel(
@@ -42,13 +51,19 @@ class PlacePrepViewModel(
 
     fun restoreSession() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            _uiState.update { it.copy(isLoading = true, isBootstrapping = true, errorMessage = null) }
             runCatching { repository.restoreUser() }
                 .onSuccess { user ->
                     if (user == null) {
-                        _uiState.update { PlacePrepUiState(isLoading = false) }
+                        _uiState.update {
+                            PlacePrepUiState(
+                                isLoading = false,
+                                isBootstrapping = false,
+                                authStage = AuthStage.Landing,
+                            )
+                        }
                     } else {
-                        _uiState.update { it.copy(user = user) }
+                        _uiState.update { it.copy(user = user, isBootstrapping = false) }
                         refreshWorkspace()
                     }
                 }
@@ -56,10 +71,22 @@ class PlacePrepViewModel(
                     _uiState.update {
                         PlacePrepUiState(
                             isLoading = false,
+                            isBootstrapping = false,
+                            authStage = AuthStage.Landing,
                             errorMessage = error.message ?: "Unable to restore session.",
                         )
                     }
                 }
+        }
+    }
+
+    fun setAuthStage(stage: AuthStage) {
+        _uiState.update {
+            it.copy(
+                authStage = stage,
+                errorMessage = null,
+                isLoading = false,
+            )
         }
     }
 
@@ -68,7 +95,14 @@ class PlacePrepViewModel(
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             runCatching { repository.login(identifier, password) }
                 .onSuccess { user ->
-                    _uiState.update { it.copy(user = user, isLoading = false) }
+                    _uiState.update {
+                        it.copy(
+                            user = user,
+                            isLoading = false,
+                            authStage = AuthStage.Login,
+                        )
+                    }
+                    switchTab(MobileTab.Dashboard)
                     refreshWorkspace()
                 }
                 .onFailure { error ->
@@ -76,6 +110,38 @@ class PlacePrepViewModel(
                         it.copy(
                             isLoading = false,
                             errorMessage = error.message ?: "Unable to sign in.",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun register(
+        name: String,
+        username: String,
+        email: String,
+        password: String,
+        inviteCode: String,
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            runCatching { repository.register(name, username, email, password, inviteCode) }
+                .onSuccess { user ->
+                    _uiState.update {
+                        it.copy(
+                            user = user,
+                            isLoading = false,
+                            authStage = AuthStage.Signup,
+                        )
+                    }
+                    switchTab(MobileTab.Dashboard)
+                    refreshWorkspace()
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = error.message ?: "Unable to create the account.",
                         )
                     }
                 }
@@ -142,7 +208,11 @@ class PlacePrepViewModel(
     fun logout() {
         viewModelScope.launch {
             repository.logout()
-            _uiState.value = PlacePrepUiState()
+            _uiState.value =
+                PlacePrepUiState(
+                    authStage = AuthStage.Landing,
+                    isBootstrapping = false,
+                )
         }
     }
 

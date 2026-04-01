@@ -5,6 +5,26 @@ class PlacePrepRepository(
 ) {
     private val api = PlacePrepApi.create(sessionStore)
 
+    suspend fun register(
+        name: String,
+        username: String,
+        email: String,
+        password: String,
+        inviteCode: String,
+    ): MobileUser {
+        val session = api.register(
+            RegisterRequest(
+                name = name,
+                username = username,
+                email = email,
+                password = password,
+                inviteCode = inviteCode,
+            )
+        ).data
+        sessionStore.saveToken(session.token)
+        return session.user
+    }
+
     suspend fun login(identifier: String, password: String): MobileUser {
         val session = api.login(LoginRequest(identifier = identifier, password = password)).data
         sessionStore.saveToken(session.token)

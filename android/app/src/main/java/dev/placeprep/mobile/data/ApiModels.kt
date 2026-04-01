@@ -11,6 +11,14 @@ data class LoginRequest(
     val password: String,
 )
 
+data class RegisterRequest(
+    val name: String,
+    val username: String,
+    val email: String,
+    val password: String,
+    val inviteCode: String,
+)
+
 data class MentorMessageRequest(
     val message: String,
 )

@@ -10,6 +10,9 @@ import retrofit2.http.GET
 import retrofit2.http.POST
 
 interface PlacePrepApi {
+    @POST("auth/register")
+    suspend fun register(@Body payload: RegisterRequest): ApiEnvelope<AuthSession>
+
     @POST("auth/login")
     suspend fun login(@Body payload: LoginRequest): ApiEnvelope<AuthSession>
 
