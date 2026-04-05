@@ -16,6 +16,15 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Number(value || min)));
 }
 
+function toSafeInteger(value, fallback = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.round(parsed);
+}
+
 function round(value, digits = 2) {
   return Number(Number(value || 0).toFixed(digits));
 }
@@ -853,9 +862,11 @@ async function analyzeResumeText(payload) {
     () => fallback
   );
 
+  const normalizedScore = clamp(toSafeInteger(data.score, fallback.score), 0, 100);
+
   return {
     summary: data.summary || fallback.summary,
-    score: Number(data.score ?? fallback.score),
+    score: normalizedScore,
     strengths: Array.isArray(data.strengths) && data.strengths.length ? data.strengths.slice(0, 6) : fallback.strengths,
     improvements: Array.isArray(data.improvements) && data.improvements.length ? data.improvements.slice(0, 6) : fallback.improvements,
     keywords: Array.isArray(data.keywords) && data.keywords.length ? data.keywords.slice(0, 20) : fallback.keywords,

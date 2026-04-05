@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BadgeCheck,
   BriefcaseBusiness,
   FileText,
+  FolderUp,
   Loader2,
   RefreshCw,
   Sparkles,
@@ -201,6 +202,7 @@ export default function ResumeAnalysisPanel({
   defaultTargetRole?: string;
 }) {
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [resumeText, setResumeText] = useState("");
   const [targetRole, setTargetRole] = useState(defaultTargetRole);
@@ -265,12 +267,52 @@ export default function ResumeAnalysisPanel({
           </div>
 
           <div className="mt-4 grid gap-3">
-            <Input
+            <input
+              ref={fileInputRef}
               type="file"
               accept=".pdf,.txt,.doc,.docx,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
-              className="h-11 border-border/80 bg-background/70 file:mr-3 file:rounded-full file:border-0 file:bg-primary/12 file:px-3 file:py-2 file:text-sm file:text-foreground"
+              className="hidden"
               onChange={(event) => setFile(event.target.files?.[0] || null)}
             />
+
+            <div className="flex min-h-14 items-center justify-between gap-3 rounded-[1.2rem] border border-border/80 bg-background/70 px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm text-foreground">
+                  {file?.name || "No file chosen"}
+                </p>
+                <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  PDF, DOCX, DOC, or TXT
+                </p>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                {file && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-10 px-3"
+                    onClick={() => {
+                      setFile(null);
+                      if (fileInputRef.current) {
+                        fileInputRef.current.value = "";
+                      }
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 gap-2 border-border/80 bg-card/60"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <FolderUp className="h-4 w-4" />
+                  {file ? "Replace file" : "Choose resume"}
+                </Button>
+              </div>
+            </div>
 
             <div className="grid gap-3 md:grid-cols-2">
               <Input
