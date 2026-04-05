@@ -3,6 +3,7 @@ export interface User {
   name: string;
   username?: string | null;
   role: "admin" | "user";
+  accessTier?: "standard" | "observer";
   email: string;
   weakAreas: string[];
   strongTopics: string[];
@@ -42,7 +43,9 @@ export interface InvitePreview {
   code: string;
   valid: boolean;
   status: "valid" | "used" | "expired" | "missing";
-  role?: "admin" | "user";
+  role?: "admin" | "user" | "observer";
+  accessTier?: "standard" | "observer";
+  persistent?: boolean;
   expiresAt?: string | null;
   inviteLink?: string;
   message: string;
@@ -97,6 +100,37 @@ export interface UploadedImage {
   caption?: string | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface ResumeSectionCoverage {
+  summary?: boolean;
+  education?: boolean;
+  experience?: boolean;
+  projects?: boolean;
+  skills?: boolean;
+  achievements?: boolean;
+  [key: string]: boolean | undefined;
+}
+
+export interface ResumeAnalysisRecord {
+  id: string;
+  userId: string;
+  fileName: string;
+  mimeType?: string | null;
+  secureUrl?: string | null;
+  publicId?: string | null;
+  storageProvider?: string | null;
+  sizeBytes: number;
+  extractedText?: string | null;
+  analysisSummary?: string | null;
+  score: number;
+  strengths: string[];
+  improvements: string[];
+  keywords: string[];
+  sections: ResumeSectionCoverage;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type NotificationType =
@@ -587,6 +621,13 @@ function normalizeAssetUrl(url: string | null | undefined) {
   return new URL(url, window.location.origin).toString();
 }
 
+function normalizeResumeRecord(record: ResumeAnalysisRecord): ResumeAnalysisRecord {
+  return {
+    ...record,
+    secureUrl: record.secureUrl ? normalizeAssetUrl(record.secureUrl) : null,
+  };
+}
+
 export async function uploadImage(
   file: File,
   payload: {
@@ -621,6 +662,55 @@ export async function uploadImage(
     ...uploaded,
     secureUrl: normalizeAssetUrl(uploaded.secureUrl),
   };
+}
+
+export async function uploadResumeForAnalysis(
+  payload: {
+    file?: File | null;
+    resumeText?: string;
+    targetRole?: string;
+    jobDescription?: string;
+  } = {},
+) {
+  const formData = new FormData();
+
+  if (payload.file) {
+    formData.append("resume", payload.file);
+  }
+  if (payload.resumeText) {
+    formData.append("resumeText", payload.resumeText);
+  }
+  if (payload.targetRole) {
+    formData.append("targetRole", payload.targetRole);
+  }
+  if (payload.jobDescription) {
+    formData.append("jobDescription", payload.jobDescription);
+  }
+
+  const uploaded = await request<ResumeAnalysisRecord>("/resume", {
+    method: "POST",
+    body: formData,
+  });
+
+  return normalizeResumeRecord(uploaded);
+}
+
+export async function fetchLatestResumeAnalysis() {
+  try {
+    const resume = await request<ResumeAnalysisRecord>("/resume/latest");
+    return normalizeResumeRecord(resume);
+  } catch (error) {
+    if (error instanceof Error && /resume not found/i.test(error.message)) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+export async function fetchResumeAnalysisHistory() {
+  const resumes = await request<ResumeAnalysisRecord[]>("/resume");
+  return resumes.map(normalizeResumeRecord);
 }
 
 export async function fetchLatestApk() {

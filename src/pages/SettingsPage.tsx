@@ -7,6 +7,7 @@ import AdminInvitePanel from "@/components/AdminInvitePanel";
 import AndroidAccessPanel from "@/components/AndroidAccessPanel";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import PersonalProfilePanel from "@/components/PersonalProfilePanel";
+import ResumeAnalysisPanel from "@/components/ResumeAnalysisPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -502,6 +503,8 @@ export default function SettingsPage() {
           return result.avatarUrl || "";
         }}
       />
+
+      <ResumeAnalysisPanel defaultTargetRole={targetRole || user?.targetRole || ""} />
 
       <AndroidAccessPanel adminMode={user?.role === "admin"} />
 
