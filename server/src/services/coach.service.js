@@ -2,14 +2,14 @@ const { randomUUID } = require('crypto');
 
 const { withTransaction } = require('../config/database');
 const AppError = require('../utils/appError');
-const { normalizeDate } = require('../utils/date');
+const { formatDateInTimezone, formatDateTimeInTimezone, getNextDayMorningDateTime, normalizeDateTime } = require('../utils/date');
 const coachGroupRepository = require('../repositories/coachGroup.repository');
 const imageRepository = require('../repositories/image.repository');
 const notificationRepository = require('../repositories/notification.repository');
 const progressRepository = require('../repositories/progress.repository');
 const taskRepository = require('../repositories/task.repository');
 const userRepository = require('../repositories/user.repository');
-const { sendNotificationDigestEmail } = require('./email.service');
+const { enqueueAdminAssignmentEmail, enqueueNotificationPush } = require('./deliveryJob.service');
 const progressService = require('./progress.service');
 const userProfileService = require('./userProfile.service');
 
@@ -36,12 +36,16 @@ function toComparableTime(value) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
-function formatScheduledDate(value) {
+function formatScheduledDate(value, timezone) {
   if (!value) {
     return 'today';
   }
 
   try {
+    if (String(value).includes('T')) {
+      return formatDateTimeInTimezone(value, timezone || 'Asia/Calcutta');
+    }
+
     return new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
@@ -60,13 +64,19 @@ function sortByCreatedAtDescending(left, right) {
   return toComparableTime(right.createdAt) - toComparableTime(left.createdAt);
 }
 
-function buildCapsuleTaskMetadata(adminUser, student, bundleId, payload, capsuleType) {
+function buildBundleTitle(payload) {
+  return toSafeString(payload.title) || 'Admin assignment bundle';
+}
+
+function buildCapsuleTaskMetadata(adminUser, student, bundleId, payload, assignmentItem, deadlineAt) {
   return {
-    shareKind: 'admin-practice-link',
+    shareKind: 'admin-assignment',
     bundleId,
-    bundleTitle: toSafeString(payload.title) || 'Admin practice capsule',
+    bundleTitle: buildBundleTitle(payload),
     bundleNote: toSafeString(payload.note) || null,
-    capsuleType,
+    capsuleType: assignmentItem.type || 'custom',
+    itemDescription: toSafeString(assignmentItem.description) || null,
+    deadlineAt,
     assignedByAdminId: adminUser.id,
     assignedByAdminName: adminUser.name,
     studentUserId: student.id,
@@ -76,7 +86,7 @@ function buildCapsuleTaskMetadata(adminUser, student, bundleId, payload, capsule
     groupId: payload.groupId || null,
     groupName: payload.groupName || null,
     assignmentId: payload.assignmentId || null,
-    createdFrom: 'coach-practice-capsule',
+    createdFrom: 'coach-admin-assignment',
   };
 }
 
@@ -84,6 +94,7 @@ function buildPracticeCapsuleTemplates(payload) {
   return [
     {
       title: toSafeString(payload.leetcodeOneLabel) || 'LeetCode Drill 1',
+      description: null,
       category: 'DSA',
       subcategory: 'Admin capsule',
       referenceLabel: toSafeString(payload.leetcodeOneLabel) || 'LeetCode question 1',
@@ -91,10 +102,11 @@ function buildPracticeCapsuleTemplates(payload) {
       estimatedMinutes: 45,
       weakArea: 'DSA',
       difficulty: 3,
-      capsuleType: 'leetcode_one',
+      type: 'leetcode_one',
     },
     {
       title: toSafeString(payload.leetcodeTwoLabel) || 'LeetCode Drill 2',
+      description: null,
       category: 'DSA',
       subcategory: 'Admin capsule',
       referenceLabel: toSafeString(payload.leetcodeTwoLabel) || 'LeetCode question 2',
@@ -102,10 +114,11 @@ function buildPracticeCapsuleTemplates(payload) {
       estimatedMinutes: 45,
       weakArea: 'DSA',
       difficulty: 3,
-      capsuleType: 'leetcode_two',
+      type: 'leetcode_two',
     },
     {
       title: toSafeString(payload.verbalLabel) || 'Verbal Reasoning Drill',
+      description: null,
       category: 'Other',
       subcategory: 'Verbal',
       referenceLabel: toSafeString(payload.verbalLabel) || 'Verbal practice',
@@ -113,10 +126,11 @@ function buildPracticeCapsuleTemplates(payload) {
       estimatedMinutes: 30,
       weakArea: 'Verbal',
       difficulty: 2,
-      capsuleType: 'verbal',
+      type: 'verbal',
     },
     {
       title: toSafeString(payload.aptitudeLabel) || 'Aptitude Drill',
+      description: null,
       category: 'Aptitude',
       subcategory: 'Admin capsule',
       referenceLabel: toSafeString(payload.aptitudeLabel) || 'Aptitude practice',
@@ -124,9 +138,56 @@ function buildPracticeCapsuleTemplates(payload) {
       estimatedMinutes: 30,
       weakArea: 'Aptitude',
       difficulty: 2,
-      capsuleType: 'aptitude',
+      type: 'aptitude',
     },
-  ];
+  ].filter((item) => item.title || item.referenceUrl);
+}
+
+function sanitizeAssignmentItem(item, index) {
+  return {
+    title: toSafeString(item?.title) || `Admin task ${index + 1}`,
+    description: toSafeString(item?.description) || null,
+    category: toSafeString(item?.category) || 'Other',
+    subcategory: toSafeString(item?.subcategory) || 'Admin assignment',
+    referenceLabel: toSafeString(item?.referenceLabel) || null,
+    referenceUrl: toSafeString(item?.referenceUrl) || null,
+    estimatedMinutes: Number(item?.estimatedMinutes || 30),
+    weakArea: toSafeString(item?.weakArea) || null,
+    difficulty: Number(item?.difficulty || 3),
+    type: toSafeString(item?.type) || 'custom',
+  };
+}
+
+function resolveAssignmentItems(payload) {
+  if (Array.isArray(payload.items) && payload.items.length) {
+    const items = payload.items
+      .map((item, index) => sanitizeAssignmentItem(item, index))
+      .filter((item) => item.title || item.referenceUrl);
+
+    if (items.length) {
+      return items;
+    }
+  }
+
+  return buildPracticeCapsuleTemplates(payload);
+}
+
+function resolveAssignmentDeadlineAt(adminUser, payload) {
+  const timezone = adminUser.timezone || 'Asia/Calcutta';
+  const rawDeadline = payload.deadlineAt || payload.scheduledFor || null;
+  const deadlineAt = rawDeadline
+    ? normalizeDateTime(rawDeadline, timezone, '09:00')
+    : getNextDayMorningDateTime(timezone);
+
+  if (!deadlineAt) {
+    throw new AppError('Choose a valid assignment deadline.', 400);
+  }
+
+  if (new Date(deadlineAt).getTime() <= Date.now()) {
+    throw new AppError('Assignment deadline must be in the future.', 400);
+  }
+
+  return deadlineAt;
 }
 
 function buildCoachCapsuleDeliveryChannels(profile = {}) {
@@ -142,6 +203,7 @@ function buildCoachCapsuleDeliveryChannels(profile = {}) {
 
   if (profile.notificationBrowserEnabled && profile.notificationBrowserPermission === 'granted') {
     channels.push('browser');
+    channels.push('push');
   }
 
   return channels;
@@ -152,10 +214,15 @@ function groupPracticeCapsules(tasks) {
 
   for (const task of tasks) {
     const metadata = task.metadata || {};
+    const shareKind = metadata.shareKind;
+    if (shareKind !== 'admin-practice-link' && shareKind !== 'admin-assignment') {
+      continue;
+    }
+
     const bundleId = metadata.bundleId || task.id;
     const existing = grouped.get(bundleId) || {
       bundleId,
-      title: metadata.bundleTitle || 'Admin practice capsule',
+      title: metadata.bundleTitle || 'Admin assignment bundle',
       note: metadata.bundleNote || null,
       studentUserId: task.userId,
       assignedById: metadata.assignedByAdminId || null,
@@ -166,6 +233,7 @@ function groupPracticeCapsules(tasks) {
       groupId: metadata.groupId || null,
       groupName: metadata.groupName || null,
       assignmentId: metadata.assignmentId || null,
+      dueAt: task.dueAt || metadata.deadlineAt || null,
       scheduledFor: task.scheduledFor,
       createdAt: task.createdAt,
       items: [],
@@ -174,11 +242,13 @@ function groupPracticeCapsules(tasks) {
     existing.items.push({
       taskId: task.id,
       title: task.title,
+      description: task.description || metadata.itemDescription || null,
       category: task.category,
       status: task.status,
       referenceLabel: task.referenceLabel || null,
       referenceUrl: task.referenceUrl || null,
       capsuleType: metadata.capsuleType || 'resource',
+      dueAt: task.dueAt || metadata.deadlineAt || null,
       scheduledFor: task.scheduledFor,
       createdAt: task.createdAt,
     });
@@ -290,7 +360,7 @@ async function resolveStudentTargets(studentUserIds = []) {
     );
 
     if (invalidStudent) {
-      throw new AppError('Only student accounts can be added to coach groups or practice capsules.', 400);
+      throw new AppError('Only student accounts can be added to coach groups or admin assignments.', 400);
     }
 
     return students;
@@ -385,7 +455,7 @@ async function resolvePracticeTargets(payload) {
   const hasGroup = Boolean(payload.groupId);
 
   if (hasStudent === hasGroup) {
-    throw new AppError('Choose either one student or one group before sharing a practice capsule.', 400);
+    throw new AppError('Choose either one student or one group before sharing an assignment bundle.', 400);
   }
 
   if (hasStudent) {
@@ -403,7 +473,7 @@ async function resolvePracticeTargets(payload) {
 
   const group = await hydrateGroup(payload.groupId);
   if (!group.members.length) {
-    throw new AppError('This group has no students yet. Add students before sharing links.', 400);
+    throw new AppError('This group has no students yet. Add students before sharing a bundle.', 400);
   }
 
   const recipients = await resolveStudentTargets(group.members.map((member) => member.userId));
@@ -419,8 +489,8 @@ async function resolvePracticeTargets(payload) {
   };
 }
 
-function buildCoachCapsuleNotification(adminUser, assignmentContext, payload, student, bundleTasks, profile) {
-  const bundleTitle = toSafeString(payload.title) || 'Admin practice capsule';
+function buildCoachCapsuleNotification(adminUser, assignmentContext, payload, student, bundleTasks, deadlineAt, profile) {
+  const bundleTitle = buildBundleTitle(payload);
   const firstTask = bundleTasks[0] || null;
   const focusArea = toSafeString(
     firstTask?.weakArea
@@ -433,20 +503,21 @@ function buildCoachCapsuleNotification(adminUser, assignmentContext, payload, st
     assignmentContext.targetKind === 'group' && assignmentContext.groupName
       ? ` for ${assignmentContext.groupName}`
       : '';
+  const deadlineLabel = formatScheduledDate(deadlineAt, student.timezone || adminUser.timezone);
   const summaryLine = taskCount === 1
-    ? 'A new admin task is live. Start it and move it to in progress.'
-    : `${taskCount} admin-assigned tasks are live. Start one and move it to in progress.`;
+    ? `A new admin task is live. It is due by ${deadlineLabel}.`
+    : `${taskCount} admin-assigned tasks are live. They are due by ${deadlineLabel}.`;
 
   return {
     userId: student.id,
     type: 'coach_capsule',
-    message: `${adminUser.name} assigned ${bundleTitle}${scopeLabel}. Start with ${firstTask?.title || 'the first task'} and move it to in progress.`,
+    message: `${adminUser.name} assigned ${bundleTitle}${scopeLabel}. Start with ${firstTask?.title || 'the first task'} and finish it by ${deadlineLabel}.`,
     deliveryChannels: buildCoachCapsuleDeliveryChannels(profile),
     metadata: {
-      title: 'New practice capsule',
+      title: 'New admin assignment',
       subject: `PlacePrep | ${bundleTitle} assigned`,
       headline: `${bundleTitle} is in your queue`,
-      preview: `${taskCount} admin-assigned task${taskCount === 1 ? '' : 's'} for ${formatScheduledDate(firstTask?.scheduledFor)}.`,
+      preview: `${taskCount} admin-assigned task${taskCount === 1 ? '' : 's'} due by ${deadlineLabel}.`,
       actionLabel: 'Open tasks',
       actionText: firstTask?.title
         ? `Start ${toSafeString(firstTask.title)}.`
@@ -465,6 +536,7 @@ function buildCoachCapsuleNotification(adminUser, assignmentContext, payload, st
       bundleTitle,
       bundleNote: toSafeString(payload.note) || null,
       taskCount,
+      deadlineAt,
       scheduledFor: firstTask?.scheduledFor || null,
       focusArea,
       primaryTaskTitle: firstTask?.title || null,
@@ -476,23 +548,34 @@ function buildCoachCapsuleNotification(adminUser, assignmentContext, payload, st
   };
 }
 
-function buildCoachCapsuleEmailContext(student, notification, bundleTasks = []) {
-  const metadata = notification?.metadata || {};
-  const firstTask = bundleTasks[0] || null;
-  const nextTaskTitle = toSafeString(metadata.primaryTaskTitle || firstTask?.title);
-
+function buildAdminAssignmentEmailPayload(adminUser, assignmentContext, payload, student, bundleTasks, deadlineAt) {
   return {
-    targetRole: student.targetRole || null,
-    focusArea: toSafeString(metadata.focusArea || firstTask?.weakArea || firstTask?.category || student.weakAreas?.[0]),
-    weakTopics: Array.isArray(student.weakAreas) ? student.weakAreas : [],
-    nextTask: nextTaskTitle ? { title: nextTaskTitle } : null,
-    summaryLine: toSafeString(metadata.summaryLine) || null,
+    bundleTitle: buildBundleTitle(payload),
+    note: toSafeString(payload.note) || null,
+    assignedByName: adminUser.name,
+    targetKind: assignmentContext.targetKind,
+    targetLabel: assignmentContext.targetLabel,
+    groupName: assignmentContext.groupName,
+    deadlineAt,
+    tasks: bundleTasks.map((task) => ({
+      title: task.title,
+      description: task.description || task.metadata?.itemDescription || null,
+      category: task.category,
+      referenceLabel: task.referenceLabel || null,
+      referenceUrl: task.referenceUrl || null,
+      dueAt: task.dueAt || deadlineAt,
+    })),
   };
 }
 
 async function createPracticeCapsule(adminUser, payload) {
   const assignmentContext = await resolvePracticeTargets(payload);
-  const bundleTemplates = buildPracticeCapsuleTemplates(payload);
+  const bundleTemplates = resolveAssignmentItems(payload);
+  const deadlineAt = resolveAssignmentDeadlineAt(adminUser, payload);
+  if (!bundleTemplates.length) {
+    throw new AppError('Add at least one task to assign before sharing.', 400);
+  }
+
   const recipientProfiles = await Promise.all(
     assignmentContext.recipients.map(async (student) => ([
       student.id,
@@ -508,7 +591,7 @@ async function createPracticeCapsule(adminUser, payload) {
   await withTransaction(async (client) => {
     for (const student of assignmentContext.recipients) {
       const bundleId = randomUUID();
-      const scheduledFor = normalizeDate(payload.scheduledFor, student.timezone || adminUser.timezone);
+      const scheduledFor = formatDateInTimezone(new Date(deadlineAt), student.timezone || adminUser.timezone);
 
       const studentTasks = await Promise.all(
         bundleTemplates.map((task) =>
@@ -516,6 +599,7 @@ async function createPracticeCapsule(adminUser, payload) {
             {
               userId: student.id,
               title: task.title,
+              description: task.description,
               category: task.category,
               subcategory: task.subcategory,
               status: 'pending',
@@ -523,6 +607,8 @@ async function createPracticeCapsule(adminUser, payload) {
               intensity: 'focused',
               referenceLabel: task.referenceLabel,
               referenceUrl: task.referenceUrl,
+              dueDate: scheduledFor,
+              dueAt: deadlineAt,
               scheduledFor,
               estimatedMinutes: task.estimatedMinutes,
               actualMinutes: 0,
@@ -543,7 +629,8 @@ async function createPracticeCapsule(adminUser, payload) {
                   groupName: assignmentContext.groupName,
                   assignmentId: assignmentContext.assignmentId,
                 },
-                task.capsuleType
+                task,
+                deadlineAt,
               ),
               completedAt: null,
             },
@@ -563,6 +650,7 @@ async function createPracticeCapsule(adminUser, payload) {
             payload,
             student,
             studentTasks,
+            deadlineAt,
             studentProfile,
           ),
           client
@@ -575,32 +663,42 @@ async function createPracticeCapsule(adminUser, payload) {
             studentProfile,
             notification,
             bundleTasks: studentTasks,
+            assignment: buildAdminAssignmentEmailPayload(
+              adminUser,
+              assignmentContext,
+              payload,
+              student,
+              studentTasks,
+              deadlineAt,
+            ),
           });
         }
       }
     });
 
-  const summaryResults = await Promise.allSettled(
-      Array.from(touchedUserIds).map(async (userId) => {
-        const student = assignmentContext.recipients.find((entry) => entry.id === userId);
-        if (student) {
-          return {
-            userId: student.id,
-            summary: await progressService.refreshProgressStats(student.id, student.timezone),
-          };
-        }
-
+  await Promise.allSettled(
+    Array.from(touchedUserIds).map(async (userId) => {
+      const student = assignmentContext.recipients.find((entry) => entry.id === userId);
+      if (!student) {
         return null;
-      })
-    );
-  const summaryByUserId = new Map(
-    summaryResults
-      .filter((result) => result.status === 'fulfilled' && result.value?.userId)
-      .map((result) => [result.value.userId, result.value.summary])
+      }
+
+      return progressService.refreshProgressStats(student.id, student.timezone);
+    })
   );
 
   await Promise.allSettled(
-    createdNotifications.map(async ({ student, studentProfile, notification, bundleTasks }) => {
+    createdNotifications.map(async ({ student, studentProfile, notification, assignment }) => {
+      if (studentProfile?.notificationsEnabled
+        && studentProfile.notificationBrowserEnabled
+        && studentProfile.notificationBrowserPermission === 'granted') {
+        await enqueueNotificationPush({
+          userId: student.id,
+          notification,
+          dedupeKey: `coach-assignment-push:${notification.id}`,
+        });
+      }
+
       if (!studentProfile?.notificationsEnabled || !studentProfile.notificationEmailEnabled) {
         return {
           studentId: student.id,
@@ -608,20 +706,18 @@ async function createPracticeCapsule(adminUser, payload) {
         };
       }
 
-      const emailResult = await sendNotificationDigestEmail({
+      const queuedJob = await enqueueAdminAssignmentEmail({
         user: student,
-        notifications: [notification],
-        summary: summaryByUserId.get(student.id),
-        context: buildCoachCapsuleEmailContext(student, notification, bundleTasks),
+        assignment,
+        notificationId: notification.id,
+        dedupeKey: `coach-assignment-email:${assignmentContext.assignmentId}:${student.id}`,
       });
 
-      if (emailResult.sent) {
-        await notificationRepository.markEmailed([notification.id]);
-      } else if (emailResult.attempted && !emailResult.sent) {
-        console.error(`[coach] Practice capsule email was not sent to ${student.id}.`, emailResult.reason);
+      if (!queuedJob) {
+        console.error(`[coach] Assignment email job was already queued for ${student.id}.`);
       }
 
-      return emailResult;
+      return queuedJob;
     })
   );
 

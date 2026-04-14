@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   reference_label VARCHAR(120),
   reference_url TEXT,
   due_date DATE,
+  due_at TIMESTAMPTZ,
   scheduled_for DATE NOT NULL DEFAULT CURRENT_DATE,
   estimated_minutes INTEGER NOT NULL DEFAULT 30,
   actual_minutes INTEGER NOT NULL DEFAULT 0,
@@ -87,6 +88,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   CONSTRAINT tasks_status_check CHECK (status IN ('pending', 'in_progress', 'completed', 'skipped')),
   CONSTRAINT tasks_priority_check CHECK (priority IN ('low', 'medium', 'high'))
 );
+
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS daily_logs (
   id UUID PRIMARY KEY,
@@ -210,6 +213,13 @@ ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS notification_email_enabled BO
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS notification_browser_enabled BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS notification_browser_permission VARCHAR(20) NOT NULL DEFAULT 'default';
 
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL DEFAULT '{}'::JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -233,6 +243,46 @@ ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
 ALTER TABLE notifications
 ADD CONSTRAINT notifications_type_check CHECK (
   type IN ('daily_inactivity', 'pending_tasks', 'missed_streak', 'countdown_urgency', 'motivation', 'coach_capsule')
+);
+
+CREATE TABLE IF NOT EXISTS delivery_jobs (
+  id UUID PRIMARY KEY,
+  type VARCHAR(60) NOT NULL,
+  dedupe_key TEXT,
+  status VARCHAR(20) NOT NULL DEFAULT 'queued',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 5,
+  available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  locked_at TIMESTAMPTZ,
+  locked_by VARCHAR(120),
+  payload JSONB NOT NULL DEFAULT '{}'::JSONB,
+  last_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT delivery_jobs_status_check CHECK (status IN ('queued', 'processing', 'completed', 'failed')),
+  CONSTRAINT delivery_jobs_type_check CHECK (
+    type IN ('notification_digest_email', 'admin_assignment_email', 'web_push_notification')
+  )
+);
+
+ALTER TABLE delivery_jobs DROP CONSTRAINT IF EXISTS delivery_jobs_type_check;
+ALTER TABLE delivery_jobs
+ADD CONSTRAINT delivery_jobs_type_check CHECK (
+  type IN ('notification_digest_email', 'admin_assignment_email', 'web_push_notification')
+);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  expiration_time TIMESTAMPTZ,
+  user_agent TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_used_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS coach_groups (
@@ -301,12 +351,17 @@ CREATE TABLE IF NOT EXISTS apk_versions (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_user_scheduled_for ON tasks(user_id, scheduled_for);
 CREATE INDEX IF NOT EXISTS idx_tasks_user_status ON tasks(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_tasks_user_created_at ON tasks(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_user_due_at_active ON tasks(user_id, due_at ASC)
+WHERE status IN ('pending', 'in_progress');
+CREATE INDEX IF NOT EXISTS idx_tasks_admin_assignment_lookup ON tasks((metadata->>'shareKind'), user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON daily_logs(user_id, log_date);
 CREATE INDEX IF NOT EXISTS idx_power_pocket_user_started_at ON power_pocket_sessions(user_id, started_at);
 CREATE INDEX IF NOT EXISTS idx_progress_stats_user_date ON progress_stats(user_id, stat_date);
 CREATE INDEX IF NOT EXISTS idx_images_user_proof_date ON images(user_id, proof_date);
 CREATE INDEX IF NOT EXISTS idx_resumes_user_active ON resumes(user_id, is_active);
 CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_app_settings_updated_at ON app_settings(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_users_username_lower ON users (LOWER(username)) WHERE username IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_invites_code ON invites(code);
@@ -316,6 +371,10 @@ CREATE INDEX IF NOT EXISTS idx_prep_plans_user_active ON prep_plans(user_id, is_
 CREATE INDEX IF NOT EXISTS idx_mentor_messages_user_created_at ON mentor_messages(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_sent_at ON notifications(user_id, sent_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, read, sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_delivery_jobs_ready ON delivery_jobs(status, available_at ASC, created_at ASC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_delivery_jobs_type_dedupe
+ON delivery_jobs(type, dedupe_key);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON push_subscriptions(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_apk_versions_active_uploaded_at ON apk_versions(is_active, uploaded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_coach_groups_created_at ON coach_groups(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_coach_group_members_user_id ON coach_group_members(user_id);
@@ -357,11 +416,20 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'user_profiles_set_updated_at') THEN
     CREATE TRIGGER user_profiles_set_updated_at BEFORE UPDATE ON user_profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'app_settings_set_updated_at') THEN
+    CREATE TRIGGER app_settings_set_updated_at BEFORE UPDATE ON app_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'prep_plans_set_updated_at') THEN
     CREATE TRIGGER prep_plans_set_updated_at BEFORE UPDATE ON prep_plans FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'notifications_set_updated_at') THEN
     CREATE TRIGGER notifications_set_updated_at BEFORE UPDATE ON notifications FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'delivery_jobs_set_updated_at') THEN
+    CREATE TRIGGER delivery_jobs_set_updated_at BEFORE UPDATE ON delivery_jobs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'push_subscriptions_set_updated_at') THEN
+    CREATE TRIGGER push_subscriptions_set_updated_at BEFORE UPDATE ON push_subscriptions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'coach_groups_set_updated_at') THEN
     CREATE TRIGGER coach_groups_set_updated_at BEFORE UPDATE ON coach_groups FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

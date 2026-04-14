@@ -9,6 +9,7 @@ import {
   Clock3,
   Layers3,
   Loader2,
+  Plus,
   ShieldCheck,
   Sigma,
   UserPlus,
@@ -42,6 +43,14 @@ function formatShortDate(value?: string | null) {
   }
 
   try {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    }
+
     return new Date(value).toLocaleString("en-IN", {
       day: "2-digit",
       month: "short",
@@ -67,7 +76,152 @@ function buildAssignmentSuccessMessage(result: PracticeCapsuleDispatchResult) {
   const targetLabel =
     result.targetLabel || (result.targetKind === "group" ? "selected group" : "selected student");
 
-  return `Practice capsule shared to ${recipientsLabel} via ${targetLabel}.`;
+  return `Assignment bundle shared to ${recipientsLabel} via ${targetLabel}.`;
+}
+
+type AssignmentItemDraft = {
+  id: string;
+  title: string;
+  description: string;
+  referenceLabel: string;
+  referenceUrl: string;
+  type: string;
+};
+
+function createDraftId() {
+  if (typeof globalThis.crypto !== "undefined" && typeof globalThis.crypto.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function createAssignmentItemDraft(partial: Partial<AssignmentItemDraft> = {}): AssignmentItemDraft {
+  return {
+    id: partial.id || createDraftId(),
+    title: partial.title || "",
+    description: partial.description || "",
+    referenceLabel: partial.referenceLabel || "",
+    referenceUrl: partial.referenceUrl || "",
+    type: partial.type || "custom",
+  };
+}
+
+function createDefaultAssignmentItems() {
+  return [
+    createAssignmentItemDraft({
+      title: "LeetCode Drill 1",
+      referenceLabel: "LeetCode question 1",
+      type: "leetcode_one",
+    }),
+    createAssignmentItemDraft({
+      title: "LeetCode Drill 2",
+      referenceLabel: "LeetCode question 2",
+      type: "leetcode_two",
+    }),
+    createAssignmentItemDraft({
+      title: "Verbal Reasoning Drill",
+      referenceLabel: "Verbal practice",
+      type: "verbal",
+    }),
+    createAssignmentItemDraft({
+      title: "Aptitude Drill",
+      referenceLabel: "Aptitude practice",
+      type: "aptitude",
+    }),
+  ];
+}
+
+function toLocalDateInputValue(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function toLocalTimeInputValue(value: Date) {
+  const hours = String(value.getHours()).padStart(2, "0");
+  const minutes = String(value.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function buildDefaultDeadlineDraft() {
+  const nextMorning = new Date();
+  nextMorning.setDate(nextMorning.getDate() + 1);
+  nextMorning.setHours(9, 0, 0, 0);
+
+  return {
+    deadlineDate: toLocalDateInputValue(nextMorning),
+    deadlineTime: toLocalTimeInputValue(nextMorning),
+  };
+}
+
+function buildAssignmentItemPayload(item: AssignmentItemDraft) {
+  const title = item.title.trim();
+  const description = item.description.trim();
+  const referenceLabel = item.referenceLabel.trim();
+  const referenceUrl = item.referenceUrl.trim();
+
+  if (!title && !description && !referenceUrl) {
+    return null;
+  }
+
+  if (item.type === "leetcode_one" || item.type === "leetcode_two") {
+    return {
+      title: title || "LeetCode Drill",
+      description: description || undefined,
+      category: "DSA",
+      subcategory: "Admin capsule",
+      referenceLabel: referenceLabel || title || "LeetCode question",
+      referenceUrl: referenceUrl || undefined,
+      estimatedMinutes: 45,
+      difficulty: 3,
+      weakArea: "DSA",
+      type: item.type,
+    };
+  }
+
+  if (item.type === "verbal") {
+    return {
+      title: title || "Verbal Reasoning Drill",
+      description: description || undefined,
+      category: "Other",
+      subcategory: "Verbal",
+      referenceLabel: referenceLabel || title || "Verbal practice",
+      referenceUrl: referenceUrl || undefined,
+      estimatedMinutes: 30,
+      difficulty: 2,
+      weakArea: "Verbal",
+      type: item.type,
+    };
+  }
+
+  if (item.type === "aptitude") {
+    return {
+      title: title || "Aptitude Drill",
+      description: description || undefined,
+      category: "Aptitude",
+      subcategory: "Admin capsule",
+      referenceLabel: referenceLabel || title || "Aptitude practice",
+      referenceUrl: referenceUrl || undefined,
+      estimatedMinutes: 30,
+      difficulty: 2,
+      weakArea: "Aptitude",
+      type: item.type,
+    };
+  }
+
+  return {
+    title: title || "Custom admin task",
+    description: description || undefined,
+    category: "Other",
+    subcategory: "Admin assignment",
+    referenceLabel: referenceLabel || undefined,
+    referenceUrl: referenceUrl || undefined,
+    estimatedMinutes: 30,
+    difficulty: 3,
+    type: "custom",
+  };
 }
 
 function OversightMetric({
@@ -106,7 +260,7 @@ function PracticeCapsuleCard({ capsule }: { capsule: PracticeCapsule }) {
         </div>
 
         <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-          {formatShortDate(capsule.scheduledFor)}
+          Due {formatShortDate(capsule.dueAt || capsule.scheduledFor)}
         </div>
       </div>
 
@@ -139,7 +293,7 @@ function PracticeCapsuleCard({ capsule }: { capsule: PracticeCapsule }) {
 
             <div className="mt-3 flex items-center justify-between gap-3">
               <p className="truncate text-xs text-muted-foreground">
-                {item.referenceLabel || "Open practice link"}
+                {item.description || item.referenceLabel || "Open the assigned task and complete it."}
               </p>
               {item.referenceUrl && (
                 <a
@@ -198,15 +352,11 @@ export default function AdminStudentOversightPanel() {
   const [targetType, setTargetType] = useState<"student" | "group">("student");
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
-  const [scheduledFor, setScheduledFor] = useState("");
-  const [leetcodeOneUrl, setLeetcodeOneUrl] = useState("");
-  const [leetcodeTwoUrl, setLeetcodeTwoUrl] = useState("");
-  const [verbalUrl, setVerbalUrl] = useState("");
-  const [aptitudeUrl, setAptitudeUrl] = useState("");
-  const [leetcodeOneLabel, setLeetcodeOneLabel] = useState("");
-  const [leetcodeTwoLabel, setLeetcodeTwoLabel] = useState("");
-  const [verbalLabel, setVerbalLabel] = useState("");
-  const [aptitudeLabel, setAptitudeLabel] = useState("");
+  const [deadlineDate, setDeadlineDate] = useState(() => buildDefaultDeadlineDraft().deadlineDate);
+  const [deadlineTime, setDeadlineTime] = useState(() => buildDefaultDeadlineDraft().deadlineTime);
+  const [assignmentItems, setAssignmentItems] = useState<AssignmentItemDraft[]>(() =>
+    createDefaultAssignmentItems(),
+  );
   const [groupName, setGroupName] = useState("");
   const [groupDescription, setGroupDescription] = useState("");
   const [draftGroupMemberIds, setDraftGroupMemberIds] = useState<string[]>([]);
@@ -277,17 +427,12 @@ export default function AdminStudentOversightPanel() {
   );
 
   function resetCapsuleForm() {
+    const nextDefaultDeadline = buildDefaultDeadlineDraft();
     setTitle("");
     setNote("");
-    setScheduledFor("");
-    setLeetcodeOneUrl("");
-    setLeetcodeTwoUrl("");
-    setVerbalUrl("");
-    setAptitudeUrl("");
-    setLeetcodeOneLabel("");
-    setLeetcodeTwoLabel("");
-    setVerbalLabel("");
-    setAptitudeLabel("");
+    setDeadlineDate(nextDefaultDeadline.deadlineDate);
+    setDeadlineTime(nextDefaultDeadline.deadlineTime);
+    setAssignmentItems(createDefaultAssignmentItems());
   }
 
   function toggleDraftStudent(studentId: string) {
@@ -295,6 +440,26 @@ export default function AdminStudentOversightPanel() {
       current.includes(studentId)
         ? current.filter((value) => value !== studentId)
         : [...current, studentId],
+    );
+  }
+
+  function updateAssignmentItem(
+    itemId: string,
+    field: keyof Omit<AssignmentItemDraft, "id">,
+    value: string,
+  ) {
+    setAssignmentItems((current) =>
+      current.map((item) => (item.id === itemId ? { ...item, [field]: value } : item)),
+    );
+  }
+
+  function addAssignmentItem() {
+    setAssignmentItems((current) => [...current, createAssignmentItemDraft()]);
+  }
+
+  function removeAssignmentItem(itemId: string) {
+    setAssignmentItems((current) =>
+      current.length <= 1 ? current : current.filter((item) => item.id !== itemId),
     );
   }
 
@@ -373,20 +538,23 @@ export default function AdminStudentOversightPanel() {
         throw new Error("Choose a group before sharing a capsule.");
       }
 
+      const items = assignmentItems
+        .map(buildAssignmentItemPayload)
+        .filter((item): item is NonNullable<ReturnType<typeof buildAssignmentItemPayload>> => Boolean(item));
+
+      if (!items.length) {
+        throw new Error("Add at least one task before assigning.");
+      }
+
+      const normalizedDeadlineTime = deadlineTime || "09:00";
+
       return createPracticeCapsule({
         studentUserId: targetType === "student" ? selectedStudentId : undefined,
         groupId: targetType === "group" ? selectedGroupId : undefined,
         title: title.trim() || undefined,
         note: note.trim() || undefined,
-        scheduledFor: scheduledFor || undefined,
-        leetcodeOneUrl: leetcodeOneUrl.trim(),
-        leetcodeTwoUrl: leetcodeTwoUrl.trim(),
-        verbalUrl: verbalUrl.trim(),
-        aptitudeUrl: aptitudeUrl.trim(),
-        leetcodeOneLabel: leetcodeOneLabel.trim() || undefined,
-        leetcodeTwoLabel: leetcodeTwoLabel.trim() || undefined,
-        verbalLabel: verbalLabel.trim() || undefined,
-        aptitudeLabel: aptitudeLabel.trim() || undefined,
+        deadlineAt: deadlineDate ? `${deadlineDate}T${normalizedDeadlineTime}` : undefined,
+        items,
       });
     },
     onSuccess: async (result) => {
@@ -410,7 +578,7 @@ export default function AdminStudentOversightPanel() {
           Watch the students you let into the system.
         </h3>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          All admins can inspect student momentum, latest proof uploads, build named groups, and push a fresh practice capsule to one student or an entire cohort with two LeetCode links plus verbal and aptitude drills.
+          All admins can inspect student momentum, latest proof uploads, build named groups, and assign deadline-aware task bundles to one student or an entire cohort.
         </p>
       </div>
 
@@ -692,7 +860,7 @@ export default function AdminStudentOversightPanel() {
             <div className="rounded-[1.35rem] border border-border/80 bg-card/60 p-5">
               <div className="flex items-center gap-2 text-foreground">
                 <BookOpen className="h-4 w-4 text-primary" />
-                <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Assign practice capsule</p>
+                <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Assign admin tasks</p>
               </div>
 
               <div className="mt-4 grid gap-4">
@@ -726,10 +894,10 @@ export default function AdminStudentOversightPanel() {
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     {targetType === "group"
                       ? selectedGroup
-                        ? `${selectedGroup.memberCount} students will receive the same bundle and a fresh in-app notification.`
-                        : "Create or select a group to share one capsule with multiple students at once."
+                        ? `${selectedGroup.memberCount} students will receive the same bundle, an in-app notification, and an individual email.`
+                        : "Create or select a group to share one assignment bundle with multiple students at once."
                       : selectedStudent
-                        ? `${selectedStudent.student.email} will receive the capsule in tasks and notifications.`
+                        ? `${selectedStudent.student.email} will receive the bundle in tasks, notifications, and email.`
                         : "Select a student from the roster before you dispatch the bundle."}
                   </p>
                 </div>
@@ -748,71 +916,103 @@ export default function AdminStudentOversightPanel() {
                   className="min-h-[96px] border-border/80 bg-background/70"
                 />
 
-                <Input
-                  type="date"
-                  value={scheduledFor}
-                  onChange={(event) => setScheduledFor(event.target.value)}
-                  className="h-11 border-border/80 bg-background/70"
-                />
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Input
-                    value={leetcodeOneLabel}
-                    onChange={(event) => setLeetcodeOneLabel(event.target.value)}
-                    placeholder="LeetCode label 1"
-                    className="h-11 border-border/80 bg-background/70"
-                  />
-                  <Input
-                    value={leetcodeOneUrl}
-                    onChange={(event) => setLeetcodeOneUrl(event.target.value)}
-                    placeholder="https://leetcode.com/problems/..."
-                    className="h-11 border-border/80 bg-background/70"
-                  />
+                <div className="rounded-[1.1rem] border border-border/80 bg-background/45 px-4 py-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Deadline date</p>
+                      <Input
+                        type="date"
+                        value={deadlineDate}
+                        onChange={(event) => setDeadlineDate(event.target.value)}
+                        className="mt-2 h-11 border-border/80 bg-background/70"
+                      />
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Deadline time</p>
+                      <Input
+                        type="time"
+                        value={deadlineTime}
+                        onChange={(event) => setDeadlineTime(event.target.value)}
+                        className="mt-2 h-11 border-border/80 bg-background/70"
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                    Default deadline is next day at 9:00 AM. If the admin leaves the deadline untouched, the backend keeps that safe fallback instead of dropping to an old same-day time.
+                  </p>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Input
-                    value={leetcodeTwoLabel}
-                    onChange={(event) => setLeetcodeTwoLabel(event.target.value)}
-                    placeholder="LeetCode label 2"
-                    className="h-11 border-border/80 bg-background/70"
-                  />
-                  <Input
-                    value={leetcodeTwoUrl}
-                    onChange={(event) => setLeetcodeTwoUrl(event.target.value)}
-                    placeholder="https://leetcode.com/problems/..."
-                    className="h-11 border-border/80 bg-background/70"
-                  />
-                </div>
+                <div className="rounded-[1.1rem] border border-border/80 bg-background/45 px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Tasks in this bundle</p>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                        Keep the default drills, edit them, or add custom tasks with optional descriptions and links.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 gap-2 border-border/80 bg-card/60"
+                      onClick={addAssignmentItem}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add task
+                    </Button>
+                  </div>
 
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Input
-                    value={verbalLabel}
-                    onChange={(event) => setVerbalLabel(event.target.value)}
-                    placeholder="Verbal label"
-                    className="h-11 border-border/80 bg-background/70"
-                  />
-                  <Input
-                    value={verbalUrl}
-                    onChange={(event) => setVerbalUrl(event.target.value)}
-                    placeholder="https://..."
-                    className="h-11 border-border/80 bg-background/70"
-                  />
-                </div>
+                  <div className="mt-4 grid gap-3">
+                    {assignmentItems.map((item, index) => (
+                      <div
+                        key={item.id}
+                        className="rounded-[1rem] border border-border/80 bg-card/60 px-4 py-4"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                            Task {index + 1}
+                          </p>
+                          <button
+                            type="button"
+                            className="rounded-full p-1 text-muted-foreground transition hover:bg-background/80 hover:text-foreground"
+                            onClick={() => removeAssignmentItem(item.id)}
+                            disabled={assignmentItems.length <= 1}
+                            aria-label={`Remove task ${index + 1}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
 
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Input
-                    value={aptitudeLabel}
-                    onChange={(event) => setAptitudeLabel(event.target.value)}
-                    placeholder="Aptitude label"
-                    className="h-11 border-border/80 bg-background/70"
-                  />
-                  <Input
-                    value={aptitudeUrl}
-                    onChange={(event) => setAptitudeUrl(event.target.value)}
-                    placeholder="https://..."
-                    className="h-11 border-border/80 bg-background/70"
-                  />
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          <Input
+                            value={item.title}
+                            onChange={(event) => updateAssignmentItem(item.id, "title", event.target.value)}
+                            placeholder="Task title"
+                            className="h-11 border-border/80 bg-background/70"
+                          />
+                          <Input
+                            value={item.referenceUrl}
+                            onChange={(event) => updateAssignmentItem(item.id, "referenceUrl", event.target.value)}
+                            placeholder="Optional link, for example https://leetcode.com/problems/..."
+                            className="h-11 border-border/80 bg-background/70"
+                          />
+                        </div>
+
+                        <Input
+                          value={item.referenceLabel}
+                          onChange={(event) => updateAssignmentItem(item.id, "referenceLabel", event.target.value)}
+                          placeholder="Optional link label"
+                          className="mt-3 h-11 border-border/80 bg-background/70"
+                        />
+
+                        <Textarea
+                          value={item.description}
+                          onChange={(event) => updateAssignmentItem(item.id, "description", event.target.value)}
+                          placeholder="Optional description, instructions, or expectation for this task."
+                          className="mt-3 min-h-[92px] border-border/80 bg-background/70"
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <Button
@@ -832,8 +1032,8 @@ export default function AdminStudentOversightPanel() {
                   {createCapsuleMutation.isPending
                     ? "Assigning..."
                     : targetType === "group"
-                      ? "Share to selected group"
-                      : "Share to selected student"}
+                      ? "Assign to selected group"
+                      : "Assign to selected student"}
                 </Button>
               </div>
             </div>
@@ -942,8 +1142,8 @@ export default function AdminStudentOversightPanel() {
 
             <div className="rounded-[1.35rem] border border-border/80 bg-card/60 p-5">
               <div className="flex items-center gap-2 text-foreground">
-                <Sigma className="h-4 w-4 text-primary" />
-                <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Recent practice capsules</p>
+                    <Sigma className="h-4 w-4 text-primary" />
+                <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Recent admin assignments</p>
               </div>
 
               <div className="mt-4 grid gap-3">
@@ -953,7 +1153,7 @@ export default function AdminStudentOversightPanel() {
                   ))
                 ) : (
                   <div className="rounded-[1.1rem] border border-border/80 bg-background/45 px-4 py-4 text-sm text-muted-foreground">
-                    No admin practice capsules have been assigned yet.
+                    No admin assignments have been shared yet.
                   </div>
                 )}
               </div>

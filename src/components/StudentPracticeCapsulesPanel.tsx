@@ -19,7 +19,7 @@ function buildPracticeCapsules(tasks: Task[]) {
 
   for (const task of tasks) {
     const metadata = task.metadata || {};
-    if (metadata.shareKind !== "admin-practice-link") {
+    if (metadata.shareKind !== "admin-practice-link" && metadata.shareKind !== "admin-assignment") {
       continue;
     }
 
@@ -29,11 +29,12 @@ function buildPracticeCapsules(tasks: Task[]) {
       title:
         typeof metadata.bundleTitle === "string" && metadata.bundleTitle.trim()
           ? metadata.bundleTitle
-          : "Admin practice capsule",
+          : "Admin assignment bundle",
       note: typeof metadata.bundleNote === "string" ? metadata.bundleNote : null,
       studentUserId: task.userId,
       assignedById: typeof metadata.assignedByAdminId === "string" ? metadata.assignedByAdminId : null,
       assignedByName: typeof metadata.assignedByAdminName === "string" ? metadata.assignedByAdminName : null,
+      dueAt: typeof task.dueAt === "string" ? task.dueAt : null,
       scheduledFor: task.scheduledFor,
       createdAt: task.createdAt,
       items: [],
@@ -42,12 +43,19 @@ function buildPracticeCapsules(tasks: Task[]) {
     bundle.items.push({
       taskId: task.id,
       title: task.title,
+      description:
+        typeof task.description === "string"
+          ? task.description
+          : typeof metadata.itemDescription === "string"
+            ? metadata.itemDescription
+            : null,
       category: task.category,
       status: task.status,
       referenceLabel: task.referenceLabel || null,
       referenceUrl: task.referenceUrl || null,
       capsuleType:
         typeof metadata.capsuleType === "string" ? metadata.capsuleType : "resource",
+      dueAt: typeof task.dueAt === "string" ? task.dueAt : null,
       scheduledFor: task.scheduledFor,
       createdAt: task.createdAt,
     });
@@ -65,10 +73,20 @@ function buildPracticeCapsules(tasks: Task[]) {
 
 function formatCapsuleDate(value: string) {
   try {
-    return new Date(value).toLocaleDateString("en-IN", {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    }
+
+    return new Date(value).toLocaleString("en-IN", {
       day: "2-digit",
       month: "short",
       year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     });
   } catch {
     return value;
@@ -112,10 +130,10 @@ export default function StudentPracticeCapsulesPanel() {
         <div>
           <p className="section-label">Assigned by admin</p>
           <h3 className="mt-2 font-heading text-3xl text-foreground">
-            Capsules shared into your queue.
+            Bundles shared into your queue.
           </h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Open the exact LeetCode, verbal, and aptitude links the admin pushed for you, then clear them from the task board below as you finish.
+            Open the exact tasks an admin pushed for you, follow any description they left, and clear them from the board below as you finish.
           </p>
         </div>
         <div className="coach-chip border-primary/25 bg-primary/10 text-foreground">
@@ -161,7 +179,7 @@ export default function StudentPracticeCapsulesPanel() {
                     </span>
                   </div>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Shared by {capsule.assignedByName || "admin"} for {formatCapsuleDate(capsule.scheduledFor)}.
+                    Shared by {capsule.assignedByName || "admin"} and due by {formatCapsuleDate(capsule.dueAt || capsule.scheduledFor)}.
                   </p>
                   {capsule.note && (
                     <p className="mt-3 max-w-2xl text-sm leading-6 text-foreground/80">{capsule.note}</p>
@@ -202,8 +220,12 @@ export default function StudentPracticeCapsulesPanel() {
                       )}
                     </div>
 
+                    {item.description && (
+                      <p className="mt-3 text-sm leading-6 text-foreground/80">{item.description}</p>
+                    )}
+
                     <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                      {item.referenceLabel || "Open the assigned practice link and finish it through the task board."}
+                      {item.referenceLabel || "Open the assigned task link and finish it through the task board."}
                     </p>
 
                     <TaskStatusControl

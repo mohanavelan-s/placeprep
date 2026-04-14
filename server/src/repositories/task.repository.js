@@ -19,6 +19,7 @@ const taskColumns = `
   reference_label AS "referenceLabel",
   reference_url AS "referenceUrl",
   due_date AS "dueDate",
+  due_at AS "dueAt",
   scheduled_for AS "scheduledFor",
   estimated_minutes AS "estimatedMinutes",
   actual_minutes AS "actualMinutes",
@@ -47,6 +48,7 @@ async function createTask(payload, client = null) {
       reference_label,
       reference_url,
       due_date,
+      due_at,
       scheduled_for,
       estimated_minutes,
       actual_minutes,
@@ -57,7 +59,7 @@ async function createTask(payload, client = null) {
       completed_at
     ) VALUES (
       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-      $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+      $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
     )
     RETURNING ${taskColumns}`,
     [
@@ -73,6 +75,7 @@ async function createTask(payload, client = null) {
       payload.referenceLabel || null,
       payload.referenceUrl || null,
       payload.dueDate || null,
+      payload.dueAt || null,
       payload.scheduledFor,
       payload.estimatedMinutes ?? 30,
       payload.actualMinutes ?? 0,
@@ -121,7 +124,7 @@ async function listByUser(userId, filters = {}) {
     `SELECT ${taskColumns}
      FROM tasks
      WHERE ${where.join(' AND ')}
-     ORDER BY scheduled_for ASC, created_at DESC`,
+     ORDER BY COALESCE(due_at, scheduled_for::timestamp) ASC, created_at DESC`,
     values
   );
 
@@ -140,6 +143,7 @@ async function updateTask(taskId, userId, updates) {
     reference_label: updates.referenceLabel,
     reference_url: updates.referenceUrl,
     due_date: updates.dueDate,
+    due_at: updates.dueAt,
     scheduled_for: updates.scheduledFor,
     estimated_minutes: updates.estimatedMinutes,
     actual_minutes: updates.actualMinutes,
@@ -207,7 +211,10 @@ async function listSummaryByUsers(userIds = []) {
        COUNT(*) FILTER (WHERE status = 'skipped')::INT AS skipped,
        COUNT(*) FILTER (
          WHERE status IN ('pending', 'in_progress')
-           AND scheduled_for < CURRENT_DATE
+           AND (
+             (due_at IS NOT NULL AND due_at < NOW())
+             OR (due_at IS NULL AND scheduled_for < CURRENT_DATE)
+           )
        )::INT AS overdue
      FROM tasks
      WHERE user_id = ANY($1::uuid[])
@@ -230,7 +237,7 @@ async function listRecentAdminPracticeTasksByUsers(userIds = [], limitPerUser = 
          ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC) AS row_number
        FROM tasks
        WHERE user_id = ANY($1::uuid[])
-         AND metadata->>'shareKind' = 'admin-practice-link'
+         AND metadata->>'shareKind' IN ('admin-practice-link', 'admin-assignment')
      ) AS ranked_tasks
      WHERE row_number <= $2
      ORDER BY "createdAt" DESC`,

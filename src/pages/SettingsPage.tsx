@@ -67,7 +67,7 @@ function formatNotificationTime(value: string) {
 function renderNotificationEyebrow(type: PrepNotification["type"]) {
   switch (type) {
     case "coach_capsule":
-      return "Practice capsule";
+      return "Admin assignment";
     case "countdown_urgency":
       return "Countdown urgency";
     case "daily_inactivity":
@@ -385,10 +385,10 @@ export default function SettingsPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-foreground">
                     <Monitor className="h-4 w-4" />
-                    <p className="text-base">Browser alerts</p>
+                    <p className="text-base">Background browser alerts</p>
                   </div>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    Triggered when PlacePrep opens and fresh signals are waiting.
+                    Real web push for this browser, even when PlacePrep is closed.
                   </p>
                 </div>
                 <Switch

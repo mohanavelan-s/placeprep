@@ -11,6 +11,7 @@ const router = express.Router();
 router.use(requireAuth);
 
 router.get('/', asyncHandler(controller.getProfile));
+router.get('/web-push/config', asyncHandler(controller.getWebPushConfig));
 
 router.post(
   '/',
@@ -28,6 +29,29 @@ router.post(
   ],
   validate,
   asyncHandler(controller.upsertProfile)
+);
+
+router.post(
+  '/push-subscriptions',
+  [
+    body('subscription').isObject(),
+    body('subscription.endpoint').isString().notEmpty(),
+    body('subscription.expirationTime').optional({ values: 'falsy' }).isNumeric(),
+    body('subscription.keys').isObject(),
+    body('subscription.keys.p256dh').isString().notEmpty(),
+    body('subscription.keys.auth').isString().notEmpty(),
+  ],
+  validate,
+  asyncHandler(controller.savePushSubscription)
+);
+
+router.delete(
+  '/push-subscriptions',
+  [
+    body('endpoint').isString().notEmpty(),
+  ],
+  validate,
+  asyncHandler(controller.deletePushSubscription)
 );
 
 module.exports = router;

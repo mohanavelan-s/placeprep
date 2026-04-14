@@ -1,6 +1,6 @@
 const taskRepository = require('../repositories/task.repository');
 const AppError = require('../utils/appError');
-const { getTodayInTimezone, normalizeDate } = require('../utils/date');
+const { formatDateInTimezone, getTodayInTimezone, normalizeDate, normalizeDateTime } = require('../utils/date');
 
 async function refreshProgress(user) {
   const progressService = require('./progress.service');
@@ -9,6 +9,10 @@ async function refreshProgress(user) {
 
 async function createTask(user, payload) {
   const status = payload.status || 'pending';
+  const dueAt = payload.dueAt ? normalizeDateTime(payload.dueAt, user.timezone) : null;
+  const scheduledFor = payload.scheduledFor
+    ? normalizeDate(payload.scheduledFor, user.timezone)
+    : (dueAt ? formatDateInTimezone(new Date(dueAt), user.timezone) : normalizeDate(undefined, user.timezone));
   const task = await taskRepository.createTask({
     userId: user.id,
     title: payload.title,
@@ -20,8 +24,9 @@ async function createTask(user, payload) {
     intensity: payload.intensity,
     referenceLabel: payload.referenceLabel,
     referenceUrl: payload.referenceUrl,
-    dueDate: payload.dueDate || null,
-    scheduledFor: normalizeDate(payload.scheduledFor, user.timezone),
+    dueDate: payload.dueDate || (dueAt ? formatDateInTimezone(new Date(dueAt), user.timezone) : null),
+    dueAt,
+    scheduledFor,
     estimatedMinutes: payload.estimatedMinutes,
     actualMinutes: payload.actualMinutes,
     difficulty: payload.difficulty,
@@ -60,9 +65,15 @@ async function getTask(user, taskId) {
 async function updateTask(user, taskId, updates) {
   const existingTask = await getTask(user, taskId);
   const nextStatus = updates.status || existingTask.status;
+  const dueAt = updates.dueAt ? normalizeDateTime(updates.dueAt, user.timezone) : undefined;
   const task = await taskRepository.updateTask(taskId, user.id, {
     ...updates,
-    scheduledFor: updates.scheduledFor ? normalizeDate(updates.scheduledFor, user.timezone) : undefined,
+    dueAt,
+    dueDate: updates.dueDate
+      || (dueAt ? formatDateInTimezone(new Date(dueAt), user.timezone) : undefined),
+    scheduledFor: updates.scheduledFor
+      ? normalizeDate(updates.scheduledFor, user.timezone)
+      : (dueAt ? formatDateInTimezone(new Date(dueAt), user.timezone) : undefined),
     completedAt: nextStatus === 'completed'
       ? (updates.completedAt || existingTask.completedAt || new Date())
       : (updates.status && updates.status !== 'completed' ? null : undefined),

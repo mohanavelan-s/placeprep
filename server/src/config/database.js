@@ -54,15 +54,15 @@ function normalizeConnectionString(connectionString) {
 }
 
 const pool = new Pool({
-  connectionString: normalizeConnectionString(env.databaseUrl),
+  connectionString: normalizeConnectionString(env.databasePoolUrl || env.databaseUrl),
   ssl: env.nodeEnv === 'production'
     ? {
         rejectUnauthorized: false,
       }
     : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  max: env.databasePoolMax,
+  idleTimeoutMillis: env.databaseIdleTimeoutMs,
+  connectionTimeoutMillis: env.databaseConnectionTimeoutMs,
 });
 
 pool.on('error', (error) => {

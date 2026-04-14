@@ -52,9 +52,20 @@ router.post(
     body().custom((value, { req }) => {
       const hasStudent = Boolean(req.body.studentUserId);
       const hasGroup = Boolean(req.body.groupId);
+      const hasItems = Array.isArray(req.body.items) && req.body.items.length > 0;
+      const hasLegacyLinks = Boolean(
+        req.body.leetcodeOneUrl
+        || req.body.leetcodeTwoUrl
+        || req.body.verbalUrl
+        || req.body.aptitudeUrl
+      );
 
       if (hasStudent === hasGroup) {
         throw new Error('Choose either one student or one group.');
+      }
+
+      if (!hasItems && !hasLegacyLinks) {
+        throw new Error('Add at least one task item before assigning.');
       }
 
       return true;
@@ -64,10 +75,22 @@ router.post(
     body('title').optional().isString(),
     body('note').optional().isString(),
     body('scheduledFor').optional().isISO8601(),
-    body('leetcodeOneUrl').isURL({ require_protocol: true }),
-    body('leetcodeTwoUrl').isURL({ require_protocol: true }),
-    body('verbalUrl').isURL({ require_protocol: true }),
-    body('aptitudeUrl').isURL({ require_protocol: true }),
+    body('deadlineAt').optional({ values: 'falsy' }).isISO8601(),
+    body('items').optional().isArray({ min: 1, max: 12 }),
+    body('items.*.title').optional().isString().trim().isLength({ min: 2, max: 180 }),
+    body('items.*.description').optional({ values: 'falsy' }).isString().isLength({ max: 1000 }),
+    body('items.*.category').optional().isIn(['DSA', 'Core', 'Project', 'Aptitude', 'Resume', 'MockInterview', 'Other']),
+    body('items.*.subcategory').optional({ values: 'falsy' }).isString().isLength({ max: 120 }),
+    body('items.*.referenceLabel').optional({ values: 'falsy' }).isString().isLength({ max: 120 }),
+    body('items.*.referenceUrl').optional({ values: 'falsy' }).isURL({ require_protocol: true }),
+    body('items.*.estimatedMinutes').optional().isInt({ min: 5, max: 480 }),
+    body('items.*.difficulty').optional().isInt({ min: 1, max: 5 }),
+    body('items.*.weakArea').optional({ values: 'falsy' }).isString().isLength({ max: 120 }),
+    body('items.*.type').optional({ values: 'falsy' }).isString().isLength({ max: 60 }),
+    body('leetcodeOneUrl').optional({ values: 'falsy' }).isURL({ require_protocol: true }),
+    body('leetcodeTwoUrl').optional({ values: 'falsy' }).isURL({ require_protocol: true }),
+    body('verbalUrl').optional({ values: 'falsy' }).isURL({ require_protocol: true }),
+    body('aptitudeUrl').optional({ values: 'falsy' }).isURL({ require_protocol: true }),
     body('leetcodeOneLabel').optional().isString(),
     body('leetcodeTwoLabel').optional().isString(),
     body('verbalLabel').optional().isString(),

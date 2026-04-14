@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
 
 const env = require('./config/env');
 const authRoutes = require('./routes/auth.routes');
@@ -21,6 +20,14 @@ const coachRoutes = require('./routes/coach.routes');
 const { getAIStatus } = require('./config/openai');
 const errorHandler = require('./middleware/errorHandler');
 const notFound = require('./middleware/notFound');
+const {
+  attachRateLimitIdentity,
+  authLimiter,
+  standardApiLimiter,
+  uploadLimiter,
+  aiLimiter,
+  adminLimiter,
+} = require('./middleware/rateLimit');
 
 const app = express();
 
@@ -49,21 +56,10 @@ const allowedOrigins = new Set([
   'http://127.0.0.1:5173',
 ]);
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 250,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    message: 'Too many requests, please try again later.',
-  },
-});
-
 app.use(helmet({
   crossOriginResourcePolicy: false,
 }));
-app.use(limiter);
+app.use(attachRateLimitIdentity);
 app.use(cors({
   origin(origin, callback) {
     if (isAllowedOrigin(origin)) {
@@ -121,19 +117,19 @@ app.get('/api/health', (req, res) => {
   res.json(buildHealthPayload());
 });
 
-app.use('/api/auth', authRoutes);
-app.use('/api/invites', inviteRoutes);
-app.use('/api/tasks', taskRoutes);
-app.use('/api/logs', logRoutes);
-app.use('/api/power-pocket', powerPocketRoutes);
-app.use('/api/progress', progressRoutes);
-app.use('/api/profile', userProfileRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/apk', apkRoutes);
-app.use('/api/uploads', uploadRoutes);
-app.use('/api/resume', resumeRoutes);
-app.use('/api/ai', aiRoutes);
-app.use('/api/coach', coachRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/invites', standardApiLimiter, inviteRoutes);
+app.use('/api/tasks', standardApiLimiter, taskRoutes);
+app.use('/api/logs', standardApiLimiter, logRoutes);
+app.use('/api/power-pocket', standardApiLimiter, powerPocketRoutes);
+app.use('/api/progress', standardApiLimiter, progressRoutes);
+app.use('/api/profile', standardApiLimiter, userProfileRoutes);
+app.use('/api/notifications', standardApiLimiter, notificationRoutes);
+app.use('/api/apk', uploadLimiter, apkRoutes);
+app.use('/api/uploads', uploadLimiter, uploadRoutes);
+app.use('/api/resume', uploadLimiter, resumeRoutes);
+app.use('/api/ai', aiLimiter, aiRoutes);
+app.use('/api/coach', adminLimiter, coachRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

@@ -12,6 +12,7 @@ const notificationRepository = require('../repositories/notification.repository'
 const prepPlanRepository = require('../repositories/prepPlan.repository');
 const userRepository = require('../repositories/user.repository');
 const { sendNotificationDigestEmail, isEmailDeliveryReady } = require('./email.service');
+const { enqueueNotificationDigestEmail, enqueueNotificationPush } = require('./deliveryJob.service');
 const progressService = require('./progress.service');
 const userProfileService = require('./userProfile.service');
 const AppError = require('../utils/appError');
@@ -117,7 +118,10 @@ async function getTaskSnapshot(userId, today) {
        )::INT AS pending_count,
        COUNT(*) FILTER (
          WHERE status IN ('pending', 'in_progress')
-           AND scheduled_for < $2
+           AND (
+             (due_at IS NOT NULL AND due_at < NOW())
+             OR (due_at IS NULL AND scheduled_for < $2)
+           )
        )::INT AS overdue_count
      FROM tasks
      WHERE user_id = $1`,
@@ -137,7 +141,8 @@ async function getPendingTaskPreview(userId, today) {
        category,
        COALESCE(NULLIF(weak_area, ''), NULLIF(subcategory, ''), category) AS focus_area,
        estimated_minutes AS "estimatedMinutes",
-       scheduled_for::TEXT AS "scheduledFor"
+       scheduled_for::TEXT AS "scheduledFor",
+       due_at AS "dueAt"
      FROM tasks
      WHERE user_id = $1
        AND status IN ('pending', 'in_progress')
@@ -613,6 +618,7 @@ async function syncNotificationsForUser(userOrId, options = {}) {
   }
   if (profile.notificationBrowserEnabled && profile.notificationBrowserPermission === 'granted') {
     deliveryChannels.push('browser');
+    deliveryChannels.push('push');
   }
 
   if (options.previewOnly) {
@@ -719,6 +725,18 @@ async function syncNotificationsForUser(userOrId, options = {}) {
     }
   }
 
+  if (profile.notificationBrowserEnabled && profile.notificationBrowserPermission === 'granted') {
+    await Promise.allSettled(
+      created.map((notification) =>
+        enqueueNotificationPush({
+          userId: user.id,
+          notification,
+          dedupeKey: `notification-push:${notification.id}`,
+        })
+      )
+    );
+  }
+
   let notificationsForEmail = [];
   if (options.deliverEmail && profile.notificationEmailEnabled) {
     notificationsForEmail = await notificationRepository.findNotificationsByKeys(
@@ -735,7 +753,7 @@ async function syncNotificationsForUser(userOrId, options = {}) {
   };
 
   if (notificationsForEmail.length && options.deliverEmail && profile.notificationEmailEnabled) {
-    emailResult = await sendNotificationDigestEmail({
+    const queuedEmailJob = await enqueueNotificationDigestEmail({
       user,
       notifications: notificationsForEmail,
       summary,
@@ -744,13 +762,20 @@ async function syncNotificationsForUser(userOrId, options = {}) {
         summaryLine: personalization.summaryLine,
         usedAiTailoring: !personalization.usedFallback,
       },
+      dedupeKey: `notification-digest:${notificationsForEmail.map((notification) => notification.id).sort().join(':')}`,
     });
 
-    if (emailResult.sent) {
-      await notificationRepository.markEmailed(
-        notificationsForEmail.map((notification) => notification.id)
-      );
-    }
+    emailResult = queuedEmailJob
+      ? {
+          attempted: true,
+          sent: false,
+          reason: 'queued',
+        }
+      : {
+          attempted: false,
+          sent: false,
+          reason: 'already_queued',
+        };
   } else if (options.deliverEmail && profile.notificationEmailEnabled && notificationKeys.length) {
     emailResult = {
       attempted: false,
@@ -784,6 +809,7 @@ async function runDailySweep() {
         userId: user.id,
         created: result.created.length,
         emailSent: result.emailSent,
+        emailQueued: result.emailReason === 'queued',
         emailReason: result.emailReason,
         usedAiTailoring: result.usedAiTailoring,
       });
@@ -802,6 +828,7 @@ async function runDailySweep() {
     scannedUsers: users.length,
     createdCount: results.reduce((sum, item) => sum + Number(item.created || 0), 0),
     emailSentCount: results.filter((item) => item.emailSent).length,
+    emailQueuedCount: results.filter((item) => item.emailQueued).length,
     results,
   };
 }

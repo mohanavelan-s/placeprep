@@ -39,6 +39,11 @@ export interface UserProfile {
   updatedAt?: string | null;
 }
 
+export interface WebPushConfig {
+  enabled: boolean;
+  publicKey: string;
+}
+
 export interface InvitePreview {
   code: string;
   valid: boolean;
@@ -108,11 +113,13 @@ export interface UploadedImage {
 export interface PracticeCapsuleItem {
   taskId: string;
   title: string;
+  description?: string | null;
   category: string;
   status: TaskStatus;
   referenceLabel?: string | null;
   referenceUrl?: string | null;
   capsuleType: string;
+  dueAt?: string | null;
   scheduledFor: string;
   createdAt: string;
 }
@@ -124,6 +131,7 @@ export interface PracticeCapsule {
   studentUserId: string;
   assignedById?: string | null;
   assignedByName?: string | null;
+  dueAt?: string | null;
   scheduledFor: string;
   createdAt: string;
   items: PracticeCapsuleItem[];
@@ -278,6 +286,7 @@ export interface Task {
   referenceLabel?: string | null;
   referenceUrl?: string | null;
   dueDate?: string | null;
+  dueAt?: string | null;
   scheduledFor: string;
   estimatedMinutes: number;
   actualMinutes: number;
@@ -709,6 +718,33 @@ export async function saveUserProfile(payload: {
   });
 }
 
+export async function fetchWebPushConfig() {
+  return request<WebPushConfig>("/profile/web-push/config");
+}
+
+export async function savePushSubscription(payload: {
+  subscription: {
+    endpoint: string;
+    expirationTime?: number | null;
+    keys: {
+      p256dh: string;
+      auth: string;
+    };
+  };
+}) {
+  return request("/profile/push-subscriptions", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deletePushSubscription(endpoint: string) {
+  return request("/profile/push-subscriptions", {
+    method: "DELETE",
+    body: JSON.stringify({ endpoint }),
+  });
+}
+
 function normalizeAssetUrl(url: string | null | undefined) {
   if (!url) {
     return "";
@@ -937,10 +973,23 @@ export async function createPracticeCapsule(payload: {
   title?: string;
   note?: string;
   scheduledFor?: string;
-  leetcodeOneUrl: string;
-  leetcodeTwoUrl: string;
-  verbalUrl: string;
-  aptitudeUrl: string;
+  deadlineAt?: string;
+  items?: Array<{
+    title: string;
+    description?: string;
+    category?: string;
+    subcategory?: string;
+    referenceLabel?: string;
+    referenceUrl?: string;
+    estimatedMinutes?: number;
+    difficulty?: number;
+    weakArea?: string;
+    type?: string;
+  }>;
+  leetcodeOneUrl?: string;
+  leetcodeTwoUrl?: string;
+  verbalUrl?: string;
+  aptitudeUrl?: string;
   leetcodeOneLabel?: string;
   leetcodeTwoLabel?: string;
   verbalLabel?: string;

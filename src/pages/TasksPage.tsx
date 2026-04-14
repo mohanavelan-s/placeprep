@@ -33,6 +33,23 @@ import { formatHoursFromMinutes, parseHoursToMinutes } from "@/lib/time";
 const statuses = ["all", "pending", "in_progress", "completed", "skipped"] as const;
 const categories = ["all", "DSA", "Core", "Project", "Aptitude", "Resume", "MockInterview", "Other"] as const;
 
+function formatTaskDueLabel(value?: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    return new Date(value).toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return value;
+  }
+}
+
 export default function TasksPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -250,6 +267,7 @@ export default function TasksPage() {
                 <p className="text-base font-medium text-foreground">{task.title}</p>
                 <p className="mt-2 text-sm text-muted-foreground">
                   {task.category} / {formatHoursFromMinutes(task.estimatedMinutes)} / {task.referenceLabel || task.weakArea || "Focus"}
+                  {task.dueAt ? ` / Due ${formatTaskDueLabel(task.dueAt)}` : ""}
                 </p>
               </div>
 

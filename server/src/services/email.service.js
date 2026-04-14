@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const env = require('../config/env');
+const { formatDateTimeInTimezone } = require('../utils/date');
 
 const subjectMap = {
   coach_capsule: 'PlacePrep | New practice capsule',
@@ -76,6 +77,18 @@ function buildWeakTopicsLabel(context = {}, summary = {}) {
 
 function buildNextTaskLabel(context = {}) {
   return compactText(context.nextTask?.title);
+}
+
+function buildDeadlineLabel(deadlineAt, timezone) {
+  if (!deadlineAt) {
+    return 'Next available slot';
+  }
+
+  try {
+    return formatDateTimeInTimezone(deadlineAt, timezone || env.defaultTimezone);
+  } catch {
+    return compactText(deadlineAt);
+  }
 }
 
 function renderNotificationTextLine(notification) {
@@ -445,6 +458,152 @@ function buildInviteSignupAlertHtml({ user, invite }) {
   `;
 }
 
+function buildAssignmentTaskTextRow(task, index) {
+  const lines = [
+    `${index + 1}. ${compactText(task.title || `Task ${index + 1}`)}`,
+    compactText(task.category) ? `   Category: ${compactText(task.category)}` : null,
+    compactText(task.description) ? `   ${compactText(task.description)}` : null,
+    compactText(task.referenceLabel)
+      ? `   Reference: ${compactText(task.referenceLabel)}${task.referenceUrl ? ` - ${compactText(task.referenceUrl)}` : ''}`
+      : (compactText(task.referenceUrl) ? `   Reference: ${compactText(task.referenceUrl)}` : null),
+  ];
+
+  return lines.filter(Boolean).join('\n');
+}
+
+function buildAssignmentTaskHtmlRows(tasks = []) {
+  return tasks
+    .map((task, index) => `
+      <tr>
+        <td style="padding:0 0 16px 0;">
+          <div style="padding:18px;border:1px solid rgba(255,255,255,0.06);border-radius:18px;background:rgba(255,255,255,0.02);">
+            <div style="color:#9a9a9a;font-size:11px;letter-spacing:0.24em;text-transform:uppercase;">
+              Task ${index + 1}${task.category ? ` / ${escapeHtml(compactText(task.category))}` : ''}
+            </div>
+            <div style="margin-top:10px;color:#f2efef;font-size:18px;line-height:1.4;font-weight:600;">
+              ${escapeHtml(compactText(task.title || `Task ${index + 1}`))}
+            </div>
+            ${task.description ? `
+              <div style="margin-top:8px;color:#d1cbcb;font-size:14px;line-height:1.7;">
+                ${escapeHtml(compactText(task.description))}
+              </div>
+            ` : ''}
+            ${task.referenceLabel || task.referenceUrl ? `
+              <div style="margin-top:12px;color:#9a9a9a;font-size:11px;letter-spacing:0.24em;text-transform:uppercase;">
+                Reference
+              </div>
+              <div style="margin-top:4px;color:#f2efef;font-size:13px;line-height:1.6;">
+                ${escapeHtml(compactText(task.referenceLabel || task.referenceUrl))}
+              </div>
+              ${task.referenceUrl ? `
+                <div style="margin-top:8px;">
+                  <a href="${escapeHtml(compactText(task.referenceUrl))}" style="display:inline-block;padding:10px 14px;border-radius:999px;background:#8b0000;color:#f5eded;text-decoration:none;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;">
+                    Open link
+                  </a>
+                </div>
+              ` : ''}
+            ` : ''}
+          </div>
+        </td>
+      </tr>
+    `)
+    .join('');
+}
+
+function buildAdminAssignmentText({ user, assignment }) {
+  const deadlineLabel = buildDeadlineLabel(assignment.deadlineAt, user.timezone);
+  const targetScope = compactText(
+    assignment.targetKind === 'group' && assignment.groupName
+      ? `Shared with ${assignment.groupName}`
+      : 'Shared directly with you'
+  );
+
+  return [
+    `${user.name || user.username || 'PlacePrep user'},`,
+    '',
+    `${compactText(assignment.assignedByName || 'An admin')} assigned a new task bundle in PlacePrep.`,
+    '',
+    `Bundle: ${compactText(assignment.bundleTitle || 'Admin assignment')}`,
+    `Deadline: ${deadlineLabel}`,
+    targetScope,
+    assignment.note ? `Note: ${compactText(assignment.note)}` : null,
+    '',
+    'Assigned tasks:',
+    ...((assignment.tasks || []).map(buildAssignmentTaskTextRow)),
+    '',
+    `Open PlacePrep: ${env.clientUrl}/tasks`,
+  ].filter(Boolean).join('\n');
+}
+
+function buildAdminAssignmentHtml({ user, assignment }) {
+  const deadlineLabel = buildDeadlineLabel(assignment.deadlineAt, user.timezone);
+  const targetScope = compactText(
+    assignment.targetKind === 'group' && assignment.groupName
+      ? `Shared with ${assignment.groupName}`
+      : 'Shared directly with you'
+  );
+
+  return `
+    <div style="background:#0a0a0d;padding:32px 0;font-family:Inter,Arial,sans-serif;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="100%" style="max-width:620px;background:#111116;border:1px solid rgba(255,255,255,0.07);border-radius:22px;overflow:hidden;">
+              <tr>
+                <td style="padding:30px 30px 14px 30px;">
+                  <div style="color:#9a9a9a;font-size:11px;letter-spacing:0.32em;text-transform:uppercase;">PlacePrep Assignment</div>
+                  <h1 style="margin:14px 0 0 0;color:#f2efef;font-family:'Cormorant Garamond',Georgia,serif;font-size:42px;font-weight:500;line-height:1.05;">
+                    ${escapeHtml(compactText(assignment.bundleTitle || 'Admin assignment'))}
+                  </h1>
+                  <div style="margin-top:12px;color:#c7c1c1;font-size:15px;line-height:1.7;">
+                    ${escapeHtml(compactText(assignment.assignedByName || 'An admin'))} assigned this bundle for you.
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:4px 30px 0 30px;">
+                  <span style="display:inline-block;margin:0 10px 10px 0;padding:9px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:#d7d2d2;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">
+                    ${escapeHtml(deadlineLabel)}
+                  </span>
+                  <span style="display:inline-block;margin:0 10px 10px 0;padding:9px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:#d7d2d2;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">
+                    ${escapeHtml(targetScope)}
+                  </span>
+                </td>
+              </tr>
+              ${assignment.note ? `
+                <tr>
+                  <td style="padding:16px 30px 0 30px;">
+                    <div style="padding:18px;border:1px solid rgba(255,255,255,0.06);border-radius:18px;background:linear-gradient(180deg, rgba(140,41,41,0.10), rgba(255,255,255,0.02));">
+                      <div style="color:#9a9a9a;font-size:11px;letter-spacing:0.28em;text-transform:uppercase;">Admin note</div>
+                      <div style="margin-top:10px;color:#f2efef;font-size:15px;line-height:1.75;">
+                        ${escapeHtml(compactText(assignment.note))}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ` : ''}
+              <tr>
+                <td style="padding:18px 30px 0 30px;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                    ${buildAssignmentTaskHtmlRows(assignment.tasks || [])}
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:8px 30px 30px 30px;">
+                  <a href="${escapeHtml(`${env.clientUrl}/tasks`)}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#8b0000;color:#f5eded;text-decoration:none;font-size:13px;letter-spacing:0.18em;text-transform:uppercase;">
+                    Open tasks
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+}
+
 async function sendNotificationDigestEmail({ user, notifications, summary, context = {} }) {
   if (!notifications?.length) {
     return {
@@ -567,8 +726,52 @@ async function sendInviteSignupAlertEmail({ user, invite }) {
   }
 }
 
+async function sendAdminAssignmentEmail({ user, assignment }) {
+  if (!assignment?.tasks?.length) {
+    return {
+      attempted: false,
+      sent: false,
+      reason: 'no_assignment_tasks',
+    };
+  }
+
+  if (!isEmailDeliveryReady()) {
+    return {
+      attempted: false,
+      sent: false,
+      reason: 'email_not_configured',
+    };
+  }
+
+  try {
+    const transport = getTransporter();
+
+    await transport.sendMail({
+      from: env.smtpFrom,
+      to: user.email,
+      subject: `PlacePrep | ${compactText(assignment.bundleTitle || 'Admin assignment')} assigned`,
+      text: buildAdminAssignmentText({ user, assignment }),
+      html: buildAdminAssignmentHtml({ user, assignment }),
+    });
+
+    return {
+      attempted: true,
+      sent: true,
+      reason: 'sent',
+    };
+  } catch (error) {
+    console.error('[coach] Failed to send admin assignment email.', error);
+    return {
+      attempted: true,
+      sent: false,
+      reason: error?.message || 'admin_assignment_email_failed',
+    };
+  }
+}
+
 module.exports = {
   sendNotificationDigestEmail,
+  sendAdminAssignmentEmail,
   sendWelcomeEmail,
   sendInviteSignupAlertEmail,
   isEmailDeliveryReady,
