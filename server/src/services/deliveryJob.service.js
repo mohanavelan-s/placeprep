@@ -10,6 +10,10 @@ const workerId = `delivery-worker-${process.pid}-${randomUUID().slice(0, 8)}`;
 let processingPromise = null;
 let scheduledRun = null;
 
+function isSchemaNotReadyError(error) {
+  return ['42P01', '42703', '42P10'].includes(String(error?.code || ''));
+}
+
 function buildRetryDelay(job) {
   const attempt = Math.max(Number(job?.attempts || 1), 1);
   const delayMs = Math.min(30 * 60 * 1000, 60 * 1000 * (2 ** (attempt - 1)));
@@ -23,7 +27,14 @@ function scheduleDeliveryProcessing(delayMs = 250) {
 
   scheduledRun = setTimeout(() => {
     scheduledRun = null;
-    void processPendingDeliveryJobs();
+    void processPendingDeliveryJobs().catch((error) => {
+      if (isSchemaNotReadyError(error)) {
+        console.error('[delivery] Queue tables are not ready yet. Skipping queued delivery startup run.');
+        return;
+      }
+
+      console.error('[delivery] Startup queue run failed.', error);
+    });
   }, delayMs);
 }
 
@@ -144,7 +155,18 @@ async function processPendingDeliveryJobs(limit = env.deliveryWorkerBatchSize) {
     let processed = 0;
 
     while (true) {
-      const jobs = await deliveryJobRepository.claimJobs(limit, workerId);
+      let jobs = [];
+      try {
+        jobs = await deliveryJobRepository.claimJobs(limit, workerId);
+      } catch (error) {
+        if (isSchemaNotReadyError(error)) {
+          console.error('[delivery] Queue tables are not ready yet. Delivery worker is staying idle.');
+          break;
+        }
+
+        throw error;
+      }
+
       if (!jobs.length) {
         break;
       }
