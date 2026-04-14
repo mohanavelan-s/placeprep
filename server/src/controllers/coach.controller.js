@@ -5,6 +5,30 @@ async function listStudents(req, res) {
   res.json({ success: true, data: students });
 }
 
+async function listGroups(req, res) {
+  const groups = await coachService.listGroupsForAdmin(req.user);
+  res.json({ success: true, data: groups });
+}
+
+async function createGroup(req, res) {
+  const group = await coachService.createGroup(req.user, req.body);
+  res.status(201).json({ success: true, data: group });
+}
+
+async function addGroupMembers(req, res) {
+  const group = await coachService.addGroupMembers(
+    req.user,
+    req.params.groupId,
+    req.body.studentUserIds || []
+  );
+  res.json({ success: true, data: group });
+}
+
+async function removeGroupMember(req, res) {
+  const group = await coachService.removeGroupMember(req.params.groupId, req.params.studentUserId);
+  res.json({ success: true, data: group });
+}
+
 async function createPracticeCapsule(req, res) {
   const capsule = await coachService.createPracticeCapsule(req.user, req.body);
   res.status(201).json({ success: true, data: capsule });
@@ -12,5 +36,9 @@ async function createPracticeCapsule(req, res) {
 
 module.exports = {
   listStudents,
+  listGroups,
+  createGroup,
+  addGroupMembers,
+  removeGroupMember,
   createPracticeCapsule,
 };

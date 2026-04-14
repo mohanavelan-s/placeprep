@@ -164,6 +164,43 @@ export interface StudentOversightRecord {
   practiceCapsules: PracticeCapsule[];
 }
 
+export interface CoachGroupMember {
+  groupId: string;
+  userId: string;
+  name: string;
+  username?: string | null;
+  email: string;
+  targetRole?: string | null;
+  readinessScore: number;
+  accessTier?: "standard" | "observer";
+  addedBy?: string | null;
+  addedByName?: string | null;
+  createdAt: string;
+}
+
+export interface CoachGroup {
+  id: string;
+  name: string;
+  description?: string | null;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  memberCount: number;
+  members: CoachGroupMember[];
+}
+
+export interface PracticeCapsuleDispatchResult {
+  dispatchId: string;
+  targetKind: "student" | "group";
+  targetId: string;
+  targetLabel: string;
+  recipientsCount: number;
+  notificationsCreated: number;
+  capsules: PracticeCapsule[];
+}
+
 export interface ResumeSectionCoverage {
   summary?: boolean;
   education?: boolean;
@@ -200,7 +237,8 @@ export type NotificationType =
   | "pending_tasks"
   | "missed_streak"
   | "countdown_urgency"
-  | "motivation";
+  | "motivation"
+  | "coach_capsule";
 
 export interface PrepNotification {
   id: string;
@@ -865,8 +903,37 @@ export async function fetchCoachStudents() {
   }));
 }
 
+export async function fetchCoachGroups() {
+  return request<CoachGroup[]>("/coach/groups");
+}
+
+export async function createCoachGroup(payload: {
+  name: string;
+  description?: string;
+  studentUserIds?: string[];
+}) {
+  return request<CoachGroup>("/coach/groups", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function addCoachGroupMembers(groupId: string, studentUserIds: string[]) {
+  return request<CoachGroup>(`/coach/groups/${groupId}/members`, {
+    method: "POST",
+    body: JSON.stringify({ studentUserIds }),
+  });
+}
+
+export async function removeCoachGroupMember(groupId: string, studentUserId: string) {
+  return request<CoachGroup>(`/coach/groups/${groupId}/members/${studentUserId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function createPracticeCapsule(payload: {
-  studentUserId: string;
+  studentUserId?: string;
+  groupId?: string;
   title?: string;
   note?: string;
   scheduledFor?: string;
@@ -879,7 +946,7 @@ export async function createPracticeCapsule(payload: {
   verbalLabel?: string;
   aptitudeLabel?: string;
 }) {
-  return request<PracticeCapsule>("/coach/practice-capsules", {
+  return request<PracticeCapsuleDispatchResult>("/coach/practice-capsules", {
     method: "POST",
     body: JSON.stringify(payload),
   });

@@ -7,10 +7,14 @@ import {
   Brain,
   Camera,
   Clock3,
+  Layers3,
   Loader2,
   ShieldCheck,
   Sigma,
+  UserPlus,
   UserRoundSearch,
+  Users,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -20,10 +24,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import {
+  addCoachGroupMembers,
+  createCoachGroup,
   createPracticeCapsule,
+  fetchCoachGroups,
   fetchCoachStudents,
+  type CoachGroup,
   type PracticeCapsule,
+  type PracticeCapsuleDispatchResult,
   type StudentOversightRecord,
+  removeCoachGroupMember,
 } from "@/lib/api";
 
 function formatShortDate(value?: string | null) {
@@ -50,6 +60,14 @@ function formatSignedProgress(value?: number | null, suffix = "%") {
 
 function formatHours(value?: number | null) {
   return `${Number(value || 0).toFixed(1)}h`;
+}
+
+function buildAssignmentSuccessMessage(result: PracticeCapsuleDispatchResult) {
+  const recipientsLabel = `${result.recipientsCount} student${result.recipientsCount === 1 ? "" : "s"}`;
+  const targetLabel =
+    result.targetLabel || (result.targetKind === "group" ? "selected group" : "selected student");
+
+  return `Practice capsule shared to ${recipientsLabel} via ${targetLabel}.`;
 }
 
 function OversightMetric({
@@ -176,6 +194,8 @@ function RecentProofCard({
 export default function AdminStudentOversightPanel() {
   const queryClient = useQueryClient();
   const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [selectedGroupId, setSelectedGroupId] = useState("");
+  const [targetType, setTargetType] = useState<"student" | "group">("student");
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [scheduledFor, setScheduledFor] = useState("");
@@ -187,41 +207,175 @@ export default function AdminStudentOversightPanel() {
   const [leetcodeTwoLabel, setLeetcodeTwoLabel] = useState("");
   const [verbalLabel, setVerbalLabel] = useState("");
   const [aptitudeLabel, setAptitudeLabel] = useState("");
+  const [groupName, setGroupName] = useState("");
+  const [groupDescription, setGroupDescription] = useState("");
+  const [draftGroupMemberIds, setDraftGroupMemberIds] = useState<string[]>([]);
 
   const studentsQuery = useQuery({
     queryKey: ["coach", "students"],
     queryFn: fetchCoachStudents,
   });
+  const groupsQuery = useQuery({
+    queryKey: ["coach", "groups"],
+    queryFn: fetchCoachGroups,
+  });
 
   useQueryErrorLogger("AdminStudentOversightPanel:students", studentsQuery.error);
+  useQueryErrorLogger("AdminStudentOversightPanel:groups", groupsQuery.error);
+
+  const students = studentsQuery.data || [];
+  const groups = groupsQuery.data || [];
 
   useEffect(() => {
-    const firstStudentId = studentsQuery.data?.[0]?.student.id || "";
+    const firstStudentId = students[0]?.student.id || "";
 
     if (!firstStudentId) {
       setSelectedStudentId("");
       return;
     }
 
-    const stillExists = (studentsQuery.data || []).some((entry) => entry.student.id === selectedStudentId);
+    const stillExists = students.some((entry) => entry.student.id === selectedStudentId);
     if (!selectedStudentId || !stillExists) {
       setSelectedStudentId(firstStudentId);
     }
-  }, [selectedStudentId, studentsQuery.data]);
+  }, [selectedStudentId, students]);
+
+  useEffect(() => {
+    if (!groups.length) {
+      setSelectedGroupId("");
+      if (targetType === "group") {
+        setTargetType("student");
+      }
+      return;
+    }
+
+    const stillExists = groups.some((group) => group.id === selectedGroupId);
+    if (!selectedGroupId || !stillExists) {
+      setSelectedGroupId(groups[0].id);
+    }
+  }, [groups, selectedGroupId, targetType]);
 
   const selectedStudent = useMemo(
-    () => (studentsQuery.data || []).find((entry) => entry.student.id === selectedStudentId) || null,
-    [selectedStudentId, studentsQuery.data],
+    () => students.find((entry) => entry.student.id === selectedStudentId) || null,
+    [selectedStudentId, students],
   );
+  const selectedGroup = useMemo(
+    () => groups.find((group) => group.id === selectedGroupId) || null,
+    [groups, selectedGroupId],
+  );
+  const selectedGroupMemberIds = useMemo(
+    () => new Set((selectedGroup?.members || []).map((member) => member.userId)),
+    [selectedGroup],
+  );
+  const availableStudentsForSelectedGroup = useMemo(
+    () => students.filter((entry) => !selectedGroupMemberIds.has(entry.student.id)),
+    [selectedGroupMemberIds, students],
+  );
+  const draftGroupStudents = useMemo(
+    () => students.filter((entry) => draftGroupMemberIds.includes(entry.student.id)),
+    [draftGroupMemberIds, students],
+  );
+
+  function resetCapsuleForm() {
+    setTitle("");
+    setNote("");
+    setScheduledFor("");
+    setLeetcodeOneUrl("");
+    setLeetcodeTwoUrl("");
+    setVerbalUrl("");
+    setAptitudeUrl("");
+    setLeetcodeOneLabel("");
+    setLeetcodeTwoLabel("");
+    setVerbalLabel("");
+    setAptitudeLabel("");
+  }
+
+  function toggleDraftStudent(studentId: string) {
+    setDraftGroupMemberIds((current) =>
+      current.includes(studentId)
+        ? current.filter((value) => value !== studentId)
+        : [...current, studentId],
+    );
+  }
+
+  const createGroupMutation = useMutation({
+    mutationFn: () => {
+      if (!groupName.trim()) {
+        throw new Error("Give the group a name first.");
+      }
+
+      return createCoachGroup({
+        name: groupName.trim(),
+        description: groupDescription.trim() || undefined,
+        studentUserIds: draftGroupMemberIds,
+      });
+    },
+    onSuccess: async (group: CoachGroup) => {
+      setGroupName("");
+      setGroupDescription("");
+      setDraftGroupMemberIds([]);
+      setSelectedGroupId(group.id);
+      setTargetType("group");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["coach", "groups"] }),
+        queryClient.invalidateQueries({ queryKey: ["coach", "students"] }),
+      ]);
+      toast.success(`Group ${group.name} created.`);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to create coach group.");
+    },
+  });
+
+  const addGroupMembersMutation = useMutation({
+    mutationFn: (studentUserIds: string[]) => {
+      if (!selectedGroupId) {
+        throw new Error("Choose a group before adding students.");
+      }
+
+      return addCoachGroupMembers(selectedGroupId, studentUserIds);
+    },
+    onSuccess: async (group: CoachGroup) => {
+      setSelectedGroupId(group.id);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["coach", "groups"] }),
+        queryClient.invalidateQueries({ queryKey: ["coach", "students"] }),
+      ]);
+      toast.success(`Students added to ${group.name}.`);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to add students to the group.");
+    },
+  });
+
+  const removeGroupMemberMutation = useMutation({
+    mutationFn: ({ groupId, studentUserId }: { groupId: string; studentUserId: string }) =>
+      removeCoachGroupMember(groupId, studentUserId),
+    onSuccess: async (group: CoachGroup) => {
+      setSelectedGroupId(group.id);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["coach", "groups"] }),
+        queryClient.invalidateQueries({ queryKey: ["coach", "students"] }),
+      ]);
+      toast.success(`Student removed from ${group.name}.`);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to remove the student from this group.");
+    },
+  });
 
   const createCapsuleMutation = useMutation({
     mutationFn: () => {
-      if (!selectedStudentId) {
-        throw new Error("Choose a student before assigning a capsule.");
+      if (targetType === "student" && !selectedStudentId) {
+        throw new Error("Choose a student before sharing a capsule.");
+      }
+      if (targetType === "group" && !selectedGroupId) {
+        throw new Error("Choose a group before sharing a capsule.");
       }
 
       return createPracticeCapsule({
-        studentUserId: selectedStudentId,
+        studentUserId: targetType === "student" ? selectedStudentId : undefined,
+        groupId: targetType === "group" ? selectedGroupId : undefined,
         title: title.trim() || undefined,
         note: note.trim() || undefined,
         scheduledFor: scheduledFor || undefined,
@@ -235,20 +389,13 @@ export default function AdminStudentOversightPanel() {
         aptitudeLabel: aptitudeLabel.trim() || undefined,
       });
     },
-    onSuccess: async () => {
-      setTitle("");
-      setNote("");
-      setScheduledFor("");
-      setLeetcodeOneUrl("");
-      setLeetcodeTwoUrl("");
-      setVerbalUrl("");
-      setAptitudeUrl("");
-      setLeetcodeOneLabel("");
-      setLeetcodeTwoLabel("");
-      setVerbalLabel("");
-      setAptitudeLabel("");
-      await queryClient.invalidateQueries({ queryKey: ["coach", "students"] });
-      toast.success("Practice capsule assigned to the student.");
+    onSuccess: async (result) => {
+      resetCapsuleForm();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["coach", "students"] }),
+        queryClient.invalidateQueries({ queryKey: ["notifications", "recent"] }),
+      ]);
+      toast.success(buildAssignmentSuccessMessage(result));
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to assign practice capsule.");
@@ -263,31 +410,34 @@ export default function AdminStudentOversightPanel() {
           Watch the students you let into the system.
         </h3>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          All admins can inspect student momentum, latest proof uploads, and push a fresh practice capsule with two LeetCode links plus verbal and aptitude drills.
+          All admins can inspect student momentum, latest proof uploads, build named groups, and push a fresh practice capsule to one student or an entire cohort with two LeetCode links plus verbal and aptitude drills.
         </p>
       </div>
 
-      {studentsQuery.isPending && !studentsQuery.data && (
+      {((studentsQuery.isPending && !students.length) || (groupsQuery.isPending && !groups.length)) && (
         <PageStatusPanel
           eyebrow="Coaching sync"
-          title="Loading invited students."
-          description="PlacePrep is restoring student progress snapshots, proof uploads, and assigned practice capsules."
+          title="Loading invited students and groups."
+          description="PlacePrep is restoring student progress snapshots, proof uploads, coaching groups, and assigned practice capsules."
           loading
         />
       )}
 
-      {studentsQuery.isError && (
+      {(studentsQuery.isError || groupsQuery.isError) && (
         <PageStatusPanel
           eyebrow="Coaching fallback"
-          title="Student oversight could not be loaded."
-          description="Retry to bring the latest student telemetry and practice links back into view."
+          title="Student oversight could not be fully loaded."
+          description="Retry to bring the latest student telemetry, group membership, and practice links back into view."
           actionLabel="Retry"
-          onAction={() => void studentsQuery.refetch()}
+          onAction={() => {
+            void studentsQuery.refetch();
+            void groupsQuery.refetch();
+          }}
           tone="danger"
         />
       )}
 
-      {!studentsQuery.isPending && !studentsQuery.isError && !(studentsQuery.data || []).length && (
+      {!studentsQuery.isPending && !studentsQuery.isError && !students.length && (
         <div className="rounded-[1.35rem] border border-border/80 bg-card/60 p-5">
           <div className="flex items-center gap-3 text-foreground">
             <UserRoundSearch className="h-5 w-5 text-primary" />
@@ -309,7 +459,7 @@ export default function AdminStudentOversightPanel() {
               </div>
 
               <div className="mt-4 grid gap-3">
-                {(studentsQuery.data || []).map((entry) => {
+                {students.map((entry) => {
                   const isActive = entry.student.id === selectedStudentId;
 
                   return (
@@ -345,11 +495,245 @@ export default function AdminStudentOversightPanel() {
 
             <div className="rounded-[1.35rem] border border-border/80 bg-card/60 p-5">
               <div className="flex items-center gap-2 text-foreground">
+                <Users className="h-4 w-4 text-primary" />
+                <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Coach groups</p>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {groups.length ? (
+                  groups.map((group) => {
+                    const isActive = group.id === selectedGroupId;
+
+                    return (
+                      <button
+                        key={group.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedGroupId(group.id);
+                          setTargetType("group");
+                        }}
+                        className={`rounded-[1.2rem] border px-4 py-4 text-left transition ${
+                          isActive
+                            ? "border-primary/35 bg-primary/10 shadow-[0_0_26px_hsl(0_55%_33%_/_0.08)]"
+                            : "border-border/80 bg-background/45 hover:border-border hover:bg-background/60"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-base text-foreground">{group.name}</p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                              {group.memberCount} member{group.memberCount === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                          <span className="coach-chip border-primary/20 bg-background/50">
+                            {group.memberCount}
+                          </span>
+                        </div>
+                        <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted-foreground">
+                          {group.description || "No description yet. Use this group to dispatch shared drills faster."}
+                        </p>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-[1.1rem] border border-border/80 bg-background/45 px-4 py-4 text-sm text-muted-foreground">
+                    No groups yet. Create one below to cluster students by batch, topic, or cohort.
+                  </div>
+                )}
+              </div>
+
+              {selectedGroup && (
+                <div className="mt-4 rounded-[1.2rem] border border-border/80 bg-background/45 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-base text-foreground">{selectedGroup.name}</p>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                        {selectedGroup.description || "No description for this group yet."}
+                      </p>
+                    </div>
+                    <span className="coach-chip border-primary/20 bg-card/60">
+                      {selectedGroup.memberCount} members
+                    </span>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {selectedGroup.members.length ? (
+                      selectedGroup.members.map((member) => (
+                        <div
+                          key={member.userId}
+                          className="inline-flex items-center gap-2 rounded-full border border-border/80 bg-card/60 px-3 py-2 text-sm text-foreground"
+                        >
+                          <span>{member.name}</span>
+                          <button
+                            type="button"
+                            className="rounded-full p-1 text-muted-foreground transition hover:bg-background/80 hover:text-foreground"
+                            onClick={() =>
+                              removeGroupMemberMutation.mutate({
+                                groupId: selectedGroup.id,
+                                studentUserId: member.userId,
+                              })
+                            }
+                            disabled={removeGroupMemberMutation.isPending}
+                            aria-label={`Remove ${member.name} from ${selectedGroup.name}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm leading-6 text-muted-foreground">
+                        No students in this group yet.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mt-4 border-t border-border/70 pt-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                      Add students to this group
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {availableStudentsForSelectedGroup.length ? (
+                        availableStudentsForSelectedGroup.map((entry) => (
+                          <Button
+                            key={entry.student.id}
+                            type="button"
+                            variant="outline"
+                            className="h-9 gap-2 border-border/80 bg-card/60"
+                            disabled={addGroupMembersMutation.isPending}
+                            onClick={() => addGroupMembersMutation.mutate([entry.student.id])}
+                          >
+                            <UserPlus className="h-4 w-4" />
+                            {entry.student.name}
+                          </Button>
+                        ))
+                      ) : (
+                        <p className="text-sm leading-6 text-muted-foreground">
+                          Everyone in the roster is already part of this group.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 rounded-[1.2rem] border border-border/80 bg-background/45 p-4">
+                <div className="flex items-center gap-2 text-foreground">
+                  <Layers3 className="h-4 w-4 text-primary" />
+                  <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">Create new group</p>
+                </div>
+
+                <div className="mt-4 grid gap-3">
+                  <Input
+                    value={groupName}
+                    onChange={(event) => setGroupName(event.target.value)}
+                    placeholder="Group name, for example Backend cohort"
+                    className="h-11 border-border/80 bg-card/60"
+                  />
+
+                  <Textarea
+                    value={groupDescription}
+                    onChange={(event) => setGroupDescription(event.target.value)}
+                    placeholder="Optional description so other admins know what this group is for."
+                    className="min-h-[92px] border-border/80 bg-card/60"
+                  />
+
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                      Add initial students
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {students.length ? (
+                        students.map((entry) => {
+                          const isSelected = draftGroupMemberIds.includes(entry.student.id);
+
+                          return (
+                            <Button
+                              key={entry.student.id}
+                              type="button"
+                              variant={isSelected ? "default" : "outline"}
+                              className={`h-9 gap-2 ${isSelected ? "" : "border-border/80 bg-card/60"}`}
+                              onClick={() => toggleDraftStudent(entry.student.id)}
+                            >
+                              {entry.student.name}
+                            </Button>
+                          );
+                        })
+                      ) : (
+                        <p className="text-sm leading-6 text-muted-foreground">
+                          Invite students first, then you can group them here.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {!!draftGroupStudents.length && (
+                    <div className="rounded-[1rem] border border-border/80 bg-card/60 px-4 py-3 text-sm text-muted-foreground">
+                      Ready to add: {draftGroupStudents.map((entry) => entry.student.name).join(", ")}
+                    </div>
+                  )}
+
+                  <Button
+                    type="button"
+                    className="h-11 gap-2"
+                    onClick={() => createGroupMutation.mutate()}
+                    disabled={createGroupMutation.isPending || !groupName.trim()}
+                  >
+                    {createGroupMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Users className="h-4 w-4" />
+                    )}
+                    {createGroupMutation.isPending ? "Creating group..." : "Create group"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[1.35rem] border border-border/80 bg-card/60 p-5">
+              <div className="flex items-center gap-2 text-foreground">
                 <BookOpen className="h-4 w-4 text-primary" />
                 <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Assign practice capsule</p>
               </div>
 
-              <div className="mt-4 grid gap-3">
+              <div className="mt-4 grid gap-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant={targetType === "student" ? "default" : "outline"}
+                    className={`h-11 justify-start ${targetType === "student" ? "" : "border-border/80 bg-background/70"}`}
+                    onClick={() => setTargetType("student")}
+                  >
+                    Individual student
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={targetType === "group" ? "default" : "outline"}
+                    className={`h-11 justify-start ${targetType === "group" ? "" : "border-border/80 bg-background/70"}`}
+                    onClick={() => setTargetType("group")}
+                    disabled={!groups.length}
+                  >
+                    Named group
+                  </Button>
+                </div>
+
+                <div className="rounded-[1.1rem] border border-border/80 bg-background/45 px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Current target</p>
+                  <p className="mt-2 text-base text-foreground">
+                    {targetType === "group"
+                      ? selectedGroup?.name || "Choose a group first"
+                      : selectedStudent?.student.name || "Choose a student first"}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {targetType === "group"
+                      ? selectedGroup
+                        ? `${selectedGroup.memberCount} students will receive the same bundle and a fresh in-app notification.`
+                        : "Create or select a group to share one capsule with multiple students at once."
+                      : selectedStudent
+                        ? `${selectedStudent.student.email} will receive the capsule in tasks and notifications.`
+                        : "Select a student from the roster before you dispatch the bundle."}
+                  </p>
+                </div>
+
                 <Input
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
@@ -435,14 +819,21 @@ export default function AdminStudentOversightPanel() {
                   type="button"
                   className="h-11 gap-2"
                   onClick={() => createCapsuleMutation.mutate()}
-                  disabled={createCapsuleMutation.isPending}
+                  disabled={
+                    createCapsuleMutation.isPending ||
+                    (targetType === "student" ? !selectedStudentId : !selectedGroupId)
+                  }
                 >
                   {createCapsuleMutation.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <ArrowUpRight className="h-4 w-4" />
                   )}
-                  {createCapsuleMutation.isPending ? "Assigning..." : "Share practice capsule"}
+                  {createCapsuleMutation.isPending
+                    ? "Assigning..."
+                    : targetType === "group"
+                      ? "Share to selected group"
+                      : "Share to selected student"}
                 </Button>
               </div>
             </div>

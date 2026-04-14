@@ -66,6 +66,8 @@ function formatNotificationTime(value: string) {
 
 function renderNotificationEyebrow(type: PrepNotification["type"]) {
   switch (type) {
+    case "coach_capsule":
+      return "Practice capsule";
     case "countdown_urgency":
       return "Countdown urgency";
     case "daily_inactivity":

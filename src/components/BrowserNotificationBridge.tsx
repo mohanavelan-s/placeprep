@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 
 const titleMap: Record<NotificationType, string> = {
+  coach_capsule: "New practice capsule",
   countdown_urgency: "Deadline pressure",
   daily_inactivity: "Return to command",
   missed_streak: "Streak warning",
@@ -20,6 +21,7 @@ const titleMap: Record<NotificationType, string> = {
 };
 
 const routeMap: Partial<Record<NotificationType, string>> = {
+  coach_capsule: "/tasks",
   countdown_urgency: "/dashboard",
   daily_inactivity: "/dashboard",
   missed_streak: "/progress",
@@ -90,7 +92,12 @@ export default function BrowserNotificationBridge() {
       shownIdsRef.current.add(item.id);
       persistShownIds();
 
-      const browserNotification = new window.Notification(titleMap[item.type], {
+      const notificationTitle =
+        typeof item.metadata?.title === "string" && item.metadata.title.trim()
+          ? item.metadata.title
+          : titleMap[item.type];
+
+      const browserNotification = new window.Notification(notificationTitle, {
         body: item.message,
         icon: "/favicon.svg",
         tag: item.id,
@@ -98,7 +105,10 @@ export default function BrowserNotificationBridge() {
 
       browserNotification.onclick = () => {
         window.focus();
-        const route = routeMap[item.type];
+        const route =
+          typeof item.metadata?.route === "string" && item.metadata.route.trim()
+            ? item.metadata.route
+            : routeMap[item.type];
         if (route) {
           window.location.assign(route);
         }

@@ -7,6 +7,11 @@ import { Button } from "@/components/ui/button";
 import { fetchTasks, type PracticeCapsule, type Task } from "@/lib/api";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 
+function toComparableTime(value?: string | null) {
+  const timestamp = new Date(value || 0).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 function buildPracticeCapsules(tasks: Task[]) {
   const grouped = new Map<string, PracticeCapsule>();
 
@@ -51,9 +56,9 @@ function buildPracticeCapsules(tasks: Task[]) {
   return Array.from(grouped.values())
     .map((bundle) => ({
       ...bundle,
-      items: bundle.items.sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
+      items: bundle.items.sort((left, right) => toComparableTime(left.createdAt) - toComparableTime(right.createdAt)),
     }))
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    .sort((left, right) => toComparableTime(right.createdAt) - toComparableTime(left.createdAt));
 }
 
 function formatCapsuleDate(value: string) {

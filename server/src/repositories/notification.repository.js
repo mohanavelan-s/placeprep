@@ -1,6 +1,10 @@
 const { randomUUID } = require('crypto');
 const { query } = require('../config/database');
 
+function getExecutor(client) {
+  return client ? client.query.bind(client) : query;
+}
+
 const notificationColumns = `
   id,
   user_id AS "userId",
@@ -17,8 +21,9 @@ const notificationColumns = `
   updated_at AS "updatedAt"
 `;
 
-async function createNotification(payload) {
-  const result = await query(
+async function createNotification(payload, client = null) {
+  const execute = getExecutor(client);
+  const result = await execute(
     `INSERT INTO notifications (
       id,
       user_id,

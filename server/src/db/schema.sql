@@ -224,9 +224,33 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT notifications_type_check CHECK (
-    type IN ('daily_inactivity', 'pending_tasks', 'missed_streak', 'countdown_urgency', 'motivation')
+    type IN ('daily_inactivity', 'pending_tasks', 'missed_streak', 'countdown_urgency', 'motivation', 'coach_capsule')
   ),
   CONSTRAINT notifications_user_type_dedupe_unique UNIQUE (user_id, type, dedupe_key)
+);
+
+ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
+ALTER TABLE notifications
+ADD CONSTRAINT notifications_type_check CHECK (
+  type IN ('daily_inactivity', 'pending_tasks', 'missed_streak', 'countdown_urgency', 'motivation', 'coach_capsule')
+);
+
+CREATE TABLE IF NOT EXISTS coach_groups (
+  id UUID PRIMARY KEY,
+  name VARCHAR(120) NOT NULL,
+  description TEXT,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS coach_group_members (
+  group_id UUID NOT NULL REFERENCES coach_groups(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  added_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (group_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS prep_plans (
@@ -293,6 +317,8 @@ CREATE INDEX IF NOT EXISTS idx_mentor_messages_user_created_at ON mentor_message
 CREATE INDEX IF NOT EXISTS idx_notifications_user_sent_at ON notifications(user_id, sent_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, read, sent_at DESC);
 CREATE INDEX IF NOT EXISTS idx_apk_versions_active_uploaded_at ON apk_versions(is_active, uploaded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_coach_groups_created_at ON coach_groups(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_coach_group_members_user_id ON coach_group_members(user_id);
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -336,6 +362,9 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'notifications_set_updated_at') THEN
     CREATE TRIGGER notifications_set_updated_at BEFORE UPDATE ON notifications FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'coach_groups_set_updated_at') THEN
+    CREATE TRIGGER coach_groups_set_updated_at BEFORE UPDATE ON coach_groups FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'apk_versions_set_updated_at') THEN
     CREATE TRIGGER apk_versions_set_updated_at BEFORE UPDATE ON apk_versions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
