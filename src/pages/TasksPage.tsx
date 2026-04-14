@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import HoursInput from "@/components/HoursInput";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import StudentPracticeCapsulesPanel from "@/components/StudentPracticeCapsulesPanel";
+import TaskStatusControl from "@/components/TaskStatusControl";
 import WorkProofPanel from "@/components/WorkProofPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,16 +32,6 @@ import { formatHoursFromMinutes, parseHoursToMinutes } from "@/lib/time";
 
 const statuses = ["all", "pending", "in_progress", "completed", "skipped"] as const;
 const categories = ["all", "DSA", "Core", "Project", "Aptitude", "Resume", "MockInterview", "Other"] as const;
-
-function nextStatus(status: TaskStatus): TaskStatus {
-  if (status === "pending") {
-    return "in_progress";
-  }
-  if (status === "in_progress") {
-    return "completed";
-  }
-  return "pending";
-}
 
 export default function TasksPage() {
   const queryClient = useQueryClient();
@@ -255,24 +246,19 @@ export default function TasksPage() {
 
           {tasks.map((task: Task) => (
             <div key={task.id} className="mission-row flex items-center gap-4 border-b border-border/60 px-6 py-4">
-              <button
-                type="button"
-                className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.16em] ${
-                  task.status === "completed"
-                    ? "border-primary/30 bg-primary/10 text-primary"
-                    : "border-border/80 text-muted-foreground"
-                }`}
-                onClick={() => updateMutation.mutate({ taskId: task.id, status: nextStatus(task.status) })}
-              >
-                {task.status.replace("_", " ")}
-              </button>
-
               <div className="min-w-0 flex-1">
                 <p className="text-base font-medium text-foreground">{task.title}</p>
                 <p className="mt-2 text-sm text-muted-foreground">
                   {task.category} / {formatHoursFromMinutes(task.estimatedMinutes)} / {task.referenceLabel || task.weakArea || "Focus"}
                 </p>
               </div>
+
+              <TaskStatusControl
+                status={task.status}
+                disabled={updateMutation.isPending && updateMutation.variables?.taskId === task.id}
+                compact
+                onChange={(status) => updateMutation.mutate({ taskId: task.id, status })}
+              />
 
               <Button
                 type="button"

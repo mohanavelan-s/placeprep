@@ -1,10 +1,12 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, BookCopy, ClipboardCheck, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 
 import PageStatusPanel from "@/components/PageStatusPanel";
+import TaskStatusControl from "@/components/TaskStatusControl";
 import { Button } from "@/components/ui/button";
-import { fetchTasks, type PracticeCapsule, type Task } from "@/lib/api";
+import { fetchTasks, type PracticeCapsule, type Task, type TaskStatus, updateTask } from "@/lib/api";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 
 function toComparableTime(value?: string | null) {
@@ -74,12 +76,26 @@ function formatCapsuleDate(value: string) {
 }
 
 export default function StudentPracticeCapsulesPanel() {
+  const queryClient = useQueryClient();
   const tasksQuery = useQuery({
     queryKey: ["tasks", "practice-capsules"],
     queryFn: () => fetchTasks(),
   });
 
   useQueryErrorLogger("StudentPracticeCapsulesPanel:tasks", tasksQuery.error);
+
+  const updateTaskMutation = useMutation({
+    mutationFn: ({ taskId, status }: { taskId: string; status: TaskStatus }) =>
+      updateTask(taskId, { status }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      void queryClient.invalidateQueries({ queryKey: ["tasks", "today"] });
+      void queryClient.invalidateQueries({ queryKey: ["progress-summary"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to update task.");
+    },
+  });
 
   const capsules = useMemo(
     () => buildPracticeCapsules(Array.isArray(tasksQuery.data) ? tasksQuery.data : []),
@@ -189,6 +205,14 @@ export default function StudentPracticeCapsulesPanel() {
                     <p className="mt-3 text-sm leading-6 text-muted-foreground">
                       {item.referenceLabel || "Open the assigned practice link and finish it through the task board."}
                     </p>
+
+                    <TaskStatusControl
+                      status={item.status}
+                      disabled={updateTaskMutation.isPending && updateTaskMutation.variables?.taskId === item.taskId}
+                      compact
+                      className="mt-4"
+                      onChange={(status) => updateTaskMutation.mutate({ taskId: item.taskId, status })}
+                    />
                   </div>
                 ))}
               </div>

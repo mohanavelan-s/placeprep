@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
 
-import type { Task } from "@/lib/api";
+import TaskStatusControl from "@/components/TaskStatusControl";
+import type { Task, TaskStatus } from "@/lib/api";
 import { formatHoursFromMinutes } from "@/lib/time";
 
 const categoryAccent: Record<string, string> = {
@@ -14,7 +15,7 @@ const categoryAccent: Record<string, string> = {
 interface DashboardDailyTasksProps {
   missions: Task[];
   updatingTaskId?: string | null;
-  onToggleMission: (task: Task) => void;
+  onUpdateMissionStatus: (task: Task, status: TaskStatus) => void;
   activeTaskId?: string | null;
 }
 
@@ -33,7 +34,7 @@ function formatDifficulty(value?: number | null) {
 export default function DashboardDailyTasks({
   missions,
   updatingTaskId,
-  onToggleMission,
+  onUpdateMissionStatus,
   activeTaskId,
 }: DashboardDailyTasksProps) {
   const completed = missions.filter((mission) => mission.status === "completed").length;
@@ -92,20 +93,15 @@ export default function DashboardDailyTasks({
 
       <div>
         {missions.map((mission, index) => (
-          <motion.button
+          <motion.div
             key={mission.id}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 + index * 0.06, duration: 0.5 }}
-            onClick={() => onToggleMission(mission)}
-            type="button"
-            disabled={updatingTaskId === mission.id}
             className={`task-row-lift mission-row flex w-full items-center gap-4 border-b border-b-border/60 border-l-2 px-6 py-5 text-left ${
               categoryAccent[mission.category] || "border-l-transparent"
             } ${mission.status === "completed" ? "opacity-55" : ""} ${
               activeTaskId === mission.id && mission.status !== "completed" ? "task-row-active" : ""
-            } ${
-              updatingTaskId === mission.id ? "cursor-wait" : "cursor-pointer"
             }`}
           >
             <div className={`h-1.5 w-1.5 shrink-0 rounded-full transition-all duration-500 ${
@@ -154,20 +150,20 @@ export default function DashboardDailyTasks({
               )}
             </div>
 
-            <span className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] transition-colors duration-300 ${
-                mission.status === "completed"
-                  ? "border-border/70 text-foreground/50"
-                  : "border-primary/30 text-primary/90"
-              }`}>
-              {updatingTaskId === mission.id
-                ? "Saving"
-                : mission.status === "completed"
-                  ? "Completed"
-                  : activeTaskId === mission.id
-                    ? "Active"
-                    : "Mark done"}
-            </span>
-          </motion.button>
+            <div className="flex shrink-0 flex-col items-end gap-3">
+              {activeTaskId === mission.id && mission.status !== "completed" && (
+                <span className="rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-primary/90">
+                  Active
+                </span>
+              )}
+              <TaskStatusControl
+                status={mission.status}
+                disabled={updatingTaskId === mission.id}
+                compact
+                onChange={(status) => onUpdateMissionStatus(mission, status)}
+              />
+            </div>
+          </motion.div>
         ))}
       </div>
     </motion.div>

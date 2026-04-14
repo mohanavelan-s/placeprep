@@ -72,10 +72,6 @@ function formatDateLabel(value?: string | null) {
   });
 }
 
-function getNextStatus(status: TaskStatus): TaskStatus {
-  return status === "completed" ? "pending" : "completed";
-}
-
 function getGreeting() {
   const hours = new Date().getHours();
   if (hours < 12) {
@@ -284,10 +280,10 @@ export default function Home() {
     toast.success("Dashboard refreshed.");
   }
 
-  function handleToggleMission(task: Task) {
+  function handleUpdateMissionStatus(task: Task, status: TaskStatus) {
     updateTaskMutation.mutate({
       taskId: task.id,
-      status: getNextStatus(task.status),
+      status,
     });
   }
 
@@ -476,7 +472,7 @@ export default function Home() {
           <DashboardDailyTasks
             missions={tasks}
             updatingTaskId={updateTaskMutation.variables?.taskId ?? null}
-            onToggleMission={handleToggleMission}
+            onUpdateMissionStatus={handleUpdateMissionStatus}
             activeTaskId={suggestedTask?.id ?? null}
           />
 

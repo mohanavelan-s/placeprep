@@ -2,6 +2,10 @@ const { randomUUID } = require('crypto');
 const { query } = require('../config/database');
 const { buildUpdateClause } = require('../utils/sql');
 
+function getExecutor(client) {
+  return client ? client.query.bind(client) : query;
+}
+
 const profileColumns = `
   id,
   user_id AS "userId",
@@ -30,8 +34,9 @@ async function findByUserId(userId) {
   return result.rows[0] || null;
 }
 
-async function createProfile(payload) {
-  const result = await query(
+async function createProfile(payload, client = null) {
+  const execute = getExecutor(client);
+  const result = await execute(
     `INSERT INTO user_profiles (
       id,
       user_id,
@@ -108,6 +113,7 @@ async function upsertProfile(payload) {
 }
 
 module.exports = {
+  createProfile,
   findByUserId,
   upsertProfile,
 };

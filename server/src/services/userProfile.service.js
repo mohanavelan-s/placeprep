@@ -1,5 +1,24 @@
 const userProfileRepository = require('../repositories/userProfile.repository');
 
+function buildDefaultProfile(userId) {
+  return {
+    id: null,
+    userId,
+    linkedinUrl: null,
+    githubUrl: null,
+    leetcodeUrl: null,
+    portfolioUrl: null,
+    resumeUrl: null,
+    avatarUrl: null,
+    notificationsEnabled: true,
+    notificationEmailEnabled: true,
+    notificationBrowserEnabled: false,
+    notificationBrowserPermission: 'default',
+    createdAt: null,
+    updatedAt: null,
+  };
+}
+
 function normalizeUrl(value) {
   if (value === undefined) {
     return undefined;
@@ -29,28 +48,30 @@ function normalizePermission(value) {
 }
 
 async function getProfile(user) {
-  const profile = await userProfileRepository.findByUserId(user.id);
+  const existingProfile = await userProfileRepository.findByUserId(user.id);
 
-  if (profile) {
-    return profile;
+  if (existingProfile) {
+    return existingProfile;
   }
 
-  return {
-    id: null,
-    userId: user.id,
-    linkedinUrl: null,
-    githubUrl: null,
-    leetcodeUrl: null,
-    portfolioUrl: null,
-    resumeUrl: null,
-    avatarUrl: null,
-    notificationsEnabled: true,
-    notificationEmailEnabled: true,
-    notificationBrowserEnabled: false,
-    notificationBrowserPermission: 'default',
-    createdAt: null,
-    updatedAt: null,
-  };
+  try {
+    return await userProfileRepository.createProfile({
+      userId: user.id,
+    });
+  } catch (error) {
+    if (error?.code === '23505') {
+      const profile = await userProfileRepository.findByUserId(user.id);
+      if (profile) {
+        return profile;
+      }
+    }
+
+    if (error?.code !== '23503') {
+      throw error;
+    }
+  }
+
+  return buildDefaultProfile(user.id);
 }
 
 async function upsertProfile(user, payload) {

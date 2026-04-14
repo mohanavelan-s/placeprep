@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 
 const env = require('../config/env');
 const { withTransaction } = require('../config/database');
+const userProfileRepository = require('../repositories/userProfile.repository');
 const userRepository = require('../repositories/user.repository');
 const { sendInviteSignupAlertEmail, sendWelcomeEmail } = require('./email.service');
 const inviteService = require('./invite.service');
@@ -96,6 +97,10 @@ async function register(payload) {
             accessTier: 'observer',
           }
         : {},
+    }, client);
+
+    await userProfileRepository.createProfile({
+      userId: createdUser.id,
     }, client);
 
     if (invite?.id) {

@@ -2,6 +2,7 @@ const nodemailer = require('nodemailer');
 const env = require('../config/env');
 
 const subjectMap = {
+  coach_capsule: 'PlacePrep | New practice capsule',
   daily_inactivity: 'PlacePrep | Return to the work',
   pending_tasks: 'PlacePrep | Pending tasks are waiting',
   missed_streak: 'PlacePrep | The streak is gone',

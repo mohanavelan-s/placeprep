@@ -38,10 +38,6 @@ import {
   type TaskStatus,
 } from "@/lib/api";
 
-function getNextStatus(status: TaskStatus): TaskStatus {
-  return status === "completed" ? "pending" : "completed";
-}
-
 export default function DashboardPage() {
   const [focusMode, setFocusMode] = useState(false);
   const [latestPlan, setLatestPlan] = useState<AiTaskPlan | null>(null);
@@ -200,10 +196,10 @@ export default function DashboardPage() {
     toast.success("Dashboard refreshed.");
   }
 
-  function handleToggleMission(task: Task) {
+  function handleUpdateMissionStatus(task: Task, status: TaskStatus) {
     updateTaskMutation.mutate({
       taskId: task.id,
-      status: getNextStatus(task.status),
+      status,
     });
   }
 
@@ -349,7 +345,7 @@ export default function DashboardPage() {
           <DashboardDailyTasks
             missions={tasks}
             updatingTaskId={updateTaskMutation.variables?.taskId ?? null}
-            onToggleMission={handleToggleMission}
+            onUpdateMissionStatus={handleUpdateMissionStatus}
             activeTaskId={suggestedTask?.id ?? null}
           />
 
