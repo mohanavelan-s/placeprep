@@ -30,6 +30,24 @@ function formatInviteDate(value: string) {
   }
 }
 
+function formatInviteLifecycle(invite: {
+  status: string;
+  expiresAt: string;
+  usedAt?: string | null;
+}) {
+  if (invite.status === "expired") {
+    return `Code expired ${formatInviteDate(invite.expiresAt)}`;
+  }
+
+  if (invite.status === "used") {
+    return invite.usedAt
+      ? `Code used ${formatInviteDate(invite.usedAt)}`
+      : "Code already used";
+  }
+
+  return `Expires ${formatInviteDate(invite.expiresAt)}`;
+}
+
 export default function AdminInvitePanel() {
   const queryClient = useQueryClient();
   const [role, setRole] = useState<"admin" | "user">("user");
@@ -170,7 +188,7 @@ export default function AdminInvitePanel() {
                       {invite.role} / {invite.status}
                     </p>
                     <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                      Expires {formatInviteDate(invite.expiresAt)}
+                      {formatInviteLifecycle(invite)}
                     </p>
                   </div>
 
@@ -189,15 +207,22 @@ export default function AdminInvitePanel() {
                   <p className="mt-3 text-sm text-foreground/75">{String(invite.metadata.label)}</p>
                 )}
 
-                <a
-                  href={invite.inviteLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 inline-flex items-center gap-2 text-sm text-primary hover:text-primary/80"
-                >
-                  <Link2 className="h-4 w-4" />
-                  Open invite link
-                </a>
+                {invite.status === "valid" ? (
+                  <a
+                    href={invite.inviteLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex items-center gap-2 text-sm text-primary hover:text-primary/80"
+                  >
+                    <Link2 className="h-4 w-4" />
+                    Open invite link
+                  </a>
+                ) : (
+                  <div className="mt-3 inline-flex items-center gap-2 text-sm text-muted-foreground">
+                    <Link2 className="h-4 w-4" />
+                    {invite.status === "expired" ? "Code expired" : "Invite inactive"}
+                  </div>
+                )}
               </article>
             ))}
           </div>

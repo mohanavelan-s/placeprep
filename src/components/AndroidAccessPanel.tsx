@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Smartphone, Upload } from "lucide-react";
+import { Download, FolderUp, Smartphone, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import PageStatusPanel from "@/components/PageStatusPanel";
@@ -38,6 +38,7 @@ interface AndroidAccessPanelProps {
 
 export default function AndroidAccessPanel({ adminMode = false }: AndroidAccessPanelProps) {
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [version, setVersion] = useState("");
 
@@ -178,12 +179,54 @@ export default function AndroidAccessPanel({ adminMode = false }: AndroidAccessP
                 placeholder="Version label, for example v1.0.0"
                 className="h-11 border-border/80 bg-background/70"
               />
-              <Input
+
+              <input
+                ref={fileInputRef}
                 type="file"
                 accept=".apk,application/vnd.android.package-archive,application/octet-stream"
-                className="h-11 border-border/80 bg-background/70 file:mr-3 file:rounded-full file:border-0 file:bg-primary/12 file:px-3 file:py-2 file:text-sm file:text-foreground"
+                className="hidden"
                 onChange={(event) => setFile(event.target.files?.[0] || null)}
               />
+
+              <div className="flex min-h-14 items-center justify-between gap-3 rounded-[1.2rem] border border-border/80 bg-background/70 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-foreground">
+                    {file?.name || "No file chosen"}
+                  </p>
+                  <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                    Android APK only
+                  </p>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2">
+                  {file && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-10 px-3"
+                      onClick={() => {
+                        setFile(null);
+                        if (fileInputRef.current) {
+                          fileInputRef.current.value = "";
+                        }
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  )}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 gap-2 border-border/80 bg-card/60"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <FolderUp className="h-4 w-4" />
+                    {file ? "Replace APK" : "Choose APK"}
+                  </Button>
+                </div>
+              </div>
+
               <Button
                 type="button"
                 className="h-11 gap-2"

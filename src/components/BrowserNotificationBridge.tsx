@@ -3,9 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import {
+  fetchNotifications,
   fetchUserProfile,
   markNotificationRead,
   syncNotifications,
+  type PrepNotification,
   type NotificationType,
 } from "@/lib/api";
 
@@ -38,6 +40,22 @@ export default function BrowserNotificationBridge() {
   const browserEnabled = profileQuery.data?.notificationBrowserEnabled ?? false;
 
   useEffect(() => {
+    try {
+      const savedIds = window.sessionStorage.getItem("placeprep.browserNotifications.seen");
+      if (!savedIds) {
+        return;
+      }
+
+      const parsedIds = JSON.parse(savedIds);
+      if (Array.isArray(parsedIds)) {
+        shownIdsRef.current = new Set(parsedIds.filter((value) => typeof value === "string"));
+      }
+    } catch (error) {
+      console.error("[BrowserNotificationBridge] Failed to restore shown notification ids.", error);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!notificationsEnabled || !browserEnabled) {
       return;
     }
@@ -53,39 +71,62 @@ export default function BrowserNotificationBridge() {
 
     let cancelled = false;
 
+    function persistShownIds() {
+      try {
+        window.sessionStorage.setItem(
+          "placeprep.browserNotifications.seen",
+          JSON.stringify(Array.from(shownIdsRef.current)),
+        );
+      } catch (error) {
+        console.error("[BrowserNotificationBridge] Failed to persist shown notification ids.", error);
+      }
+    }
+
+    function dispatchBrowserNotification(item: PrepNotification) {
+      if (shownIdsRef.current.has(item.id)) {
+        return;
+      }
+
+      shownIdsRef.current.add(item.id);
+      persistShownIds();
+
+      const browserNotification = new window.Notification(titleMap[item.type], {
+        body: item.message,
+        icon: "/favicon.svg",
+        tag: item.id,
+      });
+
+      browserNotification.onclick = () => {
+        window.focus();
+        const route = routeMap[item.type];
+        if (route) {
+          window.location.assign(route);
+        }
+
+        void markNotificationRead(item.id).catch((error) => {
+          console.error("[BrowserNotificationBridge] Failed to mark notification as read.", error);
+        });
+
+        browserNotification.close();
+      };
+    }
+
     async function runSync() {
       try {
-        const result = await syncNotifications();
+        const [result, unreadNotifications] = await Promise.all([
+          syncNotifications(),
+          fetchNotifications({ unread: true, limit: 6 }),
+        ]);
+
         if (cancelled) {
           return;
         }
 
-        result.created.forEach((item) => {
-          if (shownIdsRef.current.has(item.id)) {
-            return;
-          }
+        const notificationsToShow = [...result.created, ...unreadNotifications]
+          .filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index)
+          .slice(0, 3);
 
-          shownIdsRef.current.add(item.id);
-          const browserNotification = new window.Notification(titleMap[item.type], {
-            body: item.message,
-            icon: "/favicon.svg",
-            tag: item.id,
-          });
-
-          browserNotification.onclick = () => {
-            window.focus();
-            const route = routeMap[item.type];
-            if (route) {
-              window.location.assign(route);
-            }
-
-            void markNotificationRead(item.id).catch((error) => {
-              console.error("[BrowserNotificationBridge] Failed to mark notification as read.", error);
-            });
-
-            browserNotification.close();
-          };
-        });
+        notificationsToShow.forEach(dispatchBrowserNotification);
       } catch (error) {
         console.error("[BrowserNotificationBridge] Notification sync threw an exception.", error);
       }
