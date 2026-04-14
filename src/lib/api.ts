@@ -87,6 +87,9 @@ export interface ApkVersion {
 
 export interface UploadedImage {
   id: string;
+  userId?: string;
+  taskId?: string | null;
+  dailyLogId?: string | null;
   secureUrl: string;
   publicId: string;
   assetId?: string | null;
@@ -100,6 +103,65 @@ export interface UploadedImage {
   caption?: string | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface PracticeCapsuleItem {
+  taskId: string;
+  title: string;
+  category: string;
+  status: TaskStatus;
+  referenceLabel?: string | null;
+  referenceUrl?: string | null;
+  capsuleType: string;
+  scheduledFor: string;
+  createdAt: string;
+}
+
+export interface PracticeCapsule {
+  bundleId: string;
+  title: string;
+  note?: string | null;
+  studentUserId: string;
+  assignedById?: string | null;
+  assignedByName?: string | null;
+  scheduledFor: string;
+  createdAt: string;
+  items: PracticeCapsuleItem[];
+}
+
+export interface StudentOversightRecord {
+  student: User;
+  invitedBy: {
+    id?: string | null;
+    name?: string | null;
+    username?: string | null;
+    inviteCode?: string | null;
+    invitedAt: string;
+  };
+  progress: {
+    streak: number;
+    consistencyScore: number;
+    readinessScore: number;
+    solvedProblems: number;
+    averageTimePerProblem: number;
+    failedAttempts: number;
+    totalHours: number;
+    tasksCompleted: number;
+    statDate?: string | null;
+    weeklyProgress: WeeklyProgressPoint[];
+    topicStrength: TopicStrengthPoint[];
+  };
+  taskSummary: {
+    userId: string;
+    total: number;
+    pending: number;
+    inProgress: number;
+    completed: number;
+    skipped: number;
+    overdue: number;
+  };
+  recentProofs: UploadedImage[];
+  practiceCapsules: PracticeCapsule[];
 }
 
 export interface ResumeSectionCoverage {
@@ -664,6 +726,27 @@ export async function uploadImage(
   };
 }
 
+export async function fetchUploadedImages(filters: {
+  date?: string;
+  limit?: number;
+} = {}) {
+  const params = new URLSearchParams();
+  if (filters.date) {
+    params.set("date", filters.date);
+  }
+  if (filters.limit !== undefined) {
+    params.set("limit", String(filters.limit));
+  }
+
+  const queryString = params.toString();
+  const images = await request<UploadedImage[]>(`/uploads/images${queryString ? `?${queryString}` : ""}`);
+
+  return images.map((image) => ({
+    ...image,
+    secureUrl: normalizeAssetUrl(image.secureUrl),
+  }));
+}
+
 export async function uploadResumeForAnalysis(
   payload: {
     file?: File | null;
@@ -769,6 +852,37 @@ export async function downloadApkVersion(versionId: string) {
 
 export async function fetchProgressSummary() {
   return request<ProgressSummary>("/progress/summary");
+}
+
+export async function fetchCoachStudents() {
+  const students = await request<StudentOversightRecord[]>("/coach/students");
+  return students.map((entry) => ({
+    ...entry,
+    recentProofs: (entry.recentProofs || []).map((image) => ({
+      ...image,
+      secureUrl: normalizeAssetUrl(image.secureUrl),
+    })),
+  }));
+}
+
+export async function createPracticeCapsule(payload: {
+  studentUserId: string;
+  title?: string;
+  note?: string;
+  scheduledFor?: string;
+  leetcodeOneUrl: string;
+  leetcodeTwoUrl: string;
+  verbalUrl: string;
+  aptitudeUrl: string;
+  leetcodeOneLabel?: string;
+  leetcodeTwoLabel?: string;
+  verbalLabel?: string;
+  aptitudeLabel?: string;
+}) {
+  return request<PracticeCapsule>("/coach/practice-capsules", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function fetchNotifications(filters: {

@@ -31,16 +31,17 @@ import {
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useAuth } from "@/context/AuthContext";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
+import { isObserverUser } from "@/lib/access";
 import { fetchAiStatus, fetchLatestPrepPlan, fetchUserProfile } from "@/lib/api";
 
 const navItems = [
-  { to: "/dashboard", label: "Command Chamber", icon: LayoutDashboard },
-  { to: "/prep-architect", label: "Prep Architect", icon: BrainCircuit },
-  { to: "/tasks", label: "Tasks", icon: ListTodo },
-  { to: "/progress", label: "Progress", icon: LineChart },
-  { to: "/profile", label: "Profile", icon: UserCircle2 },
-  { to: "/settings", label: "Settings", icon: Settings },
-  { to: "/ai-mentor", label: "Nocturne Mentor", icon: MessageSquareText },
+  { to: "/dashboard", label: "Command Chamber", icon: LayoutDashboard, observerVisible: true },
+  { to: "/prep-architect", label: "Prep Architect", icon: BrainCircuit, observerVisible: false },
+  { to: "/tasks", label: "Tasks", icon: ListTodo, observerVisible: true },
+  { to: "/progress", label: "Progress", icon: LineChart, observerVisible: false },
+  { to: "/profile", label: "Profile", icon: UserCircle2, observerVisible: false },
+  { to: "/settings", label: "Settings", icon: Settings, observerVisible: false },
+  { to: "/ai-mentor", label: "Nocturne Mentor", icon: MessageSquareText, observerVisible: true },
 ];
 
 const pageMeta: Record<string, { title: string; description: string }> = {
@@ -84,6 +85,7 @@ interface ShellSidebarProps {
   aiReason: string;
   planVersion?: number | null;
   planFocus?: string | null;
+  navItems: typeof navItems;
   onNavigate?: () => void;
 }
 
@@ -93,6 +95,7 @@ function ShellSidebar({
   aiReason,
   planVersion,
   planFocus,
+  navItems: visibleNavItems,
   onNavigate,
 }: ShellSidebarProps) {
   return (
@@ -105,7 +108,7 @@ function ShellSidebar({
         <div>
           <p className="px-2 text-xs uppercase tracking-[0.24em] text-sidebar-foreground/55">Navigate</p>
           <nav className="mt-3 space-y-1">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentPath === item.to;
 
@@ -187,7 +190,9 @@ export default function AppShell() {
   const profile = profileQuery.data;
   const aiStatus = aiStatusQuery.data;
   const latestPlan = prepPlanQuery.data;
+  const observerMode = isObserverUser(user);
   const avatarFallback = getAvatarFallbackLabel(user?.name, user?.username);
+  const visibleNavItems = observerMode ? navItems.filter((item) => item.observerVisible) : navItems;
   const identityLinks = [
     { href: profile?.linkedinUrl, label: "LinkedIn", kind: "linkedin" },
     { href: profile?.githubUrl, label: "GitHub", kind: "github" },
@@ -208,6 +213,7 @@ export default function AppShell() {
             aiReason={aiStatusQuery.isPending ? "checking" : aiStatus?.reason || "offline"}
             planVersion={latestPlan?.version}
             planFocus={latestPlan?.targetTopics?.[0] || null}
+            navItems={visibleNavItems}
           />
         </aside>
 
@@ -219,6 +225,7 @@ export default function AppShell() {
               aiReason={aiStatusQuery.isPending ? "checking" : aiStatus?.reason || "offline"}
               planVersion={latestPlan?.version}
               planFocus={latestPlan?.targetTopics?.[0] || null}
+              navItems={visibleNavItems}
               onNavigate={() => setMobileNavOpen(false)}
             />
           </SheetContent>
@@ -289,16 +296,26 @@ export default function AppShell() {
                       <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                         @{user?.username || "set-username"}
                       </p>
+                      {observerMode && (
+                        <p className="mt-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                          Observer access
+                        </p>
+                      )}
                     </DropdownMenuLabel>
+                    {!observerMode && (
+                      <>
+                        <DropdownMenuSeparator className="bg-border/80" />
+                        <DropdownMenuItem
+                          className="rounded-xl px-3 py-2.5 text-sm"
+                          onSelect={() => navigate("/settings")}
+                        >
+                          <Settings className="mr-2 h-4 w-4" />
+                          Settings
+                          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                        </DropdownMenuItem>
+                      </>
+                    )}
                     <DropdownMenuSeparator className="bg-border/80" />
-                    <DropdownMenuItem
-                      className="rounded-xl px-3 py-2.5 text-sm"
-                      onSelect={() => navigate("/settings")}
-                    >
-                      <Settings className="mr-2 h-4 w-4" />
-                      Settings
-                      <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
-                    </DropdownMenuItem>
                     <DropdownMenuItem
                       className="rounded-xl px-3 py-2.5 text-sm text-destructive focus:bg-destructive/10 focus:text-destructive"
                       onSelect={() => logout()}

@@ -65,6 +65,7 @@ const env = {
   notificationSchedulerEnabled: process.env.NOTIFICATION_SCHEDULER_ENABLED !== 'false',
   publicSignupEnabled: process.env.ALLOW_PUBLIC_SIGNUP === 'true',
   bootstrapAdminInviteCode: process.env.BOOTSTRAP_ADMIN_INVITE_CODE || '',
+  bootstrapObserverInviteCode: process.env.BOOTSTRAP_OBSERVER_INVITE_CODE || '',
   bootstrapUserInviteCode: process.env.BOOTSTRAP_USER_INVITE_CODE || '',
   bootstrapInviteCode: process.env.BOOTSTRAP_INVITE_CODE || '',
   bootstrapInviteRole: process.env.BOOTSTRAP_INVITE_ROLE || 'admin',

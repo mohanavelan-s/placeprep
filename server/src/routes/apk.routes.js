@@ -3,13 +3,14 @@ const { body, query, param } = require('express-validator');
 
 const controller = require('../controllers/apk.controller');
 const { apkUploader } = require('../config/multer');
-const { requireAdmin, requireAuth } = require('../middleware/auth');
+const { requireAdmin, requireAuth, requireNonObserver } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
 
 router.use(requireAuth);
+router.use(requireNonObserver('Observer access cannot download Android builds.'));
 
 router.get('/latest', asyncHandler(controller.getLatestApk));
 

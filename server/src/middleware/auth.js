@@ -4,6 +4,14 @@ const userRepository = require('../repositories/user.repository');
 const AppError = require('../utils/appError');
 const asyncHandler = require('../utils/asyncHandler');
 
+function isObserverUser(user) {
+  return Boolean(
+    user
+    && user.role !== 'admin'
+    && (user.accessTier === 'observer' || user.coachMetadata?.accessTier === 'observer')
+  );
+}
+
 const requireAuth = asyncHandler(async (req, res, next) => {
   const authHeader = req.headers.authorization || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -50,8 +58,26 @@ function requireRole(...roles) {
 
 const requireAdmin = requireRole('admin');
 
+function requireNonObserver(message = 'Observer access is limited for this resource.') {
+  return (req, res, next) => {
+    if (!req.user) {
+      next(new AppError('Authentication token is required.', 401));
+      return;
+    }
+
+    if (isObserverUser(req.user)) {
+      next(new AppError(message, 403));
+      return;
+    }
+
+    next();
+  };
+}
+
 module.exports = {
   requireAuth,
   requireRole,
   requireAdmin,
+  requireNonObserver,
+  isObserverUser,
 };

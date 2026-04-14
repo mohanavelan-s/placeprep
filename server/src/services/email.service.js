@@ -352,6 +352,12 @@ function buildWelcomeHtml(user) {
 function buildInviteSignupAlertText({ user, invite }) {
   const signInUrl = `${env.clientUrl}/auth?mode=login`;
   const weakAreas = Array.isArray(user.weakAreas) ? user.weakAreas.filter(Boolean).join(', ') : '';
+  const assignedRole = compactText(
+    invite?.displayRole
+    || invite?.role
+    || (user.accessTier === 'observer' ? 'observer' : user.role)
+    || 'user'
+  );
 
   return [
     'A new PlacePrep account was created with an invite code.',
@@ -359,7 +365,7 @@ function buildInviteSignupAlertText({ user, invite }) {
     `Name: ${compactText(user.name || 'Unknown')}`,
     `Username: ${compactText(user.username || 'Not set')}`,
     `Email: ${compactText(user.email || 'Unknown')}`,
-    `Assigned role: ${compactText(invite?.role || user.role || 'user')}`,
+    `Assigned role: ${assignedRole}`,
     invite?.code ? `Invite code: ${compactText(invite.code)}` : null,
     user.targetRole ? `Target role: ${compactText(user.targetRole)}` : null,
     weakAreas ? `Weak areas: ${weakAreas}` : null,
@@ -372,6 +378,12 @@ function buildInviteSignupAlertText({ user, invite }) {
 function buildInviteSignupAlertHtml({ user, invite }) {
   const weakAreas = Array.isArray(user.weakAreas) ? user.weakAreas.filter(Boolean) : [];
   const signInUrl = `${env.clientUrl}/auth?mode=login`;
+  const assignedRole = compactText(
+    invite?.displayRole
+    || invite?.role
+    || (user.accessTier === 'observer' ? 'observer' : user.role)
+    || 'user'
+  );
 
   return `
     <div style="background:#0a0a0d;padding:32px 0;font-family:Inter,Arial,sans-serif;">
@@ -393,7 +405,7 @@ function buildInviteSignupAlertHtml({ user, invite }) {
               <tr>
                 <td style="padding:4px 30px 0 30px;">
                   <span style="display:inline-block;margin:0 10px 10px 0;padding:9px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:#d7d2d2;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">
-                    ${escapeHtml(invite?.role || user.role || 'user')}
+                    ${escapeHtml(assignedRole)}
                   </span>
                   ${invite?.code ? `
                     <span style="display:inline-block;margin:0 10px 10px 0;padding:9px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:#d7d2d2;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">
@@ -410,7 +422,7 @@ function buildInviteSignupAlertHtml({ user, invite }) {
                       <div><strong>Name:</strong> ${escapeHtml(user.name || 'Unknown')}</div>
                       <div><strong>Username:</strong> ${escapeHtml(user.username || 'Not set')}</div>
                       <div><strong>Email:</strong> ${escapeHtml(user.email || 'Unknown')}</div>
-                      <div><strong>Assigned role:</strong> ${escapeHtml(invite?.role || user.role || 'user')}</div>
+                      <div><strong>Assigned role:</strong> ${escapeHtml(assignedRole)}</div>
                       ${user.targetRole ? `<div><strong>Target role:</strong> ${escapeHtml(user.targetRole)}</div>` : ''}
                       ${weakAreas.length ? `<div><strong>Weak areas:</strong> ${escapeHtml(weakAreas.join(', '))}</div>` : ''}
                     </div>

@@ -5,6 +5,8 @@ import { toast } from "sonner";
 
 import HoursInput from "@/components/HoursInput";
 import PageStatusPanel from "@/components/PageStatusPanel";
+import StudentPracticeCapsulesPanel from "@/components/StudentPracticeCapsulesPanel";
+import WorkProofPanel from "@/components/WorkProofPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,6 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuth } from "@/context/AuthContext";
+import { isObserverUser } from "@/lib/access";
 import {
   createTask,
   deleteTask,
@@ -40,6 +44,7 @@ function nextStatus(status: TaskStatus): TaskStatus {
 
 export default function TasksPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [status, setStatus] = useState<(typeof statuses)[number]>("all");
   const [category, setCategory] = useState<(typeof categories)[number]>("all");
   const [title, setTitle] = useState("");
@@ -113,6 +118,7 @@ export default function TasksPage() {
     }),
     [tasks]
   );
+  const shouldShowStudentPanels = user?.role === "user" && !isObserverUser(user);
 
   return (
     <div className="grid gap-6">
@@ -295,6 +301,10 @@ export default function TasksPage() {
           )}
         </div>
       </section>
+
+      {shouldShowStudentPanels && <StudentPracticeCapsulesPanel />}
+
+      {shouldShowStudentPanels && <WorkProofPanel />}
     </div>
   );
 }

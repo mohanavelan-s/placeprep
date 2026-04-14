@@ -17,6 +17,7 @@ const apkRoutes = require('./routes/apk.routes');
 const uploadRoutes = require('./routes/upload.routes');
 const resumeRoutes = require('./routes/resume.routes');
 const aiRoutes = require('./routes/ai.routes');
+const coachRoutes = require('./routes/coach.routes');
 const { getAIStatus } = require('./config/openai');
 const errorHandler = require('./middleware/errorHandler');
 const notFound = require('./middleware/notFound');
@@ -132,6 +133,7 @@ app.use('/api/apk', apkRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/resume', resumeRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/coach', coachRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

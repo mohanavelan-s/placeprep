@@ -109,6 +109,11 @@ export default function AuthPanel({
   const inviteCodeValue = registerForm.inviteCode.trim();
   const invitePreview = invitePreviewQuery.data;
   const inviteIsValid = Boolean(invitePreview?.valid);
+  const inviteRoleLabel = invitePreview?.role === "observer"
+    ? "Observer"
+    : invitePreview?.role
+      ? invitePreview.role[0].toUpperCase() + invitePreview.role.slice(1)
+      : "";
   const registerDisabled =
     isSubmitting
     || !inviteCodeValue
@@ -284,7 +289,10 @@ export default function AuthPanel({
                         </p>
                         {invitePreview.valid && (
                           <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                            Role: {invitePreview.role} / Expires: {new Date(invitePreview.expiresAt || "").toLocaleDateString("en-IN")}
+                            Role: {inviteRoleLabel}
+                            {invitePreview.role === "observer"
+                              ? " / Limited to command chamber, tasks, and mentor."
+                              : ` / Expires: ${new Date(invitePreview.expiresAt || "").toLocaleDateString("en-IN")}`}
                           </p>
                         )}
                       </div>

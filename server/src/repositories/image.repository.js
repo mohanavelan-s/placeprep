@@ -90,8 +90,30 @@ async function listImages(userId, filters = {}) {
   return result.rows;
 }
 
+async function listRecentByUsers(userIds = [], limitPerUser = 4) {
+  if (!userIds.length) {
+    return [];
+  }
+
+  const result = await query(
+    `SELECT * FROM (
+       SELECT
+         ${imageColumns},
+         ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC) AS row_number
+       FROM images
+       WHERE user_id = ANY($1::uuid[])
+     ) AS ranked_images
+     WHERE row_number <= $2
+     ORDER BY "proofDate" DESC NULLS LAST, "createdAt" DESC`,
+    [userIds, limitPerUser]
+  );
+
+  return result.rows;
+}
+
 module.exports = {
   createImage,
   listImages,
+  listRecentByUsers,
   imageColumns,
 };

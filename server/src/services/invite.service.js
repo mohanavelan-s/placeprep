@@ -21,12 +21,48 @@ function buildInviteLink(code) {
   return `${env.appUrl.replace(/\/$/, '')}/invite?code=${encodeURIComponent(code)}`;
 }
 
+function getObserverAccessCode() {
+  const explicitCode = normalizeInviteCode(env.bootstrapObserverInviteCode);
+  if (explicitCode) {
+    return explicitCode;
+  }
+
+  return normalizeInviteCode(env.bootstrapUserInviteCode);
+}
+
+function buildObserverAccessGrant(code) {
+  const normalizedCode = normalizeInviteCode(code);
+  const observerCode = getObserverAccessCode();
+
+  if (!normalizedCode || !observerCode || normalizedCode !== observerCode) {
+    return null;
+  }
+
+  return {
+    id: null,
+    code: observerCode,
+    role: 'user',
+    displayRole: 'observer',
+    accessTier: 'observer',
+    expiresAt: null,
+    used: false,
+    metadata: {
+      bootstrap: true,
+      bootstrapRole: 'observer',
+      createdFrom: 'observer-access-code',
+      reusable: true,
+      persistent: true,
+      accessTier: 'observer',
+    },
+  };
+}
+
 function resolveInviteStatus(invite) {
   if (!invite) {
     return 'missing';
   }
 
-  if (invite.used) {
+  if (invite.used && !invite.metadata?.reusable) {
     return 'used';
   }
 
@@ -63,6 +99,20 @@ async function previewInviteCode(code) {
     };
   }
 
+  const observerGrant = buildObserverAccessGrant(normalizedCode);
+  if (observerGrant) {
+    return {
+      code: normalizedCode,
+      valid: true,
+      status: 'valid',
+      role: 'observer',
+      accessTier: 'observer',
+      persistent: true,
+      inviteLink: buildInviteLink(normalizedCode),
+      message: 'Observer access accepted.',
+    };
+  }
+
   const invite = await inviteRepository.findByCode(normalizedCode);
   const status = resolveInviteStatus(invite);
 
@@ -96,6 +146,11 @@ async function assertInviteAvailable(code, client = null) {
 
   if (!normalizedCode) {
     throw new AppError('Invite code is required.', 400);
+  }
+
+  const observerGrant = buildObserverAccessGrant(normalizedCode);
+  if (observerGrant) {
+    return observerGrant;
   }
 
   const invite = await inviteRepository.findByCode(normalizedCode, client);
@@ -153,6 +208,7 @@ async function markInviteUsed(inviteId, userId, client = null) {
 function buildBootstrapInviteDefinitions() {
   const definitions = [];
   const expiresAt = new Date(Date.now() + env.bootstrapInviteExpiresDays * 24 * 60 * 60 * 1000);
+  const observerCode = getObserverAccessCode();
 
   const adminCode = normalizeInviteCode(env.bootstrapAdminInviteCode);
   if (adminCode) {
@@ -169,7 +225,7 @@ function buildBootstrapInviteDefinitions() {
   }
 
   const userCode = normalizeInviteCode(env.bootstrapUserInviteCode);
-  if (userCode) {
+  if (userCode && userCode !== observerCode) {
     definitions.push({
       code: userCode,
       role: 'user',

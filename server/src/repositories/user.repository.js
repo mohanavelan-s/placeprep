@@ -24,6 +24,7 @@ const publicColumns = `
   consistency_score AS "consistencyScore",
   current_streak AS "currentStreak",
   readiness_score AS "readinessScore",
+  COALESCE(coach_metadata->>'accessTier', 'standard') AS "accessTier",
   coach_metadata AS "coachMetadata",
   last_login_at AS "lastLoginAt",
   created_at AS "createdAt",
@@ -186,6 +187,51 @@ async function listUsersForNotificationSweep() {
   return result.rows;
 }
 
+async function listStudentsForOversight(limit = 40) {
+  const result = await query(
+    `SELECT
+       student.id,
+       student.name,
+       student.username,
+       student.role,
+       student.email,
+       student.weak_areas AS "weakAreas",
+       student.strong_topics AS "strongTopics",
+       student.target_role AS "targetRole",
+       student.placement_date AS "placementDate",
+       student.timezone,
+       student.solved_problems AS "solvedProblems",
+       student.average_time_per_problem AS "averageTimePerProblem",
+       student.failed_attempts AS "failedAttempts",
+       student.mistake_count AS "mistakeCount",
+       student.consistency_score AS "consistencyScore",
+       student.current_streak AS "currentStreak",
+       student.readiness_score AS "readinessScore",
+       COALESCE(student.coach_metadata->>'accessTier', 'standard') AS "accessTier",
+       student.coach_metadata AS "coachMetadata",
+       student.last_login_at AS "lastLoginAt",
+       student.created_at AS "createdAt",
+       student.updated_at AS "updatedAt",
+       inviter.id AS "inviterId",
+       inviter.name AS "inviterName",
+       inviter.username AS "inviterUsername",
+       source.code AS "inviteCode",
+       source.used_at AS "inviteAcceptedAt"
+     FROM users AS student
+     LEFT JOIN invites AS source
+       ON source.used_by = student.id
+     LEFT JOIN users AS inviter
+       ON inviter.id = source.created_by
+     WHERE student.role = 'user'
+       AND COALESCE(student.coach_metadata->>'accessTier', 'standard') <> 'observer'
+     ORDER BY student.created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+
+  return result.rows;
+}
+
 module.exports = {
   createUser,
   findByEmail,
@@ -195,4 +241,5 @@ module.exports = {
   updateUser,
   touchLastLogin,
   listUsersForNotificationSweep,
+  listStudentsForOversight,
 };

@@ -8,6 +8,7 @@ function signAccessToken(user) {
       email: user.email,
       username: user.username || null,
       role: user.role || 'user',
+      accessTier: user.accessTier || user.coachMetadata?.accessTier || 'standard',
     },
     env.jwtSecret,
     {

@@ -1,13 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 
+import AdminStudentOversightPanel from "@/components/AdminStudentOversightPanel";
 import DashboardProgressCharts from "@/components/DashboardProgressCharts";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import StatsGrid from "@/components/StatsGrid";
 import XPBar from "@/components/XPBar";
+import { useAuth } from "@/context/AuthContext";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import { fetchProgressHistory, fetchProgressSummary } from "@/lib/api";
 
 export default function ProgressPage() {
+  const { user } = useAuth();
   const summaryQuery = useQuery({
     queryKey: ["progress-summary"],
     queryFn: fetchProgressSummary,
@@ -127,6 +130,8 @@ export default function ProgressPage() {
           )}
         </div>
       </section>
+
+      {user?.role === "admin" && <AdminStudentOversightPanel />}
     </div>
   );
 }

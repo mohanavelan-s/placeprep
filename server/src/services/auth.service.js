@@ -79,20 +79,26 @@ async function register(payload) {
     const invite = payload.inviteCode
       ? await inviteService.assertInviteAvailable(payload.inviteCode, client)
       : null;
+    const accessTier = invite?.accessTier === 'observer' ? 'observer' : 'standard';
 
     const createdUser = await userRepository.createUser({
       name: payload.name.trim(),
       username,
-      role: invite?.role || 'user',
+      role: invite?.role === 'admin' ? 'admin' : 'user',
       email,
       passwordHash,
       weakAreas: payload.weakAreas || [],
       targetRole: payload.targetRole || null,
       placementDate: payload.placementDate || null,
       timezone: payload.timezone || env.defaultTimezone,
+      coachMetadata: accessTier === 'observer'
+        ? {
+            accessTier: 'observer',
+          }
+        : {},
     }, client);
 
-    if (invite) {
+    if (invite?.id) {
       await inviteService.markInviteUsed(invite.id, createdUser.id, client);
     }
 

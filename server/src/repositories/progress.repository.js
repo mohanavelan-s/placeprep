@@ -80,7 +80,24 @@ async function listHistory(userId, limit = 14) {
   return result.rows;
 }
 
+async function listLatestByUsers(userIds = []) {
+  if (!userIds.length) {
+    return [];
+  }
+
+  const result = await query(
+    `SELECT DISTINCT ON (user_id) ${statColumns}
+     FROM progress_stats
+     WHERE user_id = ANY($1::uuid[])
+     ORDER BY user_id, stat_date DESC, created_at DESC`,
+    [userIds]
+  );
+
+  return result.rows;
+}
+
 module.exports = {
   upsertProgressStat,
   listHistory,
+  listLatestByUsers,
 };

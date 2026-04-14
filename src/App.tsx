@@ -9,6 +9,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { canAccessAppPath } from "@/lib/access";
 import AiMentorPage from "./pages/AiMentorPage.tsx";
 import AuthPage from "./pages/AuthPage.tsx";
 import DashboardPage from "./pages/DashboardPage.tsx";
@@ -70,6 +71,21 @@ function TitleUpdater() {
   return null;
 }
 
+function RestrictedAccessRedirect() {
+  return <Navigate to="/dashboard" replace />;
+}
+
+function ProtectedWorkspaceLayout() {
+  const { user } = useAuth();
+  const location = useLocation();
+
+  if (!canAccessAppPath(user, location.pathname)) {
+    return <RestrictedAccessRedirect />;
+  }
+
+  return <AppShell />;
+}
+
 function AppRoutes() {
   const { isAuthenticated, isInitializing, login, register } = useAuth();
 
@@ -108,7 +124,7 @@ function AppRoutes() {
         <Route path="/welcome" element={<LandingPage />} />
         <Route path="/auth" element={<Navigate to="/dashboard" replace />} />
         <Route path="/invite" element={<Navigate to="/dashboard" replace />} />
-        <Route element={<AppShell />}>
+        <Route element={<ProtectedWorkspaceLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/prep-architect" element={<PrepArchitectPage />} />
           <Route path="/tasks" element={<TasksPage />} />

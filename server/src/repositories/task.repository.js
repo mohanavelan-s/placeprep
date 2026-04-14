@@ -2,6 +2,10 @@ const { randomUUID } = require('crypto');
 const { query } = require('../config/database');
 const { buildUpdateClause } = require('../utils/sql');
 
+function getExecutor(client) {
+  return client ? client.query.bind(client) : query;
+}
+
 const taskColumns = `
   id,
   user_id AS "userId",
@@ -27,8 +31,9 @@ const taskColumns = `
   updated_at AS "updatedAt"
 `;
 
-async function createTask(payload) {
-  const result = await query(
+async function createTask(payload, client = null) {
+  const execute = getExecutor(client);
+  const result = await execute(
     `INSERT INTO tasks (
       id,
       user_id,
@@ -187,6 +192,54 @@ async function deleteAiGeneratedByDate(userId, scheduledFor) {
   return result.rowCount || 0;
 }
 
+async function listSummaryByUsers(userIds = []) {
+  if (!userIds.length) {
+    return [];
+  }
+
+  const result = await query(
+    `SELECT
+       user_id AS "userId",
+       COUNT(*)::INT AS total,
+       COUNT(*) FILTER (WHERE status = 'pending')::INT AS pending,
+       COUNT(*) FILTER (WHERE status = 'in_progress')::INT AS "inProgress",
+       COUNT(*) FILTER (WHERE status = 'completed')::INT AS completed,
+       COUNT(*) FILTER (WHERE status = 'skipped')::INT AS skipped,
+       COUNT(*) FILTER (
+         WHERE status IN ('pending', 'in_progress')
+           AND scheduled_for < CURRENT_DATE
+       )::INT AS overdue
+     FROM tasks
+     WHERE user_id = ANY($1::uuid[])
+     GROUP BY user_id`,
+    [userIds]
+  );
+
+  return result.rows;
+}
+
+async function listRecentAdminPracticeTasksByUsers(userIds = [], limitPerUser = 12) {
+  if (!userIds.length) {
+    return [];
+  }
+
+  const result = await query(
+    `SELECT * FROM (
+       SELECT
+         ${taskColumns},
+         ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC) AS row_number
+       FROM tasks
+       WHERE user_id = ANY($1::uuid[])
+         AND metadata->>'shareKind' = 'admin-practice-link'
+     ) AS ranked_tasks
+     WHERE row_number <= $2
+     ORDER BY "createdAt" DESC`,
+    [userIds, limitPerUser]
+  );
+
+  return result.rows;
+}
+
 module.exports = {
   createTask,
   findById,
@@ -194,5 +247,7 @@ module.exports = {
   updateTask,
   deleteTask,
   deleteAiGeneratedByDate,
+  listSummaryByUsers,
+  listRecentAdminPracticeTasksByUsers,
   taskColumns,
 };
