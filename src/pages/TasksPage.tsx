@@ -291,15 +291,13 @@ export default function TasksPage() {
             </div>
           ))}
 
-          {!tasks.length && !tasksQuery.isPending && (
+          {!tasks.length && !tasksQuery.isPending && !tasksQuery.isError && (
             <div className="px-6 py-10 text-center">
               <p className="font-heading text-3xl text-foreground">
-                {tasksQuery.isError ? "No tasks are available right now." : "No tasks match these filters."}
+                No tasks match these filters.
               </p>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                {tasksQuery.isError
-                  ? "Retry the request, or create a task manually while the API reconnects."
-                  : "Generate from Prep Architect or create one manually here."}
+                Generate from Prep Architect or create one manually here.
               </p>
             </div>
           )}

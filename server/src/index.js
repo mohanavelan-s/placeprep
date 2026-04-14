@@ -126,8 +126,14 @@ async function startServer() {
   try {
     await testConnection();
 
-    if (env.autoInitDb) {
+    const shouldInitializeDatabase = env.nodeEnv === 'production' || env.autoInitDb;
+
+    if (shouldInitializeDatabase) {
+      console.log('[db] Applying startup schema sync.');
       await initializeDatabase();
+      console.log('[db] Startup schema sync complete.');
+    } else {
+      console.log('[db] Startup schema sync skipped.');
     }
 
     const bootstrapInvites = await ensureBootstrapInvites();
