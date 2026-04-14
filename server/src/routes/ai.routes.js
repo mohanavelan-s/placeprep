@@ -48,7 +48,7 @@ router.post(
   [
     body('knownTopics').optional().isArray({ max: 8 }),
     body('targetTopics').optional().isArray({ max: 8 }),
-    body('timePerDay').optional().isInt({ min: 60, max: 300 }),
+    body('timePerDay').optional().isInt({ min: 60, max: 480 }),
     body('targetRole').optional().isString(),
   ],
   validate,
@@ -61,7 +61,7 @@ router.post(
     body('planId').isUUID(),
     body('knownTopics').optional().isArray({ max: 8 }),
     body('targetTopics').optional().isArray({ max: 8 }),
-    body('timePerDay').optional().isInt({ min: 60, max: 300 }),
+    body('timePerDay').optional().isInt({ min: 60, max: 480 }),
     body('targetRole').optional().isString(),
   ],
   validate,

@@ -1,5 +1,6 @@
 const { randomUUID } = require('crypto');
 
+const env = require('../config/env');
 const { withTransaction } = require('../config/database');
 const AppError = require('../utils/appError');
 const { formatDateInTimezone, formatDateTimeInTimezone, getNextDayMorningDateTime, normalizeDateTime } = require('../utils/date');
@@ -9,7 +10,8 @@ const notificationRepository = require('../repositories/notification.repository'
 const progressRepository = require('../repositories/progress.repository');
 const taskRepository = require('../repositories/task.repository');
 const userRepository = require('../repositories/user.repository');
-const { enqueueAdminAssignmentEmail, enqueueNotificationPush } = require('./deliveryJob.service');
+const { sendAdminAssignmentEmail } = require('./email.service');
+const { enqueueAdminAssignmentEmail, enqueueNotificationPush, processPendingDeliveryJobs } = require('./deliveryJob.service');
 const progressService = require('./progress.service');
 const userProfileService = require('./userProfile.service');
 
@@ -706,20 +708,55 @@ async function createPracticeCapsule(adminUser, payload) {
         };
       }
 
-      const queuedJob = await enqueueAdminAssignmentEmail({
-        user: student,
-        assignment,
-        notificationId: notification.id,
-        dedupeKey: `coach-assignment-email:${assignmentContext.assignmentId}:${student.id}`,
-      });
+      if (!env.deliveryWorkerEnabled) {
+        const emailResult = await sendAdminAssignmentEmail({
+          user: student,
+          assignment,
+        });
 
-      if (!queuedJob) {
-        console.error(`[coach] Assignment email job was already queued for ${student.id}.`);
+        if (emailResult.sent && notification.id) {
+          await notificationRepository.markEmailed([notification.id]);
+        }
+
+        return emailResult;
       }
 
-      return queuedJob;
+      try {
+        const queuedJob = await enqueueAdminAssignmentEmail({
+          user: student,
+          assignment,
+          notificationId: notification.id,
+          dedupeKey: `coach-assignment-email:${assignmentContext.assignmentId}:${student.id}`,
+        });
+
+        if (!queuedJob) {
+          console.error(`[coach] Assignment email job was already queued for ${student.id}.`);
+        }
+
+        return queuedJob;
+      } catch (error) {
+        console.error(`[coach] Assignment email queue failed for ${student.id}. Falling back to direct send.`, error);
+        const emailResult = await sendAdminAssignmentEmail({
+          user: student,
+          assignment,
+        });
+
+        if (emailResult.sent && notification.id) {
+          await notificationRepository.markEmailed([notification.id]);
+        }
+
+        return emailResult;
+      }
     })
   );
+
+  if (createdNotifications.length) {
+    try {
+      await processPendingDeliveryJobs(Math.max(createdNotifications.length * 2, 4));
+    } catch (error) {
+      console.error('[coach] Immediate delivery drain failed after assignment dispatch.', error);
+    }
+  }
 
   return {
     dispatchId: assignmentContext.assignmentId,

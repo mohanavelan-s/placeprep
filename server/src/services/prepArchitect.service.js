@@ -234,7 +234,7 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole)
   const revisionTopics = prioritizedTopics.filter((topic) => /dbms|operating systems|system design|object-oriented/i.test(topic));
   const projectFocus = getRoleBiasTopics(targetRole)[0] || targetRole || 'Placement project';
   const days = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'];
-  const totalMinutes = clamp(timePerDay || 120, 90, 240);
+  const totalMinutes = clamp(timePerDay || 120, 60, 480);
   const chunks = [
     Math.round(totalMinutes * 0.25),
     Math.round(totalMinutes * 0.28),
@@ -371,13 +371,13 @@ function normalizePlanResult(rawPlan, fallbackPlan) {
           || fallbackPlan.tasks[index]?.totalEstimatedMinutes
           || 120,
         60,
-        300
+        480
       ),
       items: Array.isArray(dayPlan.items) && dayPlan.items.length
         ? dayPlan.items.slice(0, 4).map((item, itemIndex) => ({
           title: String(item.title || fallbackPlan.tasks[index]?.items[itemIndex]?.title || 'Focused task').trim(),
           type: String(item.type || fallbackPlan.tasks[index]?.items[itemIndex]?.type || 'DSA').trim(),
-          estimatedMinutes: clamp(item.estimatedMinutes || fallbackPlan.tasks[index]?.items[itemIndex]?.estimatedMinutes || 30, 10, 120),
+          estimatedMinutes: clamp(item.estimatedMinutes || fallbackPlan.tasks[index]?.items[itemIndex]?.estimatedMinutes || 30, 10, 240),
           difficulty: String(item.difficulty || fallbackPlan.tasks[index]?.items[itemIndex]?.difficulty || 'Medium').trim(),
           referenceLabel: String(item.referenceLabel || fallbackPlan.tasks[index]?.items[itemIndex]?.referenceLabel || 'Reference').trim(),
           referenceUrl: item.referenceUrl || fallbackPlan.tasks[index]?.items[itemIndex]?.referenceUrl || null,
@@ -491,7 +491,7 @@ function planTasksForSync(plan, planId) {
     intensity: item.type === 'Project' ? 'high' : 'medium',
     referenceLabel: item.referenceLabel || null,
     referenceUrl: item.referenceUrl || null,
-    estimatedMinutes: clamp(item.estimatedMinutes, 10, 180),
+    estimatedMinutes: clamp(item.estimatedMinutes, 10, 240),
     actualMinutes: 0,
     difficulty: /easy/i.test(item.difficulty) ? 2 : /hard/i.test(item.difficulty) ? 4 : 3,
     weakArea: firstDay.theme,
@@ -579,7 +579,7 @@ async function persistPlan(user, plan, sourcePlanId = null) {
 function buildPlanRequestPayload(user, payload = {}, currentPlan = null) {
   const knownTopics = cleanTopics(payload.knownTopics || currentPlan?.knownTopics || user.strongTopics, 8);
   const targetTopics = cleanTopics(payload.targetTopics || currentPlan?.targetTopics || user.weakAreas, 8);
-  const timePerDay = clamp(payload.timePerDay || currentPlan?.timePerDay || 120, 60, 300);
+  const timePerDay = clamp(payload.timePerDay || currentPlan?.timePerDay || 120, 60, 480);
   const targetRole = String(payload.targetRole || currentPlan?.targetRole || user.targetRole || 'Placement Engineer').trim();
 
   if (!knownTopics.length && !targetTopics.length) {

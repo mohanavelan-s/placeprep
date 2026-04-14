@@ -82,8 +82,6 @@ function buildAssignmentSuccessMessage(result: PracticeCapsuleDispatchResult) {
 type AssignmentItemDraft = {
   id: string;
   title: string;
-  description: string;
-  referenceLabel: string;
   referenceUrl: string;
   type: string;
 };
@@ -100,8 +98,6 @@ function createAssignmentItemDraft(partial: Partial<AssignmentItemDraft> = {}): 
   return {
     id: partial.id || createDraftId(),
     title: partial.title || "",
-    description: partial.description || "",
-    referenceLabel: partial.referenceLabel || "",
     referenceUrl: partial.referenceUrl || "",
     type: partial.type || "custom",
   };
@@ -111,12 +107,10 @@ function createDefaultAssignmentItems() {
   return [
     createAssignmentItemDraft({
       title: "LeetCode Drill 1",
-      referenceLabel: "LeetCode question 1",
       type: "leetcode_one",
     }),
     createAssignmentItemDraft({
       title: "LeetCode Drill 2",
-      referenceLabel: "LeetCode question 2",
       type: "leetcode_two",
     }),
     createAssignmentItemDraft({
@@ -158,21 +152,19 @@ function buildDefaultDeadlineDraft() {
 
 function buildAssignmentItemPayload(item: AssignmentItemDraft) {
   const title = item.title.trim();
-  const description = item.description.trim();
-  const referenceLabel = item.referenceLabel.trim();
   const referenceUrl = item.referenceUrl.trim();
 
-  if (!title && !description && !referenceUrl) {
+  if (!title && !referenceUrl) {
     return null;
   }
 
   if (item.type === "leetcode_one" || item.type === "leetcode_two") {
+    const resolvedTitle = title || "LeetCode Drill";
     return {
-      title: title || "LeetCode Drill",
-      description: description || undefined,
+      title: resolvedTitle,
       category: "DSA",
       subcategory: "Admin capsule",
-      referenceLabel: referenceLabel || title || "LeetCode question",
+      referenceLabel: resolvedTitle,
       referenceUrl: referenceUrl || undefined,
       estimatedMinutes: 45,
       difficulty: 3,
@@ -182,12 +174,12 @@ function buildAssignmentItemPayload(item: AssignmentItemDraft) {
   }
 
   if (item.type === "verbal") {
+    const resolvedTitle = title || "Verbal Reasoning Drill";
     return {
-      title: title || "Verbal Reasoning Drill",
-      description: description || undefined,
+      title: resolvedTitle,
       category: "Other",
       subcategory: "Verbal",
-      referenceLabel: referenceLabel || title || "Verbal practice",
+      referenceLabel: resolvedTitle,
       referenceUrl: referenceUrl || undefined,
       estimatedMinutes: 30,
       difficulty: 2,
@@ -197,12 +189,12 @@ function buildAssignmentItemPayload(item: AssignmentItemDraft) {
   }
 
   if (item.type === "aptitude") {
+    const resolvedTitle = title || "Aptitude Drill";
     return {
-      title: title || "Aptitude Drill",
-      description: description || undefined,
+      title: resolvedTitle,
       category: "Aptitude",
       subcategory: "Admin capsule",
-      referenceLabel: referenceLabel || title || "Aptitude practice",
+      referenceLabel: resolvedTitle,
       referenceUrl: referenceUrl || undefined,
       estimatedMinutes: 30,
       difficulty: 2,
@@ -211,12 +203,12 @@ function buildAssignmentItemPayload(item: AssignmentItemDraft) {
     };
   }
 
+  const resolvedTitle = title || "Custom admin task";
   return {
-    title: title || "Custom admin task",
-    description: description || undefined,
+    title: resolvedTitle,
     category: "Other",
     subcategory: "Admin assignment",
-    referenceLabel: referenceLabel || undefined,
+    referenceLabel: resolvedTitle,
     referenceUrl: referenceUrl || undefined,
     estimatedMinutes: 30,
     difficulty: 3,
@@ -293,7 +285,7 @@ function PracticeCapsuleCard({ capsule }: { capsule: PracticeCapsule }) {
 
             <div className="mt-3 flex items-center justify-between gap-3">
               <p className="truncate text-xs text-muted-foreground">
-                {item.description || item.referenceLabel || "Open the assigned task and complete it."}
+                {item.referenceLabel || item.title || "Open the assigned task and complete it."}
               </p>
               {item.referenceUrl && (
                 <a
@@ -445,7 +437,7 @@ export default function AdminStudentOversightPanel() {
 
   function updateAssignmentItem(
     itemId: string,
-    field: keyof Omit<AssignmentItemDraft, "id">,
+    field: "title" | "referenceUrl",
     value: string,
   ) {
     setAssignmentItems((current) =>
@@ -947,7 +939,7 @@ export default function AdminStudentOversightPanel() {
                     <div>
                       <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Tasks in this bundle</p>
                       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                        Keep the default drills, edit them, or add custom tasks with optional descriptions and links.
+                        Keep the default drills, edit the task names, or add extra name and link pairs.
                       </p>
                     </div>
                     <Button
@@ -986,7 +978,7 @@ export default function AdminStudentOversightPanel() {
                           <Input
                             value={item.title}
                             onChange={(event) => updateAssignmentItem(item.id, "title", event.target.value)}
-                            placeholder="Task title"
+                            placeholder="Task name"
                             className="h-11 border-border/80 bg-background/70"
                           />
                           <Input
@@ -997,19 +989,6 @@ export default function AdminStudentOversightPanel() {
                           />
                         </div>
 
-                        <Input
-                          value={item.referenceLabel}
-                          onChange={(event) => updateAssignmentItem(item.id, "referenceLabel", event.target.value)}
-                          placeholder="Optional link label"
-                          className="mt-3 h-11 border-border/80 bg-background/70"
-                        />
-
-                        <Textarea
-                          value={item.description}
-                          onChange={(event) => updateAssignmentItem(item.id, "description", event.target.value)}
-                          placeholder="Optional description, instructions, or expectation for this task."
-                          className="mt-3 min-h-[92px] border-border/80 bg-background/70"
-                        />
                       </div>
                     ))}
                   </div>

@@ -7,15 +7,19 @@ function getExecutor(client) {
   return client ? client.query.bind(client) : query;
 }
 
-const groupColumns = `
+const baseGroupColumns = `
   coach_groups.id,
   coach_groups.name,
   coach_groups.description,
   coach_groups.created_by AS "createdBy",
-  creator.name AS "createdByName",
   coach_groups.metadata,
   coach_groups.created_at AS "createdAt",
   coach_groups.updated_at AS "updatedAt"
+`;
+
+const groupColumns = `
+  ${baseGroupColumns},
+  creator.name AS "createdByName"
 `;
 
 const groupMemberColumns = `
@@ -42,7 +46,7 @@ async function createGroup(payload, client = null) {
       created_by,
       metadata
     ) VALUES ($1, $2, $3, $4, $5)
-    RETURNING ${groupColumns}`,
+    RETURNING ${baseGroupColumns}`,
     [
       randomUUID(),
       payload.name,
@@ -55,8 +59,9 @@ async function createGroup(payload, client = null) {
   return result.rows[0] || null;
 }
 
-async function findGroupById(groupId) {
-  const result = await query(
+async function findGroupById(groupId, client = null) {
+  const execute = getExecutor(client);
+  const result = await execute(
     `SELECT ${groupColumns}
      FROM coach_groups
      LEFT JOIN users AS creator
@@ -90,18 +95,19 @@ async function updateGroup(groupId, updates, client = null) {
 
   const { clause, values } = buildUpdateClause(mappedUpdates);
   if (!clause) {
-    return findGroupById(groupId);
+    return findGroupById(groupId, client);
   }
 
   const result = await execute(
     `UPDATE coach_groups
      SET ${clause}
      WHERE id = $${values.length + 1}
-     RETURNING ${groupColumns}`,
+     RETURNING ${baseGroupColumns}`,
     [...values, groupId]
   );
 
-  return result.rows[0] || null;
+  const updatedGroup = result.rows[0] || null;
+  return updatedGroup ? findGroupById(updatedGroup.id, client) : null;
 }
 
 async function addMembers(groupId, userIds = [], addedBy = null, client = null) {
