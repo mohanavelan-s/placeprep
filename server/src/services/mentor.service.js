@@ -165,7 +165,16 @@ async function getHistory(user) {
   return mentorMessageRepository.listRecentByUser(user.id, 30);
 }
 
+async function clearHistory(user) {
+  const deleted = await mentorMessageRepository.deleteByUser(user.id);
+  return {
+    deleted,
+    clearedAt: new Date().toISOString(),
+  };
+}
+
 module.exports = {
   sendMessage,
   getHistory,
+  clearHistory,
 };

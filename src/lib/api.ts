@@ -271,6 +271,11 @@ export interface NotificationSyncResult {
   emailReady: boolean;
 }
 
+export interface HistoryClearResult {
+  deleted: number;
+  clearedAt: string;
+}
+
 export type TaskStatus = "pending" | "in_progress" | "completed" | "skipped";
 
 export interface Task {
@@ -870,6 +875,12 @@ export async function fetchResumeAnalysisHistory() {
   return resumes.map(normalizeResumeRecord);
 }
 
+export async function clearResumeAnalysisHistory() {
+  return request<HistoryClearResult>("/resume/history", {
+    method: "DELETE",
+  });
+}
+
 export async function fetchLatestApk() {
   return request<ApkVersion | null>("/apk/latest");
 }
@@ -1038,8 +1049,20 @@ export async function markAllNotificationsRead() {
   });
 }
 
+export async function clearNotificationHistory() {
+  return request<HistoryClearResult>("/notifications/history", {
+    method: "DELETE",
+  });
+}
+
 export async function fetchProgressHistory(days = 14) {
   return request<ProgressHistoryItem[]>(`/progress/history?days=${days}`);
+}
+
+export async function clearProgressHistory() {
+  return request<HistoryClearResult>("/progress/history", {
+    method: "DELETE",
+  });
 }
 
 export async function fetchTodayTasks() {
@@ -1146,6 +1169,12 @@ export async function fetchPrepPlanHistory(limit = 10) {
   return request<PrepPlan[]>(`/ai/prep-architect/history?limit=${limit}`);
 }
 
+export async function clearPrepPlanHistory() {
+  return request<HistoryClearResult>("/ai/prep-architect/history", {
+    method: "DELETE",
+  });
+}
+
 export async function generatePrepPlan(payload: {
   knownTopics: string[];
   targetTopics: string[];
@@ -1182,6 +1211,12 @@ export async function sendMentorMessage(payload: { message: string }) {
   });
 }
 
+export async function clearMentorHistory() {
+  return request<HistoryClearResult>("/ai/chat/history", {
+    method: "DELETE",
+  });
+}
+
 export async function fetchActivePowerPocket() {
   return request<PowerPocketSession | null>("/power-pocket/active");
 }
@@ -1208,5 +1243,11 @@ export async function endPowerPocket(
   return request<PowerPocketSession>(`/power-pocket/${sessionId}/end`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function clearUploadedProofHistory() {
+  return request<HistoryClearResult>("/uploads/images/history", {
+    method: "DELETE",
   });
 }

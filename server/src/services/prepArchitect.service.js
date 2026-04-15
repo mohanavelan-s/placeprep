@@ -696,10 +696,28 @@ async function getPlanHistory(user, limit = 10) {
   return plans.map(hydrateStoredPlan);
 }
 
+async function clearPlanHistory(user) {
+  const deleted = await prepPlanRepository.deleteByUser(user.id);
+  const nextCoachMetadata = { ...(user.coachMetadata || {}) };
+  delete nextCoachMetadata.prepArchitectUpdatedAt;
+  delete nextCoachMetadata.prepArchitectPlanId;
+  delete nextCoachMetadata.prepArchitectCoachLine;
+
+  await userRepository.updateUser(user.id, {
+    coachMetadata: nextCoachMetadata,
+  });
+
+  return {
+    deleted,
+    clearedAt: new Date().toISOString(),
+  };
+}
+
 module.exports = {
   TOPIC_DATASET,
   generatePlan,
   updatePlan,
   getLatestPlan,
   getPlanHistory,
+  clearPlanHistory,
 };

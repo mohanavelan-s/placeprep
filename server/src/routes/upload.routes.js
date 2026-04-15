@@ -34,4 +34,9 @@ router.get(
   asyncHandler(controller.listImages)
 );
 
+router.delete(
+  '/images/history',
+  asyncHandler(controller.clearImagesHistory)
+);
+
 module.exports = router;

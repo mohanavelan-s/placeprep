@@ -45,7 +45,19 @@ async function listRecentByUser(userId, limit = 20) {
   return result.rows.reverse();
 }
 
+async function deleteByUser(userId) {
+  const result = await query(
+    `DELETE FROM mentor_messages
+     WHERE user_id = $1
+     RETURNING id`,
+    [userId]
+  );
+
+  return result.rowCount;
+}
+
 module.exports = {
   createMessage,
   listRecentByUser,
+  deleteByUser,
 };

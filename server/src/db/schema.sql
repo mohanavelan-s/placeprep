@@ -303,6 +303,41 @@ CREATE TABLE IF NOT EXISTS coach_group_members (
   PRIMARY KEY (group_id, user_id)
 );
 
+WITH ranked_group_names AS (
+  SELECT
+    id,
+    name,
+    ROW_NUMBER() OVER (
+      PARTITION BY LOWER(name)
+      ORDER BY created_at ASC, id ASC
+    ) AS duplicate_rank
+  FROM coach_groups
+)
+UPDATE coach_groups
+SET name = LEFT(
+  coach_groups.name,
+  GREATEST(1, 120 - LENGTH(CONCAT(' (', ranked_group_names.duplicate_rank, ')')))
+) || CONCAT(' (', ranked_group_names.duplicate_rank, ')')
+FROM ranked_group_names
+WHERE coach_groups.id = ranked_group_names.id
+  AND ranked_group_names.duplicate_rank > 1;
+
+WITH ranked_memberships AS (
+  SELECT
+    group_id,
+    user_id,
+    ROW_NUMBER() OVER (
+      PARTITION BY user_id
+      ORDER BY created_at ASC, group_id ASC
+    ) AS membership_rank
+  FROM coach_group_members
+)
+DELETE FROM coach_group_members
+USING ranked_memberships
+WHERE coach_group_members.group_id = ranked_memberships.group_id
+  AND coach_group_members.user_id = ranked_memberships.user_id
+  AND ranked_memberships.membership_rank > 1;
+
 CREATE TABLE IF NOT EXISTS prep_plans (
   id UUID PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -378,6 +413,8 @@ CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON push_subscriptions(
 CREATE INDEX IF NOT EXISTS idx_apk_versions_active_uploaded_at ON apk_versions(is_active, uploaded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_coach_groups_created_at ON coach_groups(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_coach_group_members_user_id ON coach_group_members(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_coach_groups_name_unique ON coach_groups (LOWER(name));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_coach_group_members_user_unique ON coach_group_members(user_id);
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$

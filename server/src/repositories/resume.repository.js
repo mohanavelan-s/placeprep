@@ -103,9 +103,21 @@ async function listResumes(userId) {
   return result.rows;
 }
 
+async function deleteByUser(userId) {
+  const result = await query(
+    `DELETE FROM resumes
+     WHERE user_id = $1
+     RETURNING ${resumeColumns}`,
+    [userId]
+  );
+
+  return result.rows;
+}
+
 module.exports = {
   deactivateActiveResumes,
   createResume,
   getLatestResume,
   listResumes,
+  deleteByUser,
 };

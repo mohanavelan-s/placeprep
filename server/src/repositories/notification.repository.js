@@ -150,6 +150,17 @@ async function markEmailed(notificationIds = []) {
   return result.rowCount;
 }
 
+async function deleteByUser(userId) {
+  const result = await query(
+    `DELETE FROM notifications
+     WHERE user_id = $1
+     RETURNING id`,
+    [userId]
+  );
+
+  return result.rowCount;
+}
+
 module.exports = {
   createNotification,
   findNotificationsByKeys,
@@ -157,5 +168,6 @@ module.exports = {
   markRead,
   markAllRead,
   markEmailed,
+  deleteByUser,
   notificationColumns,
 };

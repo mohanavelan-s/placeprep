@@ -25,5 +25,6 @@ router.post(
 
 router.get('/latest', asyncHandler(controller.getLatestResume));
 router.get('/', asyncHandler(controller.listResumes));
+router.delete('/history', asyncHandler(controller.clearHistory));
 
 module.exports = router;

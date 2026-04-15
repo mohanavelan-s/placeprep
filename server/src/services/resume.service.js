@@ -1,5 +1,5 @@
 const resumeRepository = require('../repositories/resume.repository');
-const { uploadBuffer } = require('./storage.service');
+const { deleteStoredAsset, uploadBuffer } = require('./storage.service');
 const aiService = require('./ai.service');
 const AppError = require('../utils/appError');
 
@@ -83,8 +83,30 @@ async function listResumes(user) {
   return resumeRepository.listResumes(user.id);
 }
 
+async function clearHistory(user) {
+  const deletedResumes = await resumeRepository.deleteByUser(user.id);
+
+  await Promise.allSettled(
+    deletedResumes
+      .filter((resume) => resume.publicId && resume.storageProvider)
+      .map((resume) =>
+        deleteStoredAsset({
+          publicId: resume.publicId,
+          storageProvider: resume.storageProvider,
+          resourceType: 'raw',
+        })
+      )
+  );
+
+  return {
+    deleted: deletedResumes.length,
+    clearedAt: new Date().toISOString(),
+  };
+}
+
 module.exports = {
   uploadResume,
   getLatestResume,
   listResumes,
+  clearHistory,
 };

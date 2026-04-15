@@ -45,9 +45,19 @@ async function markAllRead(req, res) {
   });
 }
 
+async function clearHistory(req, res) {
+  const result = await notificationService.clearNotificationHistory(req.user);
+
+  res.json({
+    success: true,
+    data: result,
+  });
+}
+
 module.exports = {
   listNotifications,
   syncNotifications,
   markRead,
   markAllRead,
+  clearHistory,
 };

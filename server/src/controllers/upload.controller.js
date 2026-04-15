@@ -10,7 +10,13 @@ async function listImages(req, res) {
   res.json({ success: true, data: images });
 }
 
+async function clearImagesHistory(req, res) {
+  const result = await imageService.clearProofHistory(req.user);
+  res.json({ success: true, data: result });
+}
+
 module.exports = {
   uploadImage,
   listImages,
+  clearImagesHistory,
 };

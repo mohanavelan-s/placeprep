@@ -1,5 +1,5 @@
 const imageRepository = require('../repositories/image.repository');
-const { uploadBuffer } = require('./storage.service');
+const { deleteStoredAsset, uploadBuffer } = require('./storage.service');
 const { normalizeDate } = require('../utils/date');
 const AppError = require('../utils/appError');
 
@@ -41,7 +41,29 @@ async function listImages(user, filters = {}) {
   });
 }
 
+async function clearProofHistory(user) {
+  const deletedImages = await imageRepository.deleteProofsByUser(user.id);
+
+  await Promise.allSettled(
+    deletedImages
+      .filter((image) => image.publicId && image.storageProvider)
+      .map((image) =>
+        deleteStoredAsset({
+          publicId: image.publicId,
+          storageProvider: image.storageProvider,
+          resourceType: 'image',
+        })
+      )
+  );
+
+  return {
+    deleted: deletedImages.length,
+    clearedAt: new Date().toISOString(),
+  };
+}
+
 module.exports = {
   uploadImage,
   listImages,
+  clearProofHistory,
 };

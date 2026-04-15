@@ -115,12 +115,10 @@ function createDefaultAssignmentItems() {
     }),
     createAssignmentItemDraft({
       title: "Verbal Reasoning Drill",
-      referenceLabel: "Verbal practice",
       type: "verbal",
     }),
     createAssignmentItemDraft({
       title: "Aptitude Drill",
-      referenceLabel: "Aptitude practice",
       type: "aptitude",
     }),
   ];
@@ -405,13 +403,26 @@ export default function AdminStudentOversightPanel() {
     () => groups.find((group) => group.id === selectedGroupId) || null,
     [groups, selectedGroupId],
   );
+  const groupedStudentIds = useMemo(
+    () => new Set(groups.flatMap((group) => group.members.map((member) => member.userId))),
+    [groups],
+  );
   const selectedGroupMemberIds = useMemo(
     () => new Set((selectedGroup?.members || []).map((member) => member.userId)),
     [selectedGroup],
   );
   const availableStudentsForSelectedGroup = useMemo(
-    () => students.filter((entry) => !selectedGroupMemberIds.has(entry.student.id)),
-    [selectedGroupMemberIds, students],
+    () =>
+      students.filter(
+        (entry) =>
+          !selectedGroupMemberIds.has(entry.student.id)
+          && !groupedStudentIds.has(entry.student.id),
+      ),
+    [groupedStudentIds, selectedGroupMemberIds, students],
+  );
+  const availableStudentsForNewGroup = useMemo(
+    () => students.filter((entry) => !groupedStudentIds.has(entry.student.id)),
+    [groupedStudentIds, students],
   );
   const draftGroupStudents = useMemo(
     () => students.filter((entry) => draftGroupMemberIds.includes(entry.student.id)),
@@ -802,8 +813,8 @@ export default function AdminStudentOversightPanel() {
                       Add initial students
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {students.length ? (
-                        students.map((entry) => {
+                      {availableStudentsForNewGroup.length ? (
+                        availableStudentsForNewGroup.map((entry) => {
                           const isSelected = draftGroupMemberIds.includes(entry.student.id);
 
                           return (
@@ -820,7 +831,7 @@ export default function AdminStudentOversightPanel() {
                         })
                       ) : (
                         <p className="text-sm leading-6 text-muted-foreground">
-                          Invite students first, then you can group them here.
+                          Every student is already grouped. Remove someone from an existing group before adding them here.
                         </p>
                       )}
                     </div>

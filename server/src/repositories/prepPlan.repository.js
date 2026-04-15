@@ -126,6 +126,17 @@ async function getNextVersion(userId, db) {
   return Number(result.rows[0]?.version || 0) + 1;
 }
 
+async function deleteByUser(userId) {
+  const result = await query(
+    `DELETE FROM prep_plans
+     WHERE user_id = $1
+     RETURNING id`,
+    [userId]
+  );
+
+  return result.rowCount;
+}
+
 module.exports = {
   createPlan,
   deactivateActivePlans,
@@ -133,4 +144,5 @@ module.exports = {
   findLatestActiveByUser,
   listByUser,
   getNextVersion,
+  deleteByUser,
 };

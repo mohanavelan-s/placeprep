@@ -563,9 +563,18 @@ async function getHistory(user, days = 14) {
   return progressRepository.listHistory(user.id, days);
 }
 
+async function clearHistory(user) {
+  const deleted = await progressRepository.deleteHistory(user.id);
+  return {
+    deleted,
+    clearedAt: new Date().toISOString(),
+  };
+}
+
 module.exports = {
   refreshProgressStats,
   getSummary,
   getCoachProfile,
   getHistory,
+  clearHistory,
 };

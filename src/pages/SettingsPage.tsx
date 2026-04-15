@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import AdminInvitePanel from "@/components/AdminInvitePanel";
 import AndroidAccessPanel from "@/components/AndroidAccessPanel";
+import ClearHistoryButton from "@/components/ClearHistoryButton";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import PersonalProfilePanel from "@/components/PersonalProfilePanel";
 import ResumeAnalysisPanel from "@/components/ResumeAnalysisPanel";
@@ -14,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/context/AuthContext";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import {
+  clearNotificationHistory,
   fetchNotifications,
   fetchUserProfile,
   markAllNotificationsRead,
@@ -188,6 +190,21 @@ export default function SettingsPage() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to mark notifications as read.");
+    },
+  });
+
+  const clearNotificationHistoryMutation = useMutation({
+    mutationFn: clearNotificationHistory,
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["notifications", "recent"] });
+      toast.success(
+        result.deleted
+          ? `Notification history cleared from ${result.deleted} saved signal${result.deleted === 1 ? "" : "s"}.`
+          : "Notification history was already empty.",
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to clear notification history.");
     },
   });
 
@@ -434,6 +451,15 @@ export default function SettingsPage() {
           >
             Mark all read
           </Button>
+
+          <ClearHistoryButton
+            title="Clear notification history?"
+            description="This removes saved notification history for this account after confirmation."
+            onConfirm={() => clearNotificationHistoryMutation.mutate()}
+            pending={clearNotificationHistoryMutation.isPending}
+            disabled={!(notificationsQuery.data || []).length}
+            className="h-11 gap-2 border-border/80 bg-background/70"
+          />
         </div>
 
         <div className="mt-8">

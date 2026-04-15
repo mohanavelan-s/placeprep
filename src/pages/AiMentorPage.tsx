@@ -3,11 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Send } from "lucide-react";
 import { toast } from "sonner";
 
+import ClearHistoryButton from "@/components/ClearHistoryButton";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
-import { fetchMentorHistory, sendMentorMessage } from "@/lib/api";
+import { clearMentorHistory, fetchMentorHistory, sendMentorMessage } from "@/lib/api";
 
 export default function AiMentorPage() {
   const queryClient = useQueryClient();
@@ -32,6 +33,21 @@ export default function AiMentorPage() {
     },
   });
 
+  const clearHistoryMutation = useMutation({
+    mutationFn: clearMentorHistory,
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["mentor-history"] });
+      toast.success(
+        result.deleted
+          ? `Mentor history cleared from ${result.deleted} saved message${result.deleted === 1 ? "" : "s"}.`
+          : "Mentor history was already empty.",
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to clear mentor history.");
+    },
+  });
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [historyQuery.data, sendMutation.data]);
@@ -49,8 +65,21 @@ export default function AiMentorPage() {
 
       <section className="surface-panel overflow-hidden">
         <div className="border-b border-border/70 px-6 py-5">
-          <p className="section-label">Chat</p>
-          <h3 className="mt-2 font-heading text-3xl text-foreground">Message history</h3>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="section-label">Chat</p>
+              <h3 className="mt-2 font-heading text-3xl text-foreground">Message history</h3>
+            </div>
+
+            <ClearHistoryButton
+              title="Clear mentor history?"
+              description="This removes your saved Nocturne Mentor conversation history for this account."
+              onConfirm={() => clearHistoryMutation.mutate()}
+              pending={clearHistoryMutation.isPending}
+              disabled={!history.length}
+              className="h-10 gap-2 border-border/80 bg-background/70"
+            />
+          </div>
         </div>
 
         <div className="max-h-[520px] overflow-y-auto px-6 py-5">

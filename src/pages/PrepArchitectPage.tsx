@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { History, PencilLine, RefreshCcw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import ClearHistoryButton from "@/components/ClearHistoryButton";
 import HoursInput from "@/components/HoursInput";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import PrepPlanView from "@/components/PrepPlanView";
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/context/AuthContext";
 import {
+  clearPrepPlanHistory,
   fetchLatestPrepPlan,
   fetchPrepPlanHistory,
   generatePrepPlan,
@@ -103,6 +105,25 @@ export default function PrepArchitectPage() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to update the plan.");
+    },
+  });
+
+  const clearHistoryMutation = useMutation({
+    mutationFn: clearPrepPlanHistory,
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["prep-plan", "latest"] }),
+        queryClient.invalidateQueries({ queryKey: ["prep-plan", "history"] }),
+      ]);
+      setIsEditing(false);
+      toast.success(
+        result.deleted
+          ? `Prep Architect history cleared from ${result.deleted} saved version${result.deleted === 1 ? "" : "s"}.`
+          : "Prep Architect history was already empty.",
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to clear Prep Architect history.");
     },
   });
 
@@ -249,7 +270,17 @@ export default function PrepArchitectPage() {
             </div>
 
             <div className="rounded-2xl border border-border/80 bg-card/70 p-5">
-              <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Version history</p>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Version history</p>
+                <ClearHistoryButton
+                  title="Clear Prep Architect history?"
+                  description="This removes saved Prep Architect versions for this account. Your current editor inputs will stay available."
+                  onConfirm={() => clearHistoryMutation.mutate()}
+                  pending={clearHistoryMutation.isPending}
+                  disabled={!history.length}
+                  className="h-10 gap-2 border-border/80 bg-background/70"
+                />
+              </div>
               <div className="mt-4 space-y-3">
                 {history.length ? history.map((plan) => (
                   <div key={plan.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/40 px-4 py-3">

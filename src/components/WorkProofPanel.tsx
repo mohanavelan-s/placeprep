@@ -3,12 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Camera, FolderUp, ImageIcon, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
+import ClearHistoryButton from "@/components/ClearHistoryButton";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
-import { fetchUploadedImages, uploadImage } from "@/lib/api";
+import { clearUploadedProofHistory, fetchUploadedImages, uploadImage } from "@/lib/api";
 
 function formatProofDate(value?: string | null) {
   if (!value) {
@@ -61,6 +62,21 @@ export default function WorkProofPanel() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to upload proof.");
+    },
+  });
+
+  const clearHistoryMutation = useMutation({
+    mutationFn: clearUploadedProofHistory,
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["uploads", "proofs"] });
+      toast.success(
+        result.deleted
+          ? `Proof history cleared from ${result.deleted} uploaded item${result.deleted === 1 ? "" : "s"}.`
+          : "Proof history was already empty.",
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to clear proof history.");
     },
   });
 
@@ -170,15 +186,26 @@ export default function WorkProofPanel() {
               </p>
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 gap-2 border-border/80 bg-background/70"
-              onClick={() => void proofsQuery.refetch()}
-            >
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 gap-2 border-border/80 bg-background/70"
+                onClick={() => void proofsQuery.refetch()}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </Button>
+
+              <ClearHistoryButton
+                title="Clear proof history?"
+                description="This removes saved proof uploads for this account. Profile avatars will be kept."
+                onConfirm={() => clearHistoryMutation.mutate()}
+                pending={clearHistoryMutation.isPending}
+                disabled={!(proofsQuery.data || []).length}
+                className="h-10 gap-2 border-border/80 bg-background/70"
+              />
+            </div>
           </div>
 
           {proofsQuery.isPending && !proofsQuery.data && (

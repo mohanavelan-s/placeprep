@@ -19,6 +19,10 @@ function buildTaskSummaryMap(rows) {
   return new Map(rows.map((row) => [row.userId, row]));
 }
 
+function buildGroupNameConflictMessage(name) {
+  return `A group named ${name} already exists. Use a unique group name.`;
+}
+
 function groupRowsBy(rows, key) {
   return rows.reduce((map, row) => {
     const value = row[key];
@@ -371,6 +375,44 @@ async function resolveStudentTargets(studentUserIds = []) {
   throw new AppError('One or more student accounts could not be found.', 404);
 }
 
+async function assertGroupNameAvailable(name, client = null) {
+  const existingGroup = await coachGroupRepository.findGroupByNormalizedName(name, client);
+  if (existingGroup) {
+    throw new AppError(buildGroupNameConflictMessage(existingGroup.name), 409);
+  }
+}
+
+async function assertStudentsCanJoinSingleGroup(studentIds = [], client = null, currentGroupId = null) {
+  const memberships = await coachGroupRepository.listMembershipsByUserIds(studentIds, client);
+  const conflictingMemberships = memberships.filter((membership) => membership.groupId !== currentGroupId);
+
+  if (!conflictingMemberships.length) {
+    return memberships;
+  }
+
+  const conflictByUserId = new Map(
+    conflictingMemberships.map((membership) => [membership.userId, membership.groupName])
+  );
+  const conflictingNames = await Promise.all(
+    Array.from(conflictByUserId.keys()).map(async (studentId) => {
+      const student = await userRepository.findById(studentId);
+      return {
+        name: student?.name || 'A selected student',
+        groupName: conflictByUserId.get(studentId),
+      };
+    })
+  );
+
+  const conflictSummary = conflictingNames
+    .map((entry) => `${entry.name} (${entry.groupName})`)
+    .join(', ');
+
+  throw new AppError(
+    `Each student can only stay in one group. These students are already grouped: ${conflictSummary}.`,
+    409,
+  );
+}
+
 async function hydrateGroup(groupId) {
   const group = await coachGroupRepository.findGroupById(groupId);
   if (!group) {
@@ -394,6 +436,12 @@ async function createGroup(adminUser, payload) {
 
   const students = await resolveStudentTargets(payload.studentUserIds || []);
   const group = await withTransaction(async (client) => {
+    await assertGroupNameAvailable(name, client);
+    await assertStudentsCanJoinSingleGroup(
+      students.map((student) => student.id),
+      client,
+    );
+
     const createdGroup = await coachGroupRepository.createGroup(
       {
         name,
@@ -429,9 +477,27 @@ async function addGroupMembers(adminUser, groupId, studentUserIds = []) {
     throw new AppError('Choose at least one student to add.', 400);
   }
 
+  const memberships = await assertStudentsCanJoinSingleGroup(
+    students.map((student) => student.id),
+    null,
+    groupId,
+  );
+  const existingMemberIds = new Set(
+    memberships
+      .filter((membership) => membership.groupId === groupId)
+      .map((membership) => membership.userId)
+  );
+  const studentIdsToAdd = students
+    .map((student) => student.id)
+    .filter((studentId) => !existingMemberIds.has(studentId));
+
+  if (!studentIdsToAdd.length) {
+    return hydrateGroup(groupId);
+  }
+
   await coachGroupRepository.addMembers(
     groupId,
-    students.map((student) => student.id),
+    studentIdsToAdd,
     adminUser.id
   );
 

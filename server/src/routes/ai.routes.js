@@ -27,6 +27,11 @@ router.get(
   asyncHandler(controller.getPrepArchitectHistory)
 );
 
+router.delete(
+  '/prep-architect/history',
+  asyncHandler(controller.clearPrepArchitectHistory)
+);
+
 const generateTasksValidation = [
   body('weakAreas').optional().isArray(),
   body('weakTopics').optional().isArray(),
@@ -137,6 +142,11 @@ router.post(
 router.get(
   '/chat',
   asyncHandler(controller.getMentorHistory)
+);
+
+router.delete(
+  '/chat/history',
+  asyncHandler(controller.clearMentorHistory)
 );
 
 router.post(

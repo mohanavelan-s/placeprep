@@ -15,8 +15,14 @@ async function listResumes(req, res) {
   res.json({ success: true, data: resumes });
 }
 
+async function clearHistory(req, res) {
+  const result = await resumeService.clearHistory(req.user);
+  res.json({ success: true, data: result });
+}
+
 module.exports = {
   uploadResume,
   getLatestResume,
   listResumes,
+  clearHistory,
 };

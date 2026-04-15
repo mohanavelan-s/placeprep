@@ -853,10 +853,19 @@ async function markAllNotificationsRead(user) {
   };
 }
 
+async function clearNotificationHistory(user) {
+  const deleted = await notificationRepository.deleteByUser(user.id);
+  return {
+    deleted,
+    clearedAt: new Date().toISOString(),
+  };
+}
+
 module.exports = {
   syncNotificationsForUser,
   runDailySweep,
   listNotificationsForUser,
   markNotificationRead,
   markAllNotificationsRead,
+  clearNotificationHistory,
 };

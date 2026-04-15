@@ -19,4 +19,6 @@ router.get(
   asyncHandler(controller.getHistory)
 );
 
+router.delete('/history', asyncHandler(controller.clearHistory));
+
 module.exports = router;

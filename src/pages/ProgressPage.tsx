@@ -1,15 +1,18 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import AdminStudentOversightPanel from "@/components/AdminStudentOversightPanel";
+import ClearHistoryButton from "@/components/ClearHistoryButton";
 import DashboardProgressCharts from "@/components/DashboardProgressCharts";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import StatsGrid from "@/components/StatsGrid";
 import XPBar from "@/components/XPBar";
 import { useAuth } from "@/context/AuthContext";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
-import { fetchProgressHistory, fetchProgressSummary } from "@/lib/api";
+import { clearProgressHistory, fetchProgressHistory, fetchProgressSummary } from "@/lib/api";
 
 export default function ProgressPage() {
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const summaryQuery = useQuery({
     queryKey: ["progress-summary"],
@@ -22,6 +25,21 @@ export default function ProgressPage() {
 
   useQueryErrorLogger("ProgressPage:summary", summaryQuery.error);
   useQueryErrorLogger("ProgressPage:history", historyQuery.error);
+
+  const clearHistoryMutation = useMutation({
+    mutationFn: clearProgressHistory,
+    onSuccess: (result) => {
+      queryClient.setQueryData(["progress-history"], []);
+      toast.success(
+        result.deleted
+          ? `Progress history cleared from ${result.deleted} saved snapshot${result.deleted === 1 ? "" : "s"}.`
+          : "Progress history was already empty.",
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to clear progress history.");
+    },
+  });
 
   const summary = summaryQuery.data ?? null;
   const history = Array.isArray(historyQuery.data) ? historyQuery.data : [];
@@ -99,8 +117,21 @@ export default function ProgressPage() {
       </div>
 
       <section className="surface-panel p-6 md:p-7">
-        <p className="section-label">History</p>
-        <h3 className="mt-2 font-heading text-3xl text-foreground">Daily snapshots</h3>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="section-label">History</p>
+            <h3 className="mt-2 font-heading text-3xl text-foreground">Daily snapshots</h3>
+          </div>
+
+          <ClearHistoryButton
+            title="Clear progress history?"
+            description="This removes saved progress snapshot rows for this account. Fresh activity can create new snapshots later."
+            onConfirm={() => clearHistoryMutation.mutate()}
+            pending={clearHistoryMutation.isPending}
+            disabled={!history.length}
+            className="h-11 gap-2 border-border/80 bg-background/70"
+          />
+        </div>
         <div className="mt-6 space-y-3">
           {history.map((entry) => (
             <div key={entry.id} className="rounded-2xl border border-border/80 bg-card/70 p-4">

@@ -32,5 +32,6 @@ router.post(
 );
 
 router.post('/read-all', asyncHandler(controller.markAllRead));
+router.delete('/history', asyncHandler(controller.clearHistory));
 
 module.exports = router;

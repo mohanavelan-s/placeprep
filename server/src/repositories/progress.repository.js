@@ -96,8 +96,20 @@ async function listLatestByUsers(userIds = []) {
   return result.rows;
 }
 
+async function deleteHistory(userId) {
+  const result = await query(
+    `DELETE FROM progress_stats
+     WHERE user_id = $1
+     RETURNING id`,
+    [userId]
+  );
+
+  return result.rowCount;
+}
+
 module.exports = {
   upsertProgressStat,
   listHistory,
   listLatestByUsers,
+  deleteHistory,
 };

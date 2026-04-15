@@ -86,6 +86,86 @@ async function uploadBuffer(options) {
   return uploadToLocal(options);
 }
 
+function resolveLocalAssetPath(publicId) {
+  const [scope, relativePath = ''] = String(publicId || '').split(':');
+  if (!relativePath) {
+    return null;
+  }
+
+  if (scope === 'local') {
+    return path.join(env.uploadDir, relativePath);
+  }
+
+  if (scope === 'private') {
+    return path.join(env.uploadDir, '..', 'private-uploads', relativePath);
+  }
+
+  return null;
+}
+
+async function deleteStoredAsset(options = {}) {
+  const publicId = String(options.publicId || '').trim();
+  const storageProvider = String(options.storageProvider || '').trim();
+
+  if (!publicId || !storageProvider) {
+    return {
+      deleted: false,
+      skipped: true,
+    };
+  }
+
+  if (storageProvider === 'cloudinary') {
+    if (!isCloudinaryConfigured) {
+      return {
+        deleted: false,
+        skipped: true,
+      };
+    }
+
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: options.resourceType || 'image',
+      invalidate: true,
+    });
+
+    return {
+      deleted: ['ok', 'not found'].includes(result?.result),
+      result: result?.result || null,
+    };
+  }
+
+  if (storageProvider.startsWith('local')) {
+    const absolutePath = resolveLocalAssetPath(publicId);
+    if (!absolutePath) {
+      return {
+        deleted: false,
+        skipped: true,
+      };
+    }
+
+    try {
+      await fs.unlink(absolutePath);
+      return {
+        deleted: true,
+      };
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        return {
+          deleted: true,
+          missing: true,
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  return {
+    deleted: false,
+    skipped: true,
+  };
+}
+
 module.exports = {
   uploadBuffer,
+  deleteStoredAsset,
 };

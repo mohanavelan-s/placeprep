@@ -57,6 +57,16 @@ async function getMentorHistory(req, res) {
   res.json({ success: true, data: result });
 }
 
+async function clearPrepArchitectHistory(req, res) {
+  const result = await prepArchitectService.clearPlanHistory(req.user);
+  res.json({ success: true, data: result });
+}
+
+async function clearMentorHistory(req, res) {
+  const result = await mentorService.clearHistory(req.user);
+  res.json({ success: true, data: result });
+}
+
 module.exports = {
   generateTasks,
   getStatus,
@@ -67,6 +77,8 @@ module.exports = {
   updatePrepArchitectPlan,
   getLatestPrepArchitectPlan,
   getPrepArchitectHistory,
+  clearPrepArchitectHistory,
   sendMentorMessage,
   getMentorHistory,
+  clearMentorHistory,
 };

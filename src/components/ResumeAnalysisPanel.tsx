@@ -13,9 +13,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import ClearHistoryButton from "@/components/ClearHistoryButton";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import {
+  clearResumeAnalysisHistory,
   fetchLatestResumeAnalysis,
   fetchResumeAnalysisHistory,
   uploadResumeForAnalysis,
@@ -248,6 +250,24 @@ export default function ResumeAnalysisPanel({
     },
   });
 
+  const clearHistoryMutation = useMutation({
+    mutationFn: clearResumeAnalysisHistory,
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["resume-analysis", "latest"] }),
+        queryClient.invalidateQueries({ queryKey: ["resume-analysis", "history"] }),
+      ]);
+      toast.success(
+        result.deleted
+          ? `Resume history cleared from ${result.deleted} saved review${result.deleted === 1 ? "" : "s"}.`
+          : "Resume history was already empty.",
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to clear resume history.");
+    },
+  });
+
   return (
     <section className="surface-panel p-6 md:p-7">
       <div className="mb-6">
@@ -407,18 +427,29 @@ export default function ResumeAnalysisPanel({
             </div>
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            className="h-11 gap-2 border-border/80 bg-background/70"
-            onClick={() => {
-              void latestQuery.refetch();
-              void historyQuery.refetch();
-            }}
-          >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 gap-2 border-border/80 bg-background/70"
+              onClick={() => {
+                void latestQuery.refetch();
+                void historyQuery.refetch();
+              }}
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </Button>
+
+            <ClearHistoryButton
+              title="Clear resume history?"
+              description="This removes saved resume reviews and uploaded resume files for this account."
+              onConfirm={() => clearHistoryMutation.mutate()}
+              pending={clearHistoryMutation.isPending}
+              disabled={!(historyQuery.data || []).length}
+              className="h-11 gap-2 border-border/80 bg-background/70"
+            />
+          </div>
         </div>
 
         <div className="mt-4 grid gap-3">

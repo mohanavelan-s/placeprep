@@ -73,6 +73,26 @@ async function findGroupById(groupId, client = null) {
   return result.rows[0] || null;
 }
 
+async function findGroupByNormalizedName(name, client = null) {
+  const execute = getExecutor(client);
+  const normalizedName = String(name || '').trim();
+  if (!normalizedName) {
+    return null;
+  }
+
+  const result = await execute(
+    `SELECT ${groupColumns}
+     FROM coach_groups
+     LEFT JOIN users AS creator
+       ON creator.id = coach_groups.created_by
+     WHERE LOWER(coach_groups.name) = LOWER($1)
+     LIMIT 1`,
+    [normalizedName]
+  );
+
+  return result.rows[0] || null;
+}
+
 async function listGroups() {
   const result = await query(
     `SELECT ${groupColumns}
@@ -145,6 +165,27 @@ async function removeMember(groupId, userId, client = null) {
   return result.rows[0] || null;
 }
 
+async function listMembershipsByUserIds(userIds = [], client = null) {
+  if (!userIds.length) {
+    return [];
+  }
+
+  const execute = getExecutor(client);
+  const result = await execute(
+    `SELECT
+       coach_group_members.group_id AS "groupId",
+       coach_group_members.user_id AS "userId",
+       coach_groups.name AS "groupName"
+     FROM coach_group_members
+     JOIN coach_groups
+       ON coach_groups.id = coach_group_members.group_id
+     WHERE coach_group_members.user_id = ANY($1::UUID[])`,
+    [userIds]
+  );
+
+  return result.rows;
+}
+
 async function listMembers(groupIds = []) {
   if (!groupIds.length) {
     return [];
@@ -170,10 +211,12 @@ async function listMembers(groupIds = []) {
 module.exports = {
   createGroup,
   findGroupById,
+  findGroupByNormalizedName,
   listGroups,
   updateGroup,
   addMembers,
   removeMember,
+  listMembershipsByUserIds,
   listMembers,
   groupColumns,
   groupMemberColumns,

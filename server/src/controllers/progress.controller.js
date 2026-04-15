@@ -11,7 +11,13 @@ async function getHistory(req, res) {
   res.json({ success: true, data: history });
 }
 
+async function clearHistory(req, res) {
+  const result = await progressService.clearHistory(req.user);
+  res.json({ success: true, data: result });
+}
+
 module.exports = {
   getSummary,
   getHistory,
+  clearHistory,
 };

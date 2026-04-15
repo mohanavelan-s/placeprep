@@ -21,6 +21,8 @@ const imageColumns = `
   updated_at AS "updatedAt"
 `;
 
+const proofFilterClause = `COALESCE(caption, '') <> 'profile-avatar'`;
+
 async function createImage(payload) {
   const result = await query(
     `INSERT INTO images (
@@ -68,7 +70,7 @@ async function createImage(payload) {
 
 async function listImages(userId, filters = {}) {
   const values = [userId];
-  const where = ['user_id = $1'];
+  const where = ['user_id = $1', proofFilterClause];
 
   if (filters.date) {
     values.push(filters.date);
@@ -102,6 +104,7 @@ async function listRecentByUsers(userIds = [], limitPerUser = 4) {
          ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC) AS row_number
        FROM images
        WHERE user_id = ANY($1::uuid[])
+         AND ${proofFilterClause}
      ) AS ranked_images
      WHERE row_number <= $2
      ORDER BY "proofDate" DESC NULLS LAST, "createdAt" DESC`,
@@ -111,9 +114,22 @@ async function listRecentByUsers(userIds = [], limitPerUser = 4) {
   return result.rows;
 }
 
+async function deleteProofsByUser(userId) {
+  const result = await query(
+    `DELETE FROM images
+     WHERE user_id = $1
+       AND ${proofFilterClause}
+     RETURNING ${imageColumns}`,
+    [userId]
+  );
+
+  return result.rows;
+}
+
 module.exports = {
   createImage,
   listImages,
   listRecentByUsers,
+  deleteProofsByUser,
   imageColumns,
 };
