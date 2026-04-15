@@ -113,6 +113,83 @@ function cleanTopics(topics, limit = 8) {
   ).slice(0, limit);
 }
 
+function normalizePlanTitle(title, fallback = '') {
+  const normalized = String(title || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) {
+    return fallback;
+  }
+
+  return normalized.slice(0, 80).trim();
+}
+
+function splitThemeTopics(theme) {
+  return String(theme || '')
+    .split(/\s+into\s+/i)
+    .map((part) => normalizePlanTitle(part))
+    .filter(Boolean);
+}
+
+function buildAutoPlanTitle({ targetRole, targetTopics = [], roadmap = [], tasks = [] }) {
+  const role = normalizePlanTitle(targetRole);
+  const roadmapTopics = Array.isArray(roadmap)
+    ? roadmap.flatMap((week) => cleanTopics(week?.focusTopics || [], 3))
+    : [];
+  const dayThemes = Array.isArray(tasks)
+    ? tasks.flatMap((day) => splitThemeTopics(day?.theme))
+    : [];
+  const focusTopics = cleanTopics([
+    ...targetTopics,
+    ...roadmapTopics,
+    ...dayThemes,
+  ], 3);
+  const primaryFocus = focusTopics[0] || '';
+  const secondaryFocus = focusTopics.find((topic) => topic.toLowerCase() !== primaryFocus.toLowerCase()) || '';
+
+  if (role && primaryFocus && secondaryFocus) {
+    return normalizePlanTitle(`${role}: ${primaryFocus} + ${secondaryFocus}`, 'Placement Prep Plan');
+  }
+
+  if (role && primaryFocus) {
+    return normalizePlanTitle(`${role}: ${primaryFocus}`, 'Placement Prep Plan');
+  }
+
+  if (primaryFocus && secondaryFocus) {
+    return normalizePlanTitle(`${primaryFocus} + ${secondaryFocus} Focus Plan`, 'Placement Prep Plan');
+  }
+
+  if (primaryFocus) {
+    return normalizePlanTitle(`${primaryFocus} Focus Plan`, 'Placement Prep Plan');
+  }
+
+  if (role) {
+    return normalizePlanTitle(`${role} Prep Plan`, 'Placement Prep Plan');
+  }
+
+  return 'Placement Prep Plan';
+}
+
+function resolvePlanTitles(plan, preferredTitle = '', titleSource = 'generated') {
+  const autoTitle = buildAutoPlanTitle(plan);
+  const customTitle = normalizePlanTitle(preferredTitle);
+
+  if (customTitle) {
+    return {
+      title: customTitle,
+      autoTitle,
+      titleSource,
+    };
+  }
+
+  return {
+    title: autoTitle,
+    autoTitle,
+    titleSource: 'generated',
+  };
+}
+
 function safeJsonParse(content) {
   try {
     return JSON.parse(content);
@@ -333,6 +410,12 @@ function buildFallbackPlan({ knownTopics, targetTopics, timePerDay, targetRole, 
   const tasks = buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole);
   const resources = buildResources(prioritizedTopics, targetRole);
   const flashcards = buildFlashcards(prioritizedTopics, knownTopics);
+  const titles = resolvePlanTitles({
+    targetRole,
+    targetTopics,
+    roadmap,
+    tasks,
+  });
 
   return {
     id: planId,
@@ -340,6 +423,9 @@ function buildFallbackPlan({ knownTopics, targetTopics, timePerDay, targetRole, 
     targetTopics,
     timePerDay,
     targetRole,
+    title: titles.title,
+    autoTitle: titles.autoTitle,
+    titleSource: titles.titleSource,
     coachLine: `You already know ${knownTopics[0] || 'the basics'}. Now build disciplined pressure on ${prioritizedTopics[0] || 'core placement topics'}.`,
     roadmap,
     tasks,
@@ -406,8 +492,17 @@ function normalizePlanResult(rawPlan, fallbackPlan) {
       answer: String(card.answer || fallbackPlan.flashcards[index]?.answer || 'Answer').trim(),
     }))
     : fallbackPlan.flashcards;
+  const titles = resolvePlanTitles({
+    targetRole: fallbackPlan.targetRole,
+    targetTopics: fallbackPlan.targetTopics,
+    roadmap,
+    tasks,
+  }, rawPlan.title, 'generated');
 
   return {
+    title: titles.title,
+    autoTitle: titles.autoTitle,
+    titleSource: titles.titleSource,
     coachLine: String(rawPlan.coachLine || rawPlan.motivationLine || fallbackPlan.coachLine).trim(),
     roadmap,
     tasks,
@@ -468,8 +563,18 @@ function hydrateStoredPlan(plan) {
     return null;
   }
 
+  const titles = resolvePlanTitles({
+    targetRole: plan.targetRole,
+    targetTopics: plan.targetTopics,
+    roadmap: plan.roadmap,
+    tasks: plan.tasks,
+  }, typeof plan.metadata?.title === 'string' ? plan.metadata.title : '', plan.metadata?.titleSource === 'custom' ? 'custom' : 'generated');
+
   return {
     ...plan,
+    title: titles.title,
+    autoTitle: titles.autoTitle,
+    titleSource: titles.titleSource,
     coachLine: typeof plan.metadata?.coachLine === 'string' ? plan.metadata.coachLine : null,
     usedFallback: Boolean(plan.metadata?.usedFallback),
   };
@@ -568,10 +673,12 @@ async function syncUserWithActivePlan(user, plan = null) {
   if (plan) {
     nextCoachMetadata.prepArchitectUpdatedAt = new Date().toISOString();
     nextCoachMetadata.prepArchitectPlanId = plan.id;
+    nextCoachMetadata.prepArchitectPlanTitle = plan.title || plan.metadata?.title || null;
     nextCoachMetadata.prepArchitectCoachLine = plan.coachLine || plan.metadata?.coachLine || null;
   } else {
     delete nextCoachMetadata.prepArchitectUpdatedAt;
     delete nextCoachMetadata.prepArchitectPlanId;
+    delete nextCoachMetadata.prepArchitectPlanTitle;
     delete nextCoachMetadata.prepArchitectCoachLine;
   }
 
@@ -589,6 +696,7 @@ async function syncUserWithActivePlan(user, plan = null) {
 }
 
 async function persistPlan(user, plan, sourcePlanId = null) {
+  const titles = resolvePlanTitles(plan, plan.title, plan.titleSource || 'generated');
   const persistedPlan = await withTransaction(async (client) => {
     const version = await prepPlanRepository.getNextVersion(user.id, client);
     await prepPlanRepository.deactivateActivePlans(user.id, client);
@@ -605,6 +713,9 @@ async function persistPlan(user, plan, sourcePlanId = null) {
       version,
       sourcePlanId,
       metadata: {
+        title: titles.title,
+        autoTitle: titles.autoTitle,
+        titleSource: titles.titleSource,
         coachLine: plan.coachLine,
         usedFallback: plan.usedFallback,
       },
@@ -613,6 +724,9 @@ async function persistPlan(user, plan, sourcePlanId = null) {
 
   const finalPlan = {
     ...persistedPlan,
+    title: titles.title,
+    autoTitle: titles.autoTitle,
+    titleSource: titles.titleSource,
     coachLine: plan.coachLine,
     roadmap: plan.roadmap,
     tasks: plan.tasks,
@@ -655,7 +769,7 @@ async function generatePlan(user, payload = {}) {
   const fallbackPlan = buildFallbackPlan(input);
 
   const { data, usedFallback } = await requestPlanJson(
-    'Act as a placement preparation coach. Return only JSON with roadmap, tasks, resources, flashcards, and coachLine.',
+    'Act as a placement preparation coach. Return only JSON with title, roadmap, tasks, resources, flashcards, and coachLine.',
     [
       'Act as a placement preparation coach.',
       '',
@@ -683,6 +797,7 @@ async function generatePlan(user, payload = {}) {
       '',
       'Return JSON in this exact shape:',
       '{',
+      '  "title": "string",',
       '  "coachLine": "string",',
       '  "roadmap": [{ "week": 1, "title": "string", "focusTopics": ["string"], "estimatedHours": 12, "goals": ["string"] }],',
       '  "tasks": [{ "day": "Day 1", "theme": "string", "totalEstimatedMinutes": 120, "items": [{ "title": "string", "type": "DSA", "estimatedMinutes": 30, "difficulty": "Easy", "referenceLabel": "string", "referenceUrl": "https://..." }] }],',
@@ -717,7 +832,7 @@ async function updatePlan(user, payload = {}) {
   });
 
   const { data, usedFallback } = await requestPlanJson(
-    'Act as a placement preparation coach. Return only JSON with roadmap, tasks, resources, flashcards, and coachLine.',
+    'Act as a placement preparation coach. Return only JSON with title, roadmap, tasks, resources, flashcards, and coachLine.',
     [
       'Act as a placement preparation coach.',
       '',
@@ -727,7 +842,7 @@ async function updatePlan(user, payload = {}) {
       `Time per day: ${input.timePerDay} minutes`,
       `Target role: ${input.targetRole}`,
       '',
-      'Regenerate the roadmap, tasks, resources, and flashcards while keeping the plan realistic and editable.',
+      'Regenerate the title, roadmap, tasks, resources, and flashcards while keeping the plan realistic and editable.',
       'Return the same JSON structure as the original plan generation request.',
     ].join('\n'),
     () => fallbackPlan
@@ -776,6 +891,37 @@ async function activatePlan(user, planId) {
   await progressService.refreshProgressStats(user.id, user.timezone);
 
   return activePlan;
+}
+
+async function renamePlan(user, payload = {}) {
+  const targetPlan = await prepPlanRepository.findById(payload.planId, user.id);
+
+  if (!targetPlan) {
+    throw new AppError('Prep plan not found.', 404);
+  }
+
+  const title = normalizePlanTitle(payload.title);
+  if (title.length < 2) {
+    throw new AppError('Enter a plan name with at least 2 characters.', 400);
+  }
+
+  const hydratedPlan = hydrateStoredPlan(targetPlan);
+  const titles = resolvePlanTitles(hydratedPlan, title, 'custom');
+  const updatedPlan = await prepPlanRepository.updateMetadata(targetPlan.id, user.id, {
+    ...(targetPlan.metadata || {}),
+    title: titles.title,
+    autoTitle: titles.autoTitle,
+    titleSource: titles.titleSource,
+    renamedAt: new Date().toISOString(),
+  });
+
+  const renamedPlan = hydrateStoredPlan(updatedPlan);
+
+  if (renamedPlan?.isActive) {
+    await syncUserWithActivePlan(user, renamedPlan);
+  }
+
+  return renamedPlan;
 }
 
 async function clearPlanHistory(user, planIds = null) {
@@ -835,5 +981,6 @@ module.exports = {
   getLatestPlan,
   getPlanHistory,
   activatePlan,
+  renamePlan,
   clearPlanHistory,
 };

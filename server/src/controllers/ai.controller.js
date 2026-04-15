@@ -52,6 +52,11 @@ async function activatePrepArchitectPlan(req, res) {
   res.json({ success: true, data: result });
 }
 
+async function renamePrepArchitectPlan(req, res) {
+  const result = await prepArchitectService.renamePlan(req.user, req.body);
+  res.json({ success: true, data: result });
+}
+
 async function sendMentorMessage(req, res) {
   const result = await mentorService.sendMessage(req.user, req.body);
   res.json({ success: true, data: result });
@@ -83,6 +88,7 @@ module.exports = {
   getLatestPrepArchitectPlan,
   getPrepArchitectHistory,
   activatePrepArchitectPlan,
+  renamePrepArchitectPlan,
   clearPrepArchitectHistory,
   sendMentorMessage,
   getMentorHistory,

@@ -107,7 +107,10 @@ export default function ProfilePage() {
       {latestPlan && (
         <section className="surface-panel p-6 md:p-7">
           <p className="section-label">Current architect plan</p>
-          <h3 className="mt-2 font-heading text-3xl text-foreground">Version {latestPlan.version}</h3>
+          <h3 className="mt-2 font-heading text-3xl text-foreground">
+            {latestPlan.title || `Version ${latestPlan.version}`}
+          </h3>
+          <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">v{latestPlan.version}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {(latestPlan.targetTopics || []).map((topic) => (
               <span key={topic} className="coach-chip border-primary/25">

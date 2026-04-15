@@ -161,6 +161,24 @@ async function updateTasks(planId, userId, tasks, db = null) {
   return result.rows[0] || null;
 }
 
+async function updateMetadata(planId, userId, metadata, db = null) {
+  const executor = getExecutor(db);
+  const result = await executor.query(
+    `UPDATE prep_plans
+     SET metadata = $1
+     WHERE id = $2
+       AND user_id = $3
+     RETURNING ${prepPlanColumns}`,
+    [
+      metadata || {},
+      planId,
+      userId,
+    ]
+  );
+
+  return result.rows[0] || null;
+}
+
 async function deleteByIds(userId, planIds = [], db = null) {
   if (!planIds.length) {
     return [];
@@ -199,6 +217,7 @@ module.exports = {
   listByUser,
   getNextVersion,
   updateTasks,
+  updateMetadata,
   deleteByIds,
   deleteByUser,
 };

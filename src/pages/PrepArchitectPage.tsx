@@ -44,6 +44,8 @@ import {
   fetchLatestPrepPlan,
   fetchPrepPlanHistory,
   generatePrepPlan,
+  renamePrepPlan,
+  type PrepPlan,
   updatePrepPlan,
 } from "@/lib/api";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
@@ -72,6 +74,9 @@ export default function PrepArchitectPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [manageVersionsOpen, setManageVersionsOpen] = useState(false);
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [planToRename, setPlanToRename] = useState<PrepPlan | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
 
   useEffect(() => {
     if (!latestPlanQuery.data) {
@@ -142,10 +147,33 @@ export default function PrepArchitectPage() {
         queryClient.invalidateQueries({ queryKey: ["progress-summary"] }),
       ]);
       setIsEditing(false);
-      toast.success(`Switched to Prep Architect v${result.version}.`);
+      toast.success(`Switched to ${result.title || `Prep Architect v${result.version}`}.`);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to switch plan version.");
+    },
+  });
+
+  const renamePlanMutation = useMutation({
+    mutationFn: ({ planId, title }: { planId: string; title: string }) =>
+      renamePrepPlan({ planId, title }),
+    onSuccess: async (result) => {
+      if (latestPlanQuery.data?.id === result.id) {
+        queryClient.setQueryData(["prep-plan", "latest"], result);
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["prep-plan", "history"] }),
+        queryClient.invalidateQueries({ queryKey: ["prep-plan", "latest"] }),
+      ]);
+
+      setRenameDialogOpen(false);
+      setPlanToRename(null);
+      setRenameTitle("");
+      toast.success(`Renamed plan to ${result.title || "your new title"}.`);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to rename this plan.");
     },
   });
 
@@ -197,6 +225,12 @@ export default function PrepArchitectPage() {
     setSelectedPlanIds(allVersionsSelected ? [] : history.map((plan) => plan.id));
   }
 
+  function openRenameDialog(plan: PrepPlan) {
+    setPlanToRename(plan);
+    setRenameTitle(plan.title || "");
+    setRenameDialogOpen(true);
+  }
+
   return (
     <div className="grid gap-6">
       <section className="surface-panel-strong p-6 md:p-7">
@@ -213,9 +247,29 @@ export default function PrepArchitectPage() {
 
           {latestPlan && (
             <div className="rounded-2xl border border-border/80 bg-background/40 px-4 py-3 text-sm text-foreground/80">
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Active plan</p>
-              <p className="mt-2 font-heading text-3xl text-foreground">v{latestPlan.version}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{latestPlan.targetTopics[0] || "Custom focus"}</p>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Active plan</p>
+                  <p className="mt-2 font-heading text-2xl text-foreground">
+                    {latestPlan.title || `Version ${latestPlan.version}`}
+                  </p>
+                  <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                    v{latestPlan.version}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">{latestPlan.targetTopics[0] || "Custom focus"}</p>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full text-muted-foreground"
+                  onClick={() => openRenameDialog(latestPlan)}
+                  aria-label="Rename active plan"
+                >
+                  <PencilLine className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -359,9 +413,10 @@ export default function PrepArchitectPage() {
 
                 {history.length ? history.map((plan) => (
                   <div key={plan.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/40 px-4 py-3">
-                    <div>
-                      <p className="text-sm text-foreground">Version {plan.version}</p>
+                    <div className="min-w-0">
+                      <p className="text-sm text-foreground">{plan.title || `Version ${plan.version}`}</p>
                       <p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                        v{plan.version} /{" "}
                         {new Date(plan.createdAt).toLocaleDateString("en-IN", {
                           day: "2-digit",
                           month: "short",
@@ -370,6 +425,16 @@ export default function PrepArchitectPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-full text-muted-foreground"
+                        onClick={() => openRenameDialog(plan)}
+                        aria-label={`Rename ${plan.title || `version ${plan.version}`}`}
+                      >
+                        <PencilLine className="h-4 w-4" />
+                      </Button>
                       <div className="flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">
                         <History className="h-4 w-4" />
                         {plan.isActive ? "Active" : "Saved"}
@@ -418,6 +483,71 @@ export default function PrepArchitectPage() {
 
       {latestPlan && <PrepPlanView plan={latestPlan} />}
 
+      <Dialog
+        open={renameDialogOpen}
+        onOpenChange={(open) => {
+          setRenameDialogOpen(open);
+          if (!open) {
+            setPlanToRename(null);
+            setRenameTitle("");
+          }
+        }}
+      >
+        <DialogContent className="border-border/80 bg-card text-foreground sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Rename plan</DialogTitle>
+            <DialogDescription>
+              Give this Prep Architect version a name that matches its focus. If you skip this, the system will keep using an automatic title.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <Input
+              value={renameTitle}
+              onChange={(event) => setRenameTitle(event.target.value)}
+              placeholder={planToRename?.title || "Operating Systems + DSA Focus Plan"}
+              maxLength={80}
+              className="h-11 border-border/80 bg-background/70"
+            />
+            {planToRename && (
+              <p className="text-sm leading-6 text-muted-foreground">
+                Renaming v{planToRename.version}. Your tasks and history stay the same.
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setRenameDialogOpen(false);
+                setPlanToRename(null);
+                setRenameTitle("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!planToRename || renameTitle.trim().length < 2 || renamePlanMutation.isPending}
+              onClick={() => {
+                if (!planToRename) {
+                  return;
+                }
+
+                renamePlanMutation.mutate({
+                  planId: planToRename.id,
+                  title: renameTitle.trim(),
+                });
+              }}
+            >
+              {renamePlanMutation.isPending ? "Saving..." : "Save name"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={manageVersionsOpen} onOpenChange={setManageVersionsOpen}>
         <DialogContent className="border-border/80 bg-card text-foreground sm:max-w-2xl">
           <DialogHeader>
@@ -450,7 +580,7 @@ export default function PrepArchitectPage() {
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm text-foreground">Version {plan.version}</p>
+                      <p className="text-sm text-foreground">{plan.title || `Version ${plan.version}`}</p>
                       {plan.isActive && (
                         <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] uppercase tracking-[0.16em] text-primary/90">
                           Active
@@ -458,6 +588,7 @@ export default function PrepArchitectPage() {
                       )}
                     </div>
                     <p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                      v{plan.version} /{" "}
                       {new Date(plan.createdAt).toLocaleString("en-IN", {
                         day: "2-digit",
                         month: "short",

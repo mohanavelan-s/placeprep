@@ -251,7 +251,7 @@ export default function DashboardPage() {
             <p className="section-label">Architect sync</p>
             <p className="mt-2 text-base leading-7 text-foreground/90">
               {prepPlan
-                ? `Prep Architect v${prepPlan.version} is active for ${prepPlan?.targetTopics?.[0] || "your next topic"}.`
+                ? `${prepPlan.title || "Your Prep Architect plan"} is active${prepPlan?.targetTopics?.[0] ? ` for ${prepPlan.targetTopics[0]}` : ""}.`
                 : "No architect plan yet. Build one to turn weak areas into a structured roadmap."}
             </p>
             {hasSecondarySyncIssue && (
@@ -339,8 +339,10 @@ export default function DashboardPage() {
             },
             {
               label: "Prep Architect",
-              value: prepPlan ? `v${prepPlan.version}` : "Idle",
-              helper: prepPlan ? "Roadmap active and synced into the system." : "Generate your first personalized plan.",
+              value: prepPlan ? "Active" : "Idle",
+              helper: prepPlan
+                ? `${prepPlan.title || `Version ${prepPlan.version}`} is synced into the system.`
+                : "Generate your first personalized plan.",
             },
           ]}
         />

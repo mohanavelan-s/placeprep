@@ -17,7 +17,14 @@ export default function PrepPlanView({ plan }: PrepPlanViewProps) {
   return (
     <div className="grid gap-6">
       <div className="surface-panel-strong p-6 md:p-7">
-        <p className="section-label">Mentor line</p>
+        <p className="section-label">Current plan</p>
+        <p className="mt-3 font-heading text-3xl text-foreground md:text-4xl">
+          {plan.title || `Version ${plan.version}`}
+        </p>
+        <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+          v{plan.version} / {plan.targetRole || "Custom placement track"}
+        </p>
+        <p className="mt-6 section-label">Mentor line</p>
         <p className="mt-3 font-heading text-3xl text-foreground md:text-4xl">
           {plan.coachLine || "Your roadmap is ready."}
         </p>

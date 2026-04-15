@@ -510,6 +510,9 @@ export interface PrepPlan {
   isActive: boolean;
   sourcePlanId?: string | null;
   metadata: Record<string, unknown>;
+  title?: string;
+  autoTitle?: string;
+  titleSource?: "generated" | "custom";
   createdAt: string;
   updatedAt: string;
   coachLine?: string;
@@ -1238,6 +1241,16 @@ export async function activatePrepPlan(planId: string) {
   return request<PrepPlan>("/ai/prep-architect/activate", {
     method: "POST",
     body: JSON.stringify({ planId }),
+  });
+}
+
+export async function renamePrepPlan(payload: {
+  planId: string;
+  title: string;
+}) {
+  return request<PrepPlan>("/ai/prep-architect/rename", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

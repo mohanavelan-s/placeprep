@@ -34,6 +34,16 @@ router.post(
   asyncHandler(controller.activatePrepArchitectPlan)
 );
 
+router.post(
+  '/prep-architect/rename',
+  [
+    body('planId').isUUID(),
+    body('title').trim().isLength({ min: 2, max: 80 }),
+  ],
+  validate,
+  asyncHandler(controller.renamePrepArchitectPlan)
+);
+
 router.delete(
   '/prep-architect/history',
   [
