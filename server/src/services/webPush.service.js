@@ -65,11 +65,20 @@ async function getWebPushConfig() {
 async function getWebPushClient() {
   const vapidKeys = await resolveVapidKeys();
 
-  webPush.setVapidDetails(
-    env.webPushSubject,
-    vapidKeys.publicKey,
-    vapidKeys.privateKey
-  );
+  try {
+    webPush.setVapidDetails(
+      env.webPushSubject,
+      vapidKeys.publicKey,
+      vapidKeys.privateKey
+    );
+  } catch (error) {
+    console.error(`[push] Invalid VAPID subject "${env.webPushSubject}". Falling back to mailto:support@placeprep.app.`, error);
+    webPush.setVapidDetails(
+      'mailto:support@placeprep.app',
+      vapidKeys.publicKey,
+      vapidKeys.privateKey
+    );
+  }
 
   return webPush;
 }

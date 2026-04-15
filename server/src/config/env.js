@@ -34,6 +34,65 @@ function splitCsv(value) {
     .filter(Boolean);
 }
 
+function extractEmailAddress(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  const bracketMatch = text.match(/<([^>]+)>/);
+  if (bracketMatch?.[1]) {
+    return bracketMatch[1].trim();
+  }
+
+  return text;
+}
+
+function isValidWebPushSubject(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return false;
+  }
+
+  if (/^mailto:/i.test(text)) {
+    return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(text.slice('mailto:'.length).trim());
+  }
+
+  if (/^https?:\/\//i.test(text)) {
+    try {
+      const parsed = new URL(text);
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+function normalizeWebPushSubject(value, fallbackEmail = '') {
+  const text = String(value || '').trim();
+  if (isValidWebPushSubject(text)) {
+    return text;
+  }
+
+  const extractedEmail = extractEmailAddress(text);
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(extractedEmail)) {
+    return `mailto:${extractedEmail}`;
+  }
+
+  if (isValidWebPushSubject(fallbackEmail)) {
+    return fallbackEmail;
+  }
+
+  const fallbackAddress = extractEmailAddress(fallbackEmail);
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(fallbackAddress)) {
+    return `mailto:${fallbackAddress}`;
+  }
+
+  return 'mailto:support@placeprep.app';
+}
+
 const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT || 5000),
@@ -66,7 +125,10 @@ const env = {
   smtpFrom: process.env.SMTP_FROM || '',
   webPushPublicKey: process.env.WEB_PUSH_PUBLIC_KEY || '',
   webPushPrivateKey: process.env.WEB_PUSH_PRIVATE_KEY || '',
-  webPushSubject: process.env.WEB_PUSH_SUBJECT || process.env.SMTP_FROM || 'mailto:support@placeprep.app',
+  webPushSubject: normalizeWebPushSubject(
+    process.env.WEB_PUSH_SUBJECT || process.env.SMTP_FROM || process.env.SMTP_USER || '',
+    process.env.SMTP_USER || 'support@placeprep.app',
+  ),
   inviteSignupNotifyEmail: process.env.INVITE_SIGNUP_NOTIFY_EMAIL || process.env.SMTP_USER || '',
   notificationCron: process.env.NOTIFICATION_CRON || '0 20 * * *',
   notificationSchedulerEnabled: process.env.NOTIFICATION_SCHEDULER_ENABLED !== 'false',
