@@ -4,7 +4,7 @@ import { Copy, Link2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import ClearHistoryButton from "@/components/ClearHistoryButton";
-import PageStatusPanel from "@/components/PageStatusPanel";
+import SoftSyncNotice from "@/components/SoftSyncNotice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -190,13 +190,11 @@ export default function AdminInvitePanel() {
 
           {invitesQuery.isError && (
             <div className="mt-4">
-              <PageStatusPanel
-                eyebrow="Invite fallback"
-                title="Invite history is offline."
+              <SoftSyncNotice
+                title="Invite history is temporarily unavailable."
                 description="You can still generate a new invite. Retry when you need the stored list back."
                 actionLabel="Retry"
                 onAction={() => void invitesQuery.refetch()}
-                tone="danger"
               />
             </div>
           )}

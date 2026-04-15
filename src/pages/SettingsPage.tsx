@@ -9,6 +9,7 @@ import ClearHistoryButton from "@/components/ClearHistoryButton";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import PersonalProfilePanel from "@/components/PersonalProfilePanel";
 import ResumeAnalysisPanel from "@/components/ResumeAnalysisPanel";
+import SoftSyncNotice from "@/components/SoftSyncNotice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -293,13 +294,11 @@ export default function SettingsPage() {
       )}
 
       {profileQuery.isError && (
-        <PageStatusPanel
-          eyebrow="Settings fallback"
-          title="Saved links could not be loaded."
-          description="You can still update your account settings, and retry the profile links request when ready."
+        <SoftSyncNotice
+          title="Saved profile links are temporarily unavailable."
+          description="Account settings still work normally. Retry when you want your stored links and avatar details back."
           actionLabel="Retry"
           onAction={() => void profileQuery.refetch()}
-          tone="danger"
         />
       )}
 
@@ -480,13 +479,11 @@ export default function SettingsPage() {
           )}
 
           {notificationsQuery.isError && (
-            <PageStatusPanel
-              eyebrow="Notification fallback"
-              title="Notification history could not be loaded."
-              description="Your settings still work. Retry when you want the recent signal log back."
+            <SoftSyncNotice
+              title="Notification history is temporarily unavailable."
+              description="Your notification settings still work. Retry when you want the recent signal log back."
               actionLabel="Retry"
               onAction={() => void notificationsQuery.refetch()}
-              tone="danger"
             />
           )}
 

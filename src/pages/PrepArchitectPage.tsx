@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import HoursInput from "@/components/HoursInput";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import PrepPlanView from "@/components/PrepPlanView";
+import SoftSyncNotice from "@/components/SoftSyncNotice";
 import TopicTagInput from "@/components/TopicTagInput";
 import {
   AlertDialog,
@@ -229,17 +230,15 @@ export default function PrepArchitectPage() {
         />
       )}
 
-      {(latestPlanQuery.isError || historyQuery.isError) && (
-        <PageStatusPanel
-          eyebrow="Architect fallback"
-          title="Prep Architect is running in recovery mode."
+      {latestPlanQuery.isError && (
+        <SoftSyncNotice
+          title="Prep Architect is temporarily running without live sync."
           description="You can still edit topics and build a new plan. Retry if you want stored plans and version history back."
           actionLabel="Retry"
           onAction={() => {
             void latestPlanQuery.refetch();
             void historyQuery.refetch();
           }}
-          tone="danger"
         />
       )}
 
@@ -349,6 +348,15 @@ export default function PrepArchitectPage() {
                 </Button>
               </div>
               <div className="mt-4 space-y-3">
+                {historyQuery.isError && (
+                  <SoftSyncNotice
+                    title="Saved plan history is temporarily unavailable."
+                    description="You can still build, edit, and regenerate the active plan. Retry when you want older versions back."
+                    actionLabel="Retry"
+                    onAction={() => void historyQuery.refetch()}
+                  />
+                )}
+
                 {history.length ? history.map((plan) => (
                   <div key={plan.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/40 px-4 py-3">
                     <div>

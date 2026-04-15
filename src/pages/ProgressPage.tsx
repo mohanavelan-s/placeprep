@@ -5,6 +5,7 @@ import AdminStudentOversightPanel from "@/components/AdminStudentOversightPanel"
 import ClearHistoryButton from "@/components/ClearHistoryButton";
 import DashboardProgressCharts from "@/components/DashboardProgressCharts";
 import PageStatusPanel from "@/components/PageStatusPanel";
+import SoftSyncNotice from "@/components/SoftSyncNotice";
 import StatsGrid from "@/components/StatsGrid";
 import XPBar from "@/components/XPBar";
 import { useAuth } from "@/context/AuthContext";
@@ -43,8 +44,9 @@ export default function ProgressPage() {
 
   const summary = summaryQuery.data ?? null;
   const history = Array.isArray(historyQuery.data) ? historyQuery.data : [];
-  const isBooting = (summaryQuery.isPending && !summary) || (historyQuery.isPending && !history.length);
-  const hasError = summaryQuery.isError || historyQuery.isError;
+  const isBooting = summaryQuery.isPending && !summary;
+  const hasError = summaryQuery.isError;
+  const hasHistorySyncIssue = historyQuery.isError;
 
   function handleRetry() {
     void summaryQuery.refetch();
@@ -70,13 +72,11 @@ export default function ProgressPage() {
       )}
 
       {hasError && (
-        <PageStatusPanel
-          eyebrow="Progress fallback"
-          title="Some progress data could not be loaded."
+        <SoftSyncNotice
+          title="Some live progress data is temporarily unavailable."
           description="The page is still usable with safe defaults. Retry to pull the latest analytics."
           actionLabel="Retry"
           onAction={handleRetry}
-          tone="danger"
         />
       )}
 
@@ -133,6 +133,15 @@ export default function ProgressPage() {
           />
         </div>
         <div className="mt-6 space-y-3">
+          {hasHistorySyncIssue && (
+            <SoftSyncNotice
+              title="Saved progress history is temporarily unavailable."
+              description="Your latest readiness metrics are still visible. Retry when you want the recent snapshot list back."
+              actionLabel="Retry"
+              onAction={() => void historyQuery.refetch()}
+            />
+          )}
+
           {history.map((entry) => (
             <div key={entry.id} className="rounded-2xl border border-border/80 bg-card/70 p-4">
               <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -154,7 +163,7 @@ export default function ProgressPage() {
               </div>
             </div>
           ))}
-          {!history.length && !historyQuery.isPending && (
+          {!history.length && !historyQuery.isPending && !historyQuery.isError && (
             <div className="rounded-2xl border border-border/80 bg-card/70 p-5 text-sm leading-6 text-muted-foreground">
               No daily snapshots yet. Once you log work, streak and consistency history will accumulate here.
             </div>

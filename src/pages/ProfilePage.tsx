@@ -4,6 +4,7 @@ import { Code2, Github, Globe2, Linkedin } from "lucide-react";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import PlacePrepLogo from "@/components/PlacePrepLogo";
 import ResumeSigilIcon from "@/components/ResumeSigilIcon";
+import SoftSyncNotice from "@/components/SoftSyncNotice";
 import { useAuth } from "@/context/AuthContext";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import { fetchLatestPrepPlan, fetchUserProfile } from "@/lib/api";
@@ -66,13 +67,11 @@ export default function ProfilePage() {
           )}
 
           {profileQuery.isError && (
-            <PageStatusPanel
-              eyebrow="Profile fallback"
-              title="Profile links could not be loaded."
-              description="This page stays visible. Retry, or update links later from Settings."
+            <SoftSyncNotice
+              title="Profile links are temporarily unavailable."
+              description="This page still works. Retry here, or update links later from Settings."
               actionLabel="Retry"
               onAction={() => void profileQuery.refetch()}
-              tone="danger"
             />
           )}
 

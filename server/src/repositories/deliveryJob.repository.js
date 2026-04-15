@@ -40,7 +40,7 @@ async function createJob(payload, client = null) {
       available_at,
       payload
     ) VALUES ($1, $2, $3, 'queued', 0, $4, COALESCE($5, NOW()), $6)
-    ON CONFLICT (type, dedupe_key)
+    ON CONFLICT
     DO NOTHING
     RETURNING ${deliveryJobColumns}`,
     [

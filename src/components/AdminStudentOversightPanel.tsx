@@ -21,6 +21,7 @@ import { toast } from "sonner";
 
 import ClearHistoryButton from "@/components/ClearHistoryButton";
 import PageStatusPanel from "@/components/PageStatusPanel";
+import SoftSyncNotice from "@/components/SoftSyncNotice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -386,6 +387,9 @@ export default function AdminStudentOversightPanel() {
   const students = studentsQuery.data || [];
   const groups = groupsQuery.data || [];
   const groupCandidates = groupCandidatesQuery.data || [];
+  const isBooting = studentsQuery.isPending && !students.length;
+  const hasPrimarySyncError = studentsQuery.isError;
+  const hasSecondarySyncIssue = groupsQuery.isError || groupCandidatesQuery.isError;
 
   useEffect(() => {
     const firstStudentId = students[0]?.student.id || "";
@@ -642,9 +646,7 @@ export default function AdminStudentOversightPanel() {
         </p>
       </div>
 
-      {((studentsQuery.isPending && !students.length)
-        || (groupsQuery.isPending && !groups.length)
-        || (groupCandidatesQuery.isPending && !groupCandidates.length)) && (
+      {isBooting && (
         <PageStatusPanel
           eyebrow="Coaching sync"
           title="Loading invited students and groups."
@@ -653,7 +655,7 @@ export default function AdminStudentOversightPanel() {
         />
       )}
 
-      {(studentsQuery.isError || groupsQuery.isError || groupCandidatesQuery.isError) && (
+      {hasPrimarySyncError && (
         <PageStatusPanel
           eyebrow="Coaching fallback"
           title="Student oversight could not be fully loaded."
@@ -665,6 +667,18 @@ export default function AdminStudentOversightPanel() {
             void groupCandidatesQuery.refetch();
           }}
           tone="danger"
+        />
+      )}
+
+      {hasSecondarySyncIssue && !hasPrimarySyncError && (
+        <SoftSyncNotice
+          title="Some admin coordination data is temporarily unavailable."
+          description="Student telemetry is still visible. Retry when you want group membership and candidate lists back in sync."
+          actionLabel="Retry"
+          onAction={() => {
+            void groupsQuery.refetch();
+            void groupCandidatesQuery.refetch();
+          }}
         />
       )}
 

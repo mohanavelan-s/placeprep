@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import ClearHistoryButton from "@/components/ClearHistoryButton";
 import PageStatusPanel from "@/components/PageStatusPanel";
+import SoftSyncNotice from "@/components/SoftSyncNotice";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
@@ -93,13 +94,11 @@ export default function AiMentorPage() {
           )}
 
           {historyQuery.isError && (
-            <PageStatusPanel
-              eyebrow="Mentor fallback"
-              title="Message history could not be loaded."
+            <SoftSyncNotice
+              title="Saved mentor history is temporarily unavailable."
               description="You can still send a fresh question. Retry if you want the saved thread back."
               actionLabel="Retry"
               onAction={() => void historyQuery.refetch()}
-              tone="danger"
             />
           )}
 

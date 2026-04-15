@@ -1,8 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
-import AppShell from "@/components/AppShell";
 import BrowserNotificationBridge from "@/components/BrowserNotificationBridge";
 import RouteErrorBoundary from "@/components/RouteErrorBoundary";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -10,16 +9,18 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { canAccessAppPath } from "@/lib/access";
-import AiMentorPage from "./pages/AiMentorPage.tsx";
-import AuthPage from "./pages/AuthPage.tsx";
-import DashboardPage from "./pages/DashboardPage.tsx";
-import LandingPage from "./pages/LandingPage.tsx";
-import NotFound from "./pages/NotFound.tsx";
-import PrepArchitectPage from "./pages/PrepArchitectPage.tsx";
-import ProfilePage from "./pages/ProfilePage.tsx";
-import ProgressPage from "./pages/ProgressPage.tsx";
-import SettingsPage from "./pages/SettingsPage.tsx";
-import TasksPage from "./pages/TasksPage.tsx";
+
+const AppShell = lazy(() => import("@/components/AppShell"));
+const AiMentorPage = lazy(() => import("./pages/AiMentorPage.tsx"));
+const AuthPage = lazy(() => import("./pages/AuthPage.tsx"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage.tsx"));
+const LandingPage = lazy(() => import("./pages/LandingPage.tsx"));
+const NotFound = lazy(() => import("./pages/NotFound.tsx"));
+const PrepArchitectPage = lazy(() => import("./pages/PrepArchitectPage.tsx"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage.tsx"));
+const ProgressPage = lazy(() => import("./pages/ProgressPage.tsx"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage.tsx"));
+const TasksPage = lazy(() => import("./pages/TasksPage.tsx"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -97,20 +98,22 @@ function AppRoutes() {
     return (
       <>
         <TitleUpdater />
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/welcome" element={<LandingPage />} />
-          <Route path="/auth" element={<AuthPage onLogin={login} onRegister={register} />} />
-          <Route path="/invite" element={<AuthPage onLogin={login} onRegister={register} />} />
-          <Route path="/dashboard" element={<Navigate to="/auth?mode=login" replace />} />
-          <Route path="/prep-architect" element={<Navigate to="/auth?mode=login" replace />} />
-          <Route path="/tasks" element={<Navigate to="/auth?mode=login" replace />} />
-          <Route path="/progress" element={<Navigate to="/auth?mode=login" replace />} />
-          <Route path="/profile" element={<Navigate to="/auth?mode=login" replace />} />
-          <Route path="/settings" element={<Navigate to="/auth?mode=login" replace />} />
-          <Route path="/ai-mentor" element={<Navigate to="/auth?mode=login" replace />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={<LoadingState />}>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/welcome" element={<LandingPage />} />
+            <Route path="/auth" element={<AuthPage onLogin={login} onRegister={register} />} />
+            <Route path="/invite" element={<AuthPage onLogin={login} onRegister={register} />} />
+            <Route path="/dashboard" element={<Navigate to="/auth?mode=login" replace />} />
+            <Route path="/prep-architect" element={<Navigate to="/auth?mode=login" replace />} />
+            <Route path="/tasks" element={<Navigate to="/auth?mode=login" replace />} />
+            <Route path="/progress" element={<Navigate to="/auth?mode=login" replace />} />
+            <Route path="/profile" element={<Navigate to="/auth?mode=login" replace />} />
+            <Route path="/settings" element={<Navigate to="/auth?mode=login" replace />} />
+            <Route path="/ai-mentor" element={<Navigate to="/auth?mode=login" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </>
     );
   }
@@ -119,22 +122,24 @@ function AppRoutes() {
     <>
       <TitleUpdater />
       <BrowserNotificationBridge />
-      <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/welcome" element={<LandingPage />} />
-        <Route path="/auth" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/invite" element={<Navigate to="/dashboard" replace />} />
-        <Route element={<ProtectedWorkspaceLayout />}>
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/prep-architect" element={<PrepArchitectPage />} />
-          <Route path="/tasks" element={<TasksPage />} />
-          <Route path="/progress" element={<ProgressPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/ai-mentor" element={<AiMentorPage />} />
-        </Route>
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      <Suspense fallback={<LoadingState />}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/welcome" element={<LandingPage />} />
+          <Route path="/auth" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/invite" element={<Navigate to="/dashboard" replace />} />
+          <Route element={<ProtectedWorkspaceLayout />}>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/prep-architect" element={<PrepArchitectPage />} />
+            <Route path="/tasks" element={<TasksPage />} />
+            <Route path="/progress" element={<ProgressPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/ai-mentor" element={<AiMentorPage />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
     </>
   );
 }

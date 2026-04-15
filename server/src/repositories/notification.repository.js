@@ -35,7 +35,7 @@ async function createNotification(payload, client = null) {
       metadata,
       dedupe_key
     ) VALUES ($1, $2, $3, $4, $5, FALSE, $6, $7, $8)
-    ON CONFLICT (user_id, type, dedupe_key)
+    ON CONFLICT
     DO NOTHING
     RETURNING ${notificationColumns}`,
     [

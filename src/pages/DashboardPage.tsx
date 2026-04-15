@@ -13,6 +13,7 @@ import DashboardDailyTasks from "@/components/DashboardDailyTasks";
 import DashboardPowerPocket from "@/components/DashboardPowerPocket";
 import DashboardProgressCharts from "@/components/DashboardProgressCharts";
 import PageStatusPanel from "@/components/PageStatusPanel";
+import SoftSyncNotice from "@/components/SoftSyncNotice";
 import StatsGrid from "@/components/StatsGrid";
 import XPBar from "@/components/XPBar";
 import { Button } from "@/components/ui/button";
@@ -178,12 +179,12 @@ export default function DashboardPage() {
   const commandLine = latestPlan?.motivationLine || prepPlan?.coachLine || progress?.coachProfile?.commandLine || null;
   const isInitialSync =
     (progressQuery.isPending && !progress)
-    || (tasksQuery.isPending && !tasks.length)
-    || (prepPlanQuery.isPending && !prepPlan);
+    || (tasksQuery.isPending && !tasks.length);
   const hasSyncError =
     progressQuery.isError
-    || tasksQuery.isError
-    || activeSessionQuery.isError
+    || tasksQuery.isError;
+  const hasSecondarySyncIssue =
+    activeSessionQuery.isError
     || prepPlanQuery.isError;
 
   async function refreshDashboard() {
@@ -253,6 +254,11 @@ export default function DashboardPage() {
                 ? `Prep Architect v${prepPlan.version} is active for ${prepPlan?.targetTopics?.[0] || "your next topic"}.`
                 : "No architect plan yet. Build one to turn weak areas into a structured roadmap."}
             </p>
+            {hasSecondarySyncIssue && (
+              <p className="mt-3 text-sm leading-6 text-foreground/68">
+                Some non-critical live signals are temporarily unavailable. Your core dashboard is still usable, and refresh will retry the missing syncs.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -279,13 +285,11 @@ export default function DashboardPage() {
         )}
 
         {hasSyncError && (
-          <PageStatusPanel
-            eyebrow="Dashboard fallback"
-            title="Some dashboard data could not be loaded."
-            description="The command center is still visible with safe defaults. Retry to pull the live state back in."
+          <SoftSyncNotice
+            title="Some live dashboard data is temporarily unavailable."
+            description="The command center is still visible with safe defaults. Retry to pull the latest state back in."
             actionLabel="Retry"
             onAction={() => void refreshDashboard()}
-            tone="danger"
           />
         )}
 
