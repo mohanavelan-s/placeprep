@@ -475,40 +475,80 @@ function hydrateStoredPlan(plan) {
   };
 }
 
-function planTasksForSync(plan, planId) {
+function buildPriorPlanTaskLookup(previousTasks = []) {
+  const byIndex = new Map();
+  const byTitle = new Map();
+
+  previousTasks.forEach((task) => {
+    const rawIndex = task?.metadata?.itemIndex;
+    const itemIndex = Number.isInteger(Number(rawIndex)) ? Number(rawIndex) : null;
+    if (itemIndex !== null && !byIndex.has(itemIndex)) {
+      byIndex.set(itemIndex, task);
+    }
+
+    const normalizedTitle = String(task?.title || '').trim().toLowerCase();
+    if (normalizedTitle && !byTitle.has(normalizedTitle)) {
+      byTitle.set(normalizedTitle, task);
+    }
+  });
+
+  return { byIndex, byTitle };
+}
+
+function planTasksForSync(plan, planId, previousTasks = []) {
   const firstDay = plan.tasks[0];
   if (!firstDay?.items?.length) {
     return [];
   }
 
-  return firstDay.items.slice(0, 4).map((item, index) => ({
-    title: item.title,
-    description: `${firstDay.day}: ${firstDay.theme}`,
-    category: item.type === 'Project' ? 'Project' : item.type === 'Revision' ? 'Core' : 'DSA',
-    subcategory: firstDay.theme,
-    status: 'pending',
-    priority: index <= 1 ? 'high' : 'medium',
-    intensity: item.type === 'Project' ? 'high' : 'medium',
-    referenceLabel: item.referenceLabel || null,
-    referenceUrl: item.referenceUrl || null,
-    estimatedMinutes: clamp(item.estimatedMinutes, 10, 240),
-    actualMinutes: 0,
-    difficulty: /easy/i.test(item.difficulty) ? 2 : /hard/i.test(item.difficulty) ? 4 : 3,
-    weakArea: firstDay.theme,
-    aiGenerated: true,
-    metadata: {
-      source: 'prep-architect',
-      planId,
-      day: firstDay.day,
-      theme: firstDay.theme,
-    },
-  }));
+  const lookup = buildPriorPlanTaskLookup(previousTasks);
+
+  return firstDay.items.slice(0, 4).map((item, index) => {
+    const matchedTask = lookup.byIndex.get(index)
+      || lookup.byTitle.get(String(item.title || '').trim().toLowerCase())
+      || null;
+
+    return {
+      title: item.title,
+      description: `${firstDay.day}: ${firstDay.theme}`,
+      category: item.type === 'Project' ? 'Project' : item.type === 'Revision' ? 'Core' : 'DSA',
+      subcategory: firstDay.theme,
+      status: matchedTask?.status || 'pending',
+      priority: index <= 1 ? 'high' : 'medium',
+      intensity: item.type === 'Project' ? 'high' : 'medium',
+      referenceLabel: item.referenceLabel || null,
+      referenceUrl: item.referenceUrl || null,
+      estimatedMinutes: clamp(item.estimatedMinutes, 10, 240),
+      actualMinutes: Number(matchedTask?.actualMinutes || 0),
+      difficulty: /easy/i.test(item.difficulty) ? 2 : /hard/i.test(item.difficulty) ? 4 : 3,
+      weakArea: firstDay.theme,
+      aiGenerated: true,
+      metadata: {
+        source: 'prep-architect',
+        planId,
+        day: firstDay.day,
+        theme: firstDay.theme,
+        itemIndex: index,
+      },
+      completedAt: matchedTask?.completedAt || null,
+    };
+  });
 }
 
 async function syncTodayTasks(user, plan) {
   const scheduledFor = getTodayInTimezone(user.timezone);
-  await taskRepository.deleteAiGeneratedByDate(user.id, scheduledFor);
-  const tasksToCreate = planTasksForSync(plan, plan.id);
+  const existingTasks = await taskRepository.listPrepArchitectTasksByPlanAndDate(
+    user.id,
+    plan.id,
+    scheduledFor,
+  );
+
+  if (existingTasks.length) {
+    return existingTasks;
+  }
+
+  const previousTasks = await taskRepository.listRecentPrepArchitectTasksByPlan(user.id, plan.id);
+  const tasksToCreate = planTasksForSync(plan, plan.id, previousTasks);
 
   await Promise.all(
     tasksToCreate.map((task) =>
@@ -519,6 +559,33 @@ async function syncTodayTasks(user, plan) {
       })
     )
   );
+}
+
+async function syncUserWithActivePlan(user, plan = null) {
+  const currentUser = await userRepository.findById(user.id);
+  const nextCoachMetadata = { ...(currentUser?.coachMetadata || {}) };
+
+  if (plan) {
+    nextCoachMetadata.prepArchitectUpdatedAt = new Date().toISOString();
+    nextCoachMetadata.prepArchitectPlanId = plan.id;
+    nextCoachMetadata.prepArchitectCoachLine = plan.coachLine || plan.metadata?.coachLine || null;
+  } else {
+    delete nextCoachMetadata.prepArchitectUpdatedAt;
+    delete nextCoachMetadata.prepArchitectPlanId;
+    delete nextCoachMetadata.prepArchitectCoachLine;
+  }
+
+  const updates = {
+    coachMetadata: nextCoachMetadata,
+  };
+
+  if (plan) {
+    updates.strongTopics = cleanTopics(plan.knownTopics, 8);
+    updates.weakAreas = cleanTopics(plan.targetTopics, 8);
+    updates.targetRole = plan.targetRole || currentUser?.targetRole || user.targetRole || null;
+  }
+
+  await userRepository.updateUser(user.id, updates);
 }
 
 async function persistPlan(user, plan, sourcePlanId = null) {
@@ -544,18 +611,6 @@ async function persistPlan(user, plan, sourcePlanId = null) {
     }, client);
   });
 
-  await userRepository.updateUser(user.id, {
-    strongTopics: cleanTopics(plan.knownTopics, 8),
-    weakAreas: cleanTopics(plan.targetTopics, 8),
-    targetRole: plan.targetRole || user.targetRole || null,
-    coachMetadata: {
-      ...(user.coachMetadata || {}),
-      prepArchitectUpdatedAt: new Date().toISOString(),
-      prepArchitectPlanId: persistedPlan.id,
-      prepArchitectCoachLine: plan.coachLine,
-    },
-  });
-
   const finalPlan = {
     ...persistedPlan,
     coachLine: plan.coachLine,
@@ -570,6 +625,7 @@ async function persistPlan(user, plan, sourcePlanId = null) {
     usedFallback: plan.usedFallback,
   };
 
+  await syncUserWithActivePlan(user, finalPlan);
   await syncTodayTasks(user, finalPlan);
   await progressService.refreshProgressStats(user.id, user.timezone);
 
@@ -696,19 +752,78 @@ async function getPlanHistory(user, limit = 10) {
   return plans.map(hydrateStoredPlan);
 }
 
-async function clearPlanHistory(user) {
-  const deleted = await prepPlanRepository.deleteByUser(user.id);
-  const nextCoachMetadata = { ...(user.coachMetadata || {}) };
-  delete nextCoachMetadata.prepArchitectUpdatedAt;
-  delete nextCoachMetadata.prepArchitectPlanId;
-  delete nextCoachMetadata.prepArchitectCoachLine;
+async function activatePlan(user, planId) {
+  const targetPlan = await prepPlanRepository.findById(planId, user.id);
 
-  await userRepository.updateUser(user.id, {
-    coachMetadata: nextCoachMetadata,
+  if (!targetPlan) {
+    throw new AppError('Prep plan not found.', 404);
+  }
+
+  if (!targetPlan.isActive) {
+    await withTransaction(async (client) => {
+      await prepPlanRepository.deactivateActivePlans(user.id, client);
+      await prepPlanRepository.activatePlan(user.id, targetPlan.id, client);
+    });
+  }
+
+  const activePlan = hydrateStoredPlan({
+    ...targetPlan,
+    isActive: true,
   });
 
+  await syncUserWithActivePlan(user, activePlan);
+  await syncTodayTasks(user, activePlan);
+  await progressService.refreshProgressStats(user.id, user.timezone);
+
+  return activePlan;
+}
+
+async function clearPlanHistory(user, planIds = null) {
+  const normalizedPlanIds = Array.isArray(planIds)
+    ? Array.from(new Set(planIds.map((planId) => String(planId || '').trim()).filter(Boolean)))
+    : [];
+
+  const { deletedPlans, nextActivePlan, deletedActivePlan } = await withTransaction(async (client) => {
+    const plansToDelete = normalizedPlanIds.length
+      ? await prepPlanRepository.deleteByIds(user.id, normalizedPlanIds, client)
+      : await prepPlanRepository.deleteByUser(user.id, client);
+
+    let promotedPlan = null;
+    const removedActivePlan = plansToDelete.some((plan) => plan.isActive);
+
+    if (removedActivePlan) {
+      const remainingPlans = await prepPlanRepository.listByUser(user.id, 1, client);
+      if (remainingPlans.length) {
+        await prepPlanRepository.deactivateActivePlans(user.id, client);
+        promotedPlan = await prepPlanRepository.activatePlan(user.id, remainingPlans[0].id, client);
+      }
+    }
+
+    return {
+      deletedPlans: plansToDelete,
+      nextActivePlan: promotedPlan,
+      deletedActivePlan: removedActivePlan,
+    };
+  });
+
+  const deletedPlanIds = deletedPlans.map((plan) => plan.id);
+  if (deletedPlanIds.length) {
+    await taskRepository.deletePrepArchitectTasksByPlanIds(user.id, deletedPlanIds);
+  }
+
+  const hydratedActivePlan = hydrateStoredPlan(nextActivePlan);
+  if (deletedActivePlan) {
+    await syncUserWithActivePlan(user, hydratedActivePlan);
+
+    if (hydratedActivePlan) {
+      await syncTodayTasks(user, hydratedActivePlan);
+    }
+  }
+
+  await progressService.refreshProgressStats(user.id, user.timezone);
+
   return {
-    deleted,
+    deleted: deletedPlans.length,
     clearedAt: new Date().toISOString(),
   };
 }
@@ -719,5 +834,6 @@ module.exports = {
   updatePlan,
   getLatestPlan,
   getPlanHistory,
+  activatePlan,
   clearPlanHistory,
 };

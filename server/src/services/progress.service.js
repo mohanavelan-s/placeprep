@@ -1,6 +1,7 @@
 const { query } = require('../config/database');
 const progressRepository = require('../repositories/progress.repository');
 const userRepository = require('../repositories/user.repository');
+const { buildPrepArchitectTaskVisibilityClause } = require('../utils/taskVisibility');
 const { getDateRange, getTodayInTimezone } = require('../utils/date');
 const AppError = require('../utils/appError');
 
@@ -189,6 +190,11 @@ async function buildSummaryForUser(user) {
   const last14Start = fourteenDayWindow[0];
   const last7Start = sevenDayWindow[0];
   const last30Start = subtractDays(today, 29);
+  const visibleTaskHistoryClause = buildPrepArchitectTaskVisibilityClause({
+    taskRef: 'tasks',
+    activePlanRef: 'current_user.active_plan_id',
+    includeInactiveCompleted: true,
+  });
 
   const [
     taskAggregateResult,
@@ -205,11 +211,18 @@ async function buildSummaryForUser(user) {
     struggleAggregateResult,
   ] = await Promise.all([
     query(
-      `SELECT
+      `WITH current_user AS (
+         SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
+         FROM users
+         WHERE id = $1
+       )
+       SELECT
          COUNT(*)::INT AS total_tasks,
          COUNT(*) FILTER (WHERE status = 'completed')::INT AS completed_tasks
-       FROM tasks
-       WHERE user_id = $1 AND scheduled_for BETWEEN $2 AND $3`,
+       FROM tasks, current_user
+       WHERE user_id = $1
+         AND scheduled_for BETWEEN $2 AND $3
+         AND ${visibleTaskHistoryClause}`,
       [user.id, last14Start, today]
     ),
     query(
@@ -232,11 +245,18 @@ async function buildSummaryForUser(user) {
       [user.id, last14Start, today]
     ),
     query(
-      `SELECT
+      `WITH current_user AS (
+         SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
+         FROM users
+         WHERE id = $1
+       )
+       SELECT
          scheduled_for::TEXT AS activity_date,
          COUNT(*) FILTER (WHERE status = 'completed')::INT AS completed_tasks
-       FROM tasks
-       WHERE user_id = $1 AND scheduled_for BETWEEN $2 AND $3
+       FROM tasks, current_user
+       WHERE user_id = $1
+         AND scheduled_for BETWEEN $2 AND $3
+         AND ${visibleTaskHistoryClause}
        GROUP BY scheduled_for
        ORDER BY scheduled_for`,
       [user.id, last7Start, today]
@@ -291,7 +311,12 @@ async function buildSummaryForUser(user) {
       [user.id, today]
     ),
     query(
-      `SELECT
+      `WITH current_user AS (
+         SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
+         FROM users
+         WHERE id = $1
+       )
+       SELECT
          COALESCE(NULLIF(weak_area, ''), NULLIF(subcategory, ''), category) AS topic,
          ROUND(
            COALESCE(
@@ -299,16 +324,22 @@ async function buildSummaryForUser(user) {
              0
            )
          )::INT AS strength
-       FROM tasks
+       FROM tasks, current_user
        WHERE user_id = $1
          AND scheduled_for BETWEEN $2 AND $3
+         AND ${visibleTaskHistoryClause}
        GROUP BY topic
        ORDER BY strength DESC, topic ASC
        LIMIT 8`,
       [user.id, last30Start, today]
     ),
     query(
-      `SELECT
+      `WITH current_user AS (
+         SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
+         FROM users
+         WHERE id = $1
+       )
+       SELECT
          COUNT(*) FILTER (WHERE category = 'DSA' AND status = 'completed')::INT AS solved_problems,
          COALESCE(
            ROUND(
@@ -328,12 +359,18 @@ async function buildSummaryForUser(user) {
              AND status IN ('pending', 'in_progress')
              AND scheduled_for < $2
          )::INT AS overdue_dsa
-       FROM tasks
-       WHERE user_id = $1`,
+       FROM tasks, current_user
+       WHERE user_id = $1
+         AND ${visibleTaskHistoryClause}`,
       [user.id, today]
     ),
     query(
-      `SELECT
+      `WITH current_user AS (
+         SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
+         FROM users
+         WHERE id = $1
+       )
+       SELECT
          COALESCE(NULLIF(weak_area, ''), NULLIF(subcategory, ''), category) AS topic,
          category,
          COUNT(*)::INT AS total_tasks,
@@ -355,9 +392,10 @@ async function buildSummaryForUser(user) {
            ),
            0
          ) AS average_minutes
-       FROM tasks
+       FROM tasks, current_user
        WHERE user_id = $1
          AND scheduled_for BETWEEN $2 AND $3
+         AND ${visibleTaskHistoryClause}
        GROUP BY topic, category
        ORDER BY total_tasks DESC, topic ASC`,
       [user.id, last30Start, today]

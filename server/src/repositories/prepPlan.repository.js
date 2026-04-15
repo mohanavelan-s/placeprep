@@ -77,8 +77,23 @@ async function deactivateActivePlans(userId, db) {
   );
 }
 
-async function findById(planId, userId) {
-  const result = await query(
+async function activatePlan(userId, planId, db) {
+  const executor = getExecutor(db);
+  const result = await executor.query(
+    `UPDATE prep_plans
+     SET is_active = TRUE
+     WHERE user_id = $1
+       AND id = $2
+     RETURNING ${prepPlanColumns}`,
+    [userId, planId]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function findById(planId, userId, db = null) {
+  const executor = getExecutor(db);
+  const result = await executor.query(
     `SELECT ${prepPlanColumns}
      FROM prep_plans
      WHERE id = $1 AND user_id = $2`,
@@ -88,8 +103,9 @@ async function findById(planId, userId) {
   return result.rows[0] || null;
 }
 
-async function findLatestActiveByUser(userId) {
-  const result = await query(
+async function findLatestActiveByUser(userId, db = null) {
+  const executor = getExecutor(db);
+  const result = await executor.query(
     `SELECT ${prepPlanColumns}
      FROM prep_plans
      WHERE user_id = $1 AND is_active = TRUE
@@ -101,8 +117,9 @@ async function findLatestActiveByUser(userId) {
   return result.rows[0] || null;
 }
 
-async function listByUser(userId, limit = 10) {
-  const result = await query(
+async function listByUser(userId, limit = 10, db = null) {
+  const executor = getExecutor(db);
+  const result = await executor.query(
     `SELECT ${prepPlanColumns}
      FROM prep_plans
      WHERE user_id = $1
@@ -126,23 +143,62 @@ async function getNextVersion(userId, db) {
   return Number(result.rows[0]?.version || 0) + 1;
 }
 
-async function deleteByUser(userId) {
-  const result = await query(
+async function updateTasks(planId, userId, tasks, db = null) {
+  const executor = getExecutor(db);
+  const result = await executor.query(
+    `UPDATE prep_plans
+     SET tasks = $1
+     WHERE id = $2
+       AND user_id = $3
+     RETURNING ${prepPlanColumns}`,
+    [
+      JSON.stringify(tasks || []),
+      planId,
+      userId,
+    ]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function deleteByIds(userId, planIds = [], db = null) {
+  if (!planIds.length) {
+    return [];
+  }
+
+  const executor = getExecutor(db);
+  const result = await executor.query(
     `DELETE FROM prep_plans
      WHERE user_id = $1
-     RETURNING id`,
+       AND id = ANY($2::uuid[])
+     RETURNING ${prepPlanColumns}`,
+    [userId, planIds]
+  );
+
+  return result.rows;
+}
+
+async function deleteByUser(userId, db = null) {
+  const executor = getExecutor(db);
+  const result = await executor.query(
+    `DELETE FROM prep_plans
+     WHERE user_id = $1
+     RETURNING ${prepPlanColumns}`,
     [userId]
   );
 
-  return result.rowCount;
+  return result.rows;
 }
 
 module.exports = {
   createPlan,
   deactivateActivePlans,
+  activatePlan,
   findById,
   findLatestActiveByUser,
   listByUser,
   getNextVersion,
+  updateTasks,
+  deleteByIds,
   deleteByUser,
 };

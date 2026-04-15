@@ -672,6 +672,12 @@ export async function fetchInvites(limit = 25) {
   return request<InviteRecord[]>(`/invites?limit=${limit}`);
 }
 
+export async function clearInviteHistory() {
+  return request<HistoryClearResult>("/invites/history", {
+    method: "DELETE",
+  });
+}
+
 export async function createInvite(payload: {
   role: "admin" | "user";
   expiresInDays?: number;
@@ -1169,9 +1175,17 @@ export async function fetchPrepPlanHistory(limit = 10) {
   return request<PrepPlan[]>(`/ai/prep-architect/history?limit=${limit}`);
 }
 
-export async function clearPrepPlanHistory() {
+export async function clearPrepPlanHistory(planIds?: string[]) {
   return request<HistoryClearResult>("/ai/prep-architect/history", {
     method: "DELETE",
+    body: JSON.stringify(planIds?.length ? { planIds } : {}),
+  });
+}
+
+export async function activatePrepPlan(planId: string) {
+  return request<PrepPlan>("/ai/prep-architect/activate", {
+    method: "POST",
+    body: JSON.stringify({ planId }),
   });
 }
 

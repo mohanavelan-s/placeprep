@@ -1,6 +1,7 @@
 const { randomUUID } = require('crypto');
 const { query } = require('../config/database');
 const { buildUpdateClause } = require('../utils/sql');
+const { buildPrepArchitectTaskVisibilityClause } = require('../utils/taskVisibility');
 
 function getExecutor(client) {
   return client ? client.query.bind(client) : query;
@@ -103,28 +104,39 @@ async function findById(taskId, userId) {
 
 async function listByUser(userId, filters = {}) {
   const values = [userId];
-  const where = ['user_id = $1'];
+  const where = ['tasks.user_id = $1'];
 
   if (filters.date) {
     values.push(filters.date);
-    where.push(`scheduled_for = $${values.length}`);
+    where.push(`tasks.scheduled_for = $${values.length}`);
   }
 
   if (filters.status) {
     values.push(filters.status);
-    where.push(`status = $${values.length}`);
+    where.push(`tasks.status = $${values.length}`);
   }
 
   if (filters.category) {
     values.push(filters.category);
-    where.push(`category = $${values.length}`);
+    where.push(`tasks.category = $${values.length}`);
   }
 
+  const prepArchitectVisibility = buildPrepArchitectTaskVisibilityClause({
+    taskRef: 'tasks',
+    activePlanRef: 'current_user.active_plan_id',
+  });
+
   const result = await query(
-    `SELECT ${taskColumns}
-     FROM tasks
+    `WITH current_user AS (
+       SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
+       FROM users
+       WHERE id = $1
+     )
+     SELECT ${taskColumns}
+     FROM tasks, current_user
      WHERE ${where.join(' AND ')}
-     ORDER BY COALESCE(due_at, scheduled_for::timestamp) ASC, created_at DESC`,
+       AND ${prepArchitectVisibility}
+     ORDER BY COALESCE(tasks.due_at, tasks.scheduled_for::timestamp) ASC, tasks.created_at DESC`,
     values
   );
 
@@ -196,10 +208,66 @@ async function deleteAiGeneratedByDate(userId, scheduledFor) {
   return result.rowCount || 0;
 }
 
+async function listPrepArchitectTasksByPlanAndDate(userId, planId, scheduledFor, client = null) {
+  const execute = getExecutor(client);
+  const result = await execute(
+    `SELECT ${taskColumns}
+     FROM tasks
+     WHERE user_id = $1
+       AND scheduled_for = $2
+       AND COALESCE(metadata->>'source', '') = 'prep-architect'
+       AND COALESCE(metadata->>'planId', '') = $3
+     ORDER BY created_at ASC`,
+    [userId, scheduledFor, planId]
+  );
+
+  return result.rows;
+}
+
+async function listRecentPrepArchitectTasksByPlan(userId, planId, limit = 24, client = null) {
+  const execute = getExecutor(client);
+  const result = await execute(
+    `SELECT ${taskColumns}
+     FROM tasks
+     WHERE user_id = $1
+       AND COALESCE(metadata->>'source', '') = 'prep-architect'
+       AND COALESCE(metadata->>'planId', '') = $2
+     ORDER BY scheduled_for DESC, created_at DESC
+     LIMIT $3`,
+    [userId, planId, limit]
+  );
+
+  return result.rows;
+}
+
+async function deletePrepArchitectTasksByPlanIds(userId, planIds = [], client = null) {
+  if (!planIds.length) {
+    return 0;
+  }
+
+  const execute = getExecutor(client);
+  const result = await execute(
+    `DELETE FROM tasks
+     WHERE user_id = $1
+       AND COALESCE(metadata->>'source', '') = 'prep-architect'
+       AND COALESCE(metadata->>'planId', '') = ANY($2::text[])
+     RETURNING id`,
+    [userId, planIds]
+  );
+
+  return result.rowCount || 0;
+}
+
 async function listSummaryByUsers(userIds = []) {
   if (!userIds.length) {
     return [];
   }
+
+  const prepArchitectVisibility = buildPrepArchitectTaskVisibilityClause({
+    taskRef: 'tasks',
+    activePlanRef: "COALESCE(owner.coach_metadata->>'prepArchitectPlanId', '')",
+    includeInactiveCompleted: true,
+  });
 
   const result = await query(
     `SELECT
@@ -217,7 +285,10 @@ async function listSummaryByUsers(userIds = []) {
            )
        )::INT AS overdue
      FROM tasks
+     JOIN users AS owner
+       ON owner.id = tasks.user_id
      WHERE user_id = ANY($1::uuid[])
+       AND ${prepArchitectVisibility}
      GROUP BY user_id`,
     [userIds]
   );
@@ -254,6 +325,9 @@ module.exports = {
   updateTask,
   deleteTask,
   deleteAiGeneratedByDate,
+  listPrepArchitectTasksByPlanAndDate,
+  listRecentPrepArchitectTasksByPlan,
+  deletePrepArchitectTasksByPlanIds,
   listSummaryByUsers,
   listRecentAdminPracticeTasksByUsers,
   taskColumns,

@@ -390,6 +390,8 @@ CREATE INDEX IF NOT EXISTS idx_tasks_user_created_at ON tasks(user_id, created_a
 CREATE INDEX IF NOT EXISTS idx_tasks_user_due_at_active ON tasks(user_id, due_at ASC)
 WHERE status IN ('pending', 'in_progress');
 CREATE INDEX IF NOT EXISTS idx_tasks_admin_assignment_lookup ON tasks((metadata->>'shareKind'), user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_prep_architect_plan_lookup ON tasks(user_id, (metadata->>'planId'), scheduled_for DESC, created_at DESC)
+WHERE metadata->>'source' = 'prep-architect';
 CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON daily_logs(user_id, log_date);
 CREATE INDEX IF NOT EXISTS idx_power_pocket_user_started_at ON power_pocket_sessions(user_id, started_at);
 CREATE INDEX IF NOT EXISTS idx_progress_stats_user_date ON progress_stats(user_id, stat_date);

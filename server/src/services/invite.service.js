@@ -201,6 +201,14 @@ async function listInvites(limit = 25) {
   return invites.map(buildInviteView);
 }
 
+async function clearInviteHistory() {
+  const deleted = await inviteRepository.deleteInactiveInvites();
+  return {
+    deleted,
+    clearedAt: new Date().toISOString(),
+  };
+}
+
 async function markInviteUsed(inviteId, userId, client = null) {
   return inviteRepository.markInviteUsed(inviteId, userId, client);
 }
@@ -291,6 +299,7 @@ module.exports = {
   assertInviteAvailable,
   generateInvite,
   listInvites,
+  clearInviteHistory,
   markInviteUsed,
   ensureBootstrapInvites,
 };

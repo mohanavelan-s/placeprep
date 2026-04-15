@@ -84,9 +84,22 @@ async function markInviteUsed(inviteId, userId, client = null) {
   return result.rows[0] || null;
 }
 
+async function deleteInactiveInvites(client = null) {
+  const execute = getExecutor(client);
+  const result = await execute(
+    `DELETE FROM invites
+     WHERE used = TRUE
+        OR expires_at <= NOW()
+     RETURNING id`
+  );
+
+  return result.rowCount || 0;
+}
+
 module.exports = {
   createInvite,
   findByCode,
   listInvites,
   markInviteUsed,
+  deleteInactiveInvites,
 };

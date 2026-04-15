@@ -27,8 +27,20 @@ router.get(
   asyncHandler(controller.getPrepArchitectHistory)
 );
 
+router.post(
+  '/prep-architect/activate',
+  [body('planId').isUUID()],
+  validate,
+  asyncHandler(controller.activatePrepArchitectPlan)
+);
+
 router.delete(
   '/prep-architect/history',
+  [
+    body('planIds').optional().isArray({ min: 1, max: 20 }),
+    body('planIds.*').optional().isUUID(),
+  ],
+  validate,
   asyncHandler(controller.clearPrepArchitectHistory)
 );
 

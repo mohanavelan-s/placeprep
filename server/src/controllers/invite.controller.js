@@ -16,8 +16,14 @@ async function createInvite(req, res) {
   res.status(201).json({ success: true, data: invite });
 }
 
+async function clearInviteHistory(req, res) {
+  const result = await inviteService.clearInviteHistory();
+  res.json({ success: true, data: result });
+}
+
 module.exports = {
   previewInvite,
   listInvites,
   createInvite,
+  clearInviteHistory,
 };

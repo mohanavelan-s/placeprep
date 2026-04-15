@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Link2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
+import ClearHistoryButton from "@/components/ClearHistoryButton";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createInvite, fetchInvites } from "@/lib/api";
+import { clearInviteHistory, createInvite, fetchInvites } from "@/lib/api";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 
 function formatInviteDate(value: string) {
@@ -80,6 +81,21 @@ export default function AdminInvitePanel() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to generate invite.");
+    },
+  });
+
+  const clearHistoryMutation = useMutation({
+    mutationFn: clearInviteHistory,
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["invites"] });
+      toast.success(
+        result.deleted
+          ? `Invite history cleared from ${result.deleted} inactive invite${result.deleted === 1 ? "" : "s"}.`
+          : "There were no inactive invites left to clear.",
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to clear invite history.");
     },
   });
 
@@ -154,6 +170,16 @@ export default function AdminInvitePanel() {
                 Latest shared access links and their status.
               </p>
             </div>
+            <ClearHistoryButton
+              title="Clear invite history?"
+              description="This removes expired and already-used invite records. Active invite links stay available."
+              onConfirm={() => clearHistoryMutation.mutate()}
+              pending={clearHistoryMutation.isPending}
+              disabled={!invitesQuery.data?.some((invite) => invite.status !== "valid")}
+              buttonLabel="Clear"
+              confirmLabel="Clear inactive invites"
+              className="h-10 gap-2 border-border/80 bg-background/70"
+            />
           </div>
 
           {invitesQuery.isPending && !invitesQuery.data && (

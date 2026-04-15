@@ -19,6 +19,13 @@ router.get(
 
 router.get('/', requireAuth, requireAdmin, asyncHandler(controller.listInvites));
 
+router.delete(
+  '/history',
+  requireAuth,
+  requireAdmin,
+  asyncHandler(controller.clearInviteHistory)
+);
+
 router.post(
   '/',
   requireAuth,

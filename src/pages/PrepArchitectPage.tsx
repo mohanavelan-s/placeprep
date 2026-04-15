@@ -1,14 +1,33 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { History, PencilLine, RefreshCcw, Sparkles } from "lucide-react";
+import { History, PencilLine, RefreshCcw, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import ClearHistoryButton from "@/components/ClearHistoryButton";
 import HoursInput from "@/components/HoursInput";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import PrepPlanView from "@/components/PrepPlanView";
 import TopicTagInput from "@/components/TopicTagInput";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -19,6 +38,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/context/AuthContext";
 import {
+  activatePrepPlan,
   clearPrepPlanHistory,
   fetchLatestPrepPlan,
   fetchPrepPlanHistory,
@@ -49,6 +69,8 @@ export default function PrepArchitectPage() {
   const [timePerDayHours, setTimePerDayHours] = useState("2");
   const [targetRole, setTargetRole] = useState(user?.targetRole || "Backend Engineer");
   const [isEditing, setIsEditing] = useState(false);
+  const [manageVersionsOpen, setManageVersionsOpen] = useState(false);
+  const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!latestPlanQuery.data) {
@@ -108,28 +130,71 @@ export default function PrepArchitectPage() {
     },
   });
 
-  const clearHistoryMutation = useMutation({
-    mutationFn: clearPrepPlanHistory,
+  const activateVersionMutation = useMutation({
+    mutationFn: (planId: string) => activatePrepPlan(planId),
+    onSuccess: async (result) => {
+      queryClient.setQueryData(["prep-plan", "latest"], result);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["prep-plan", "history"] }),
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["tasks", "today"] }),
+        queryClient.invalidateQueries({ queryKey: ["progress-summary"] }),
+      ]);
+      setIsEditing(false);
+      toast.success(`Switched to Prep Architect v${result.version}.`);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to switch plan version.");
+    },
+  });
+
+  const deleteVersionsMutation = useMutation({
+    mutationFn: (planIds: string[]) => clearPrepPlanHistory(planIds),
     onSuccess: async (result) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["prep-plan", "latest"] }),
         queryClient.invalidateQueries({ queryKey: ["prep-plan", "history"] }),
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["tasks", "today"] }),
+        queryClient.invalidateQueries({ queryKey: ["progress-summary"] }),
       ]);
+      setSelectedPlanIds([]);
+      setManageVersionsOpen(false);
       setIsEditing(false);
       toast.success(
         result.deleted
-          ? `Prep Architect history cleared from ${result.deleted} saved version${result.deleted === 1 ? "" : "s"}.`
-          : "Prep Architect history was already empty.",
+          ? `Removed ${result.deleted} Prep Architect version${result.deleted === 1 ? "" : "s"}.`
+          : "No Prep Architect versions were removed.",
       );
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Unable to clear Prep Architect history.");
+      toast.error(error instanceof Error ? error.message : "Unable to delete selected plan versions.");
     },
   });
 
   const pending = generateMutation.isPending || updateMutation.isPending;
   const latestPlan = latestPlanQuery.data ?? null;
   const history = Array.isArray(historyQuery.data) ? historyQuery.data : [];
+
+  useEffect(() => {
+    setSelectedPlanIds((current) => current.filter((planId) => history.some((plan) => plan.id === planId)));
+  }, [history]);
+
+  const allVersionsSelected = history.length > 0 && selectedPlanIds.length === history.length;
+
+  function toggleSelectedPlan(planId: string, checked: boolean | "indeterminate") {
+    setSelectedPlanIds((current) => {
+      if (checked) {
+        return current.includes(planId) ? current : [...current, planId];
+      }
+
+      return current.filter((id) => id !== planId);
+    });
+  }
+
+  function toggleSelectAllVersions() {
+    setSelectedPlanIds(allVersionsSelected ? [] : history.map((plan) => plan.id));
+  }
 
   return (
     <div className="grid gap-6">
@@ -272,14 +337,16 @@ export default function PrepArchitectPage() {
             <div className="rounded-2xl border border-border/80 bg-card/70 p-5">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Version history</p>
-                <ClearHistoryButton
-                  title="Clear Prep Architect history?"
-                  description="This removes saved Prep Architect versions for this account. Your current editor inputs will stay available."
-                  onConfirm={() => clearHistoryMutation.mutate()}
-                  pending={clearHistoryMutation.isPending}
-                  disabled={!history.length}
+                <Button
+                  type="button"
+                  variant="outline"
                   className="h-10 gap-2 border-border/80 bg-background/70"
-                />
+                  disabled={!history.length}
+                  onClick={() => setManageVersionsOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Clear
+                </Button>
               </div>
               <div className="mt-4 space-y-3">
                 {history.length ? history.map((plan) => (
@@ -294,9 +361,25 @@ export default function PrepArchitectPage() {
                         })}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                      <History className="h-4 w-4" />
-                      {plan.isActive ? "Active" : "Saved"}
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                        <History className="h-4 w-4" />
+                        {plan.isActive ? "Active" : "Saved"}
+                      </div>
+                      {!plan.isActive && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 border-border/80 bg-background/70"
+                          disabled={activateVersionMutation.isPending}
+                          onClick={() => activateVersionMutation.mutate(plan.id)}
+                        >
+                          {activateVersionMutation.isPending && activateVersionMutation.variables === plan.id
+                            ? "Switching..."
+                            : "Use version"}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )) : historyQuery.isPending ? (
@@ -326,6 +409,101 @@ export default function PrepArchitectPage() {
       )}
 
       {latestPlan && <PrepPlanView plan={latestPlan} />}
+
+      <Dialog open={manageVersionsOpen} onOpenChange={setManageVersionsOpen}>
+        <DialogContent className="border-border/80 bg-card text-foreground sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Select versions to remove</DialogTitle>
+            <DialogDescription>
+              Pick the saved Prep Architect versions you want to delete. If you delete the active version, the latest remaining version becomes active automatically.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9 px-0 text-sm text-muted-foreground hover:bg-transparent hover:text-foreground"
+              onClick={toggleSelectAllVersions}
+            >
+              {allVersionsSelected ? "Clear selection" : "Select all versions"}
+            </Button>
+
+            <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+              {history.map((plan) => (
+                <label
+                  key={`delete-${plan.id}`}
+                  className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/70 bg-background/40 px-4 py-3"
+                >
+                  <Checkbox
+                    checked={selectedPlanIds.includes(plan.id)}
+                    onCheckedChange={(checked) => toggleSelectedPlan(plan.id, checked)}
+                    className="mt-1"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm text-foreground">Version {plan.version}</p>
+                      {plan.isActive && (
+                        <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] uppercase tracking-[0.16em] text-primary/90">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                      {new Date(plan.createdAt).toLocaleString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                    <p className="mt-2 text-sm text-foreground/75">
+                      {(plan.targetTopics || []).slice(0, 3).join(" / ") || plan.targetRole || "Saved version"}
+                    </p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button type="button" variant="ghost" onClick={() => setManageVersionsOpen(false)}>
+              Cancel
+            </Button>
+
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={!selectedPlanIds.length || deleteVersionsMutation.isPending}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {deleteVersionsMutation.isPending ? "Deleting..." : "Delete selected"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="border-border/80 bg-card text-foreground">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete selected plan versions?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This removes the selected Prep Architect versions and their linked task history from your account.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={() => deleteVersionsMutation.mutate(selectedPlanIds)}
+                  >
+                    Delete versions
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

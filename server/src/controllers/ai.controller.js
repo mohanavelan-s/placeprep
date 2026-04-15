@@ -47,6 +47,11 @@ async function getPrepArchitectHistory(req, res) {
   res.json({ success: true, data: result });
 }
 
+async function activatePrepArchitectPlan(req, res) {
+  const result = await prepArchitectService.activatePlan(req.user, req.body.planId);
+  res.json({ success: true, data: result });
+}
+
 async function sendMentorMessage(req, res) {
   const result = await mentorService.sendMessage(req.user, req.body);
   res.json({ success: true, data: result });
@@ -58,7 +63,7 @@ async function getMentorHistory(req, res) {
 }
 
 async function clearPrepArchitectHistory(req, res) {
-  const result = await prepArchitectService.clearPlanHistory(req.user);
+  const result = await prepArchitectService.clearPlanHistory(req.user, req.body?.planIds);
   res.json({ success: true, data: result });
 }
 
@@ -77,6 +82,7 @@ module.exports = {
   updatePrepArchitectPlan,
   getLatestPrepArchitectPlan,
   getPrepArchitectHistory,
+  activatePrepArchitectPlan,
   clearPrepArchitectHistory,
   sendMentorMessage,
   getMentorHistory,
