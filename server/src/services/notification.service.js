@@ -113,11 +113,11 @@ function sortCandidates(left, right) {
 async function getTaskSnapshot(userId, today) {
   const visibleActiveTasksClause = buildPrepArchitectTaskVisibilityClause({
     taskRef: 'tasks',
-    activePlanRef: 'current_user.active_plan_id',
+    activePlanRef: 'user_context.active_plan_id',
   });
 
   const result = await query(
-    `WITH current_user AS (
+    `WITH user_context AS (
        SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
        FROM users
        WHERE id = $1
@@ -134,7 +134,7 @@ async function getTaskSnapshot(userId, today) {
              OR (due_at IS NULL AND scheduled_for < $2)
            )
        )::INT AS overdue_count
-     FROM tasks, current_user
+     FROM tasks, user_context
      WHERE user_id = $1
        AND ${visibleActiveTasksClause}`,
     [userId, today]
@@ -149,11 +149,11 @@ async function getTaskSnapshot(userId, today) {
 async function getPendingTaskPreview(userId, today) {
   const visibleActiveTasksClause = buildPrepArchitectTaskVisibilityClause({
     taskRef: 'tasks',
-    activePlanRef: 'current_user.active_plan_id',
+    activePlanRef: 'user_context.active_plan_id',
   });
 
   const result = await query(
-    `WITH current_user AS (
+    `WITH user_context AS (
        SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
        FROM users
        WHERE id = $1
@@ -165,7 +165,7 @@ async function getPendingTaskPreview(userId, today) {
        estimated_minutes AS "estimatedMinutes",
        scheduled_for::TEXT AS "scheduledFor",
        due_at AS "dueAt"
-     FROM tasks, current_user
+     FROM tasks, user_context
      WHERE user_id = $1
        AND status IN ('pending', 'in_progress')
        AND ${visibleActiveTasksClause}

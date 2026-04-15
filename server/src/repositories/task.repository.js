@@ -123,17 +123,17 @@ async function listByUser(userId, filters = {}) {
 
   const prepArchitectVisibility = buildPrepArchitectTaskVisibilityClause({
     taskRef: 'tasks',
-    activePlanRef: 'current_user.active_plan_id',
+    activePlanRef: 'user_context.active_plan_id',
   });
 
   const result = await query(
-    `WITH current_user AS (
+    `WITH user_context AS (
        SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
        FROM users
        WHERE id = $1
      )
      SELECT ${taskColumns}
-     FROM tasks, current_user
+     FROM tasks, user_context
      WHERE ${where.join(' AND ')}
        AND ${prepArchitectVisibility}
      ORDER BY COALESCE(tasks.due_at, tasks.scheduled_for::timestamp) ASC, tasks.created_at DESC`,

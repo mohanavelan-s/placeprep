@@ -192,7 +192,7 @@ async function buildSummaryForUser(user) {
   const last30Start = subtractDays(today, 29);
   const visibleTaskHistoryClause = buildPrepArchitectTaskVisibilityClause({
     taskRef: 'tasks',
-    activePlanRef: 'current_user.active_plan_id',
+    activePlanRef: 'user_context.active_plan_id',
     includeInactiveCompleted: true,
   });
 
@@ -211,7 +211,7 @@ async function buildSummaryForUser(user) {
     struggleAggregateResult,
   ] = await Promise.all([
     query(
-      `WITH current_user AS (
+      `WITH user_context AS (
          SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
          FROM users
          WHERE id = $1
@@ -219,7 +219,7 @@ async function buildSummaryForUser(user) {
        SELECT
          COUNT(*)::INT AS total_tasks,
          COUNT(*) FILTER (WHERE status = 'completed')::INT AS completed_tasks
-       FROM tasks, current_user
+       FROM tasks, user_context
        WHERE user_id = $1
          AND scheduled_for BETWEEN $2 AND $3
          AND ${visibleTaskHistoryClause}`,
@@ -245,7 +245,7 @@ async function buildSummaryForUser(user) {
       [user.id, last14Start, today]
     ),
     query(
-      `WITH current_user AS (
+      `WITH user_context AS (
          SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
          FROM users
          WHERE id = $1
@@ -253,7 +253,7 @@ async function buildSummaryForUser(user) {
        SELECT
          scheduled_for::TEXT AS activity_date,
          COUNT(*) FILTER (WHERE status = 'completed')::INT AS completed_tasks
-       FROM tasks, current_user
+       FROM tasks, user_context
        WHERE user_id = $1
          AND scheduled_for BETWEEN $2 AND $3
          AND ${visibleTaskHistoryClause}
@@ -311,7 +311,7 @@ async function buildSummaryForUser(user) {
       [user.id, today]
     ),
     query(
-      `WITH current_user AS (
+      `WITH user_context AS (
          SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
          FROM users
          WHERE id = $1
@@ -324,7 +324,7 @@ async function buildSummaryForUser(user) {
              0
            )
          )::INT AS strength
-       FROM tasks, current_user
+       FROM tasks, user_context
        WHERE user_id = $1
          AND scheduled_for BETWEEN $2 AND $3
          AND ${visibleTaskHistoryClause}
@@ -334,7 +334,7 @@ async function buildSummaryForUser(user) {
       [user.id, last30Start, today]
     ),
     query(
-      `WITH current_user AS (
+      `WITH user_context AS (
          SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
          FROM users
          WHERE id = $1
@@ -359,13 +359,13 @@ async function buildSummaryForUser(user) {
              AND status IN ('pending', 'in_progress')
              AND scheduled_for < $2
          )::INT AS overdue_dsa
-       FROM tasks, current_user
+       FROM tasks, user_context
        WHERE user_id = $1
          AND ${visibleTaskHistoryClause}`,
       [user.id, today]
     ),
     query(
-      `WITH current_user AS (
+      `WITH user_context AS (
          SELECT COALESCE(coach_metadata->>'prepArchitectPlanId', '') AS active_plan_id
          FROM users
          WHERE id = $1
@@ -392,7 +392,7 @@ async function buildSummaryForUser(user) {
            ),
            0
          ) AS average_minutes
-       FROM tasks, current_user
+       FROM tasks, user_context
        WHERE user_id = $1
          AND scheduled_for BETWEEN $2 AND $3
          AND ${visibleTaskHistoryClause}
