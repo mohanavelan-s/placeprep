@@ -549,8 +549,38 @@ interface RegisterPayload {
 }
 
 const DEFAULT_API_BASE_URL = "/api";
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL?.replace(/\/$/, "") || DEFAULT_API_BASE_URL;
+const PRODUCTION_API_BASE_URL = "https://placeprep-api-production.up.railway.app/api";
+
+function isLocalHostname(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+function isEphemeralApiHostname(hostname: string) {
+  return isLocalHostname(hostname) || /ngrok-free\.(app|dev)$/i.test(hostname);
+}
+
+function resolveApiBaseUrl() {
+  const configuredBaseUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || DEFAULT_API_BASE_URL;
+
+  if (typeof window === "undefined") {
+    return configuredBaseUrl;
+  }
+
+  try {
+    const currentHostname = window.location.hostname;
+    const parsedConfiguredUrl = new URL(configuredBaseUrl, window.location.origin);
+
+    if (!isLocalHostname(currentHostname) && isEphemeralApiHostname(parsedConfiguredUrl.hostname)) {
+      return PRODUCTION_API_BASE_URL;
+    }
+  } catch (error) {
+    console.warn("[API] Failed to parse configured API URL. Falling back to the configured value.", error);
+  }
+
+  return configuredBaseUrl;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 const TOKEN_STORAGE_KEY = "placeprep.token";
 const USER_STORAGE_KEY = "placeprep.user";
 
