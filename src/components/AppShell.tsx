@@ -39,9 +39,9 @@ const navItems = [
   { to: "/prep-architect", label: "Prep Architect", icon: BrainCircuit, observerVisible: false },
   { to: "/tasks", label: "Tasks", icon: ListTodo, observerVisible: true },
   { to: "/progress", label: "Progress", icon: LineChart, observerVisible: false },
-  { to: "/profile", label: "Profile", icon: UserCircle2, observerVisible: false },
-  { to: "/settings", label: "Settings", icon: Settings, observerVisible: false },
   { to: "/ai-mentor", label: "Nocturne Mentor", icon: MessageSquareText, observerVisible: true },
+  { to: "/settings", label: "Settings", icon: Settings, observerVisible: false },
+  { to: "/profile", label: "Profile", icon: UserCircle2, observerVisible: false },
 ];
 
 const pageMeta: Record<string, { title: string; description: string }> = {

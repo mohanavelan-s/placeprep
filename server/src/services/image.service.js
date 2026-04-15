@@ -41,8 +41,8 @@ async function listImages(user, filters = {}) {
   });
 }
 
-async function clearProofHistory(user) {
-  const deletedImages = await imageRepository.deleteProofsByUser(user.id);
+async function clearProofHistoryForUserId(userId) {
+  const deletedImages = await imageRepository.deleteProofsByUser(userId);
 
   await Promise.allSettled(
     deletedImages
@@ -62,8 +62,13 @@ async function clearProofHistory(user) {
   };
 }
 
+async function clearProofHistory(user) {
+  return clearProofHistoryForUserId(user.id);
+}
+
 module.exports = {
   uploadImage,
   listImages,
   clearProofHistory,
+  clearProofHistoryForUserId,
 };

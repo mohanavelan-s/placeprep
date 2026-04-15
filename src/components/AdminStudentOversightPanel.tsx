@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import ClearHistoryButton from "@/components/ClearHistoryButton";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,10 +27,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import {
   addCoachGroupMembers,
+  clearCoachStudentProofHistory,
   createCoachGroup,
   createPracticeCapsule,
+  fetchCoachGroupCandidates,
   fetchCoachGroups,
   fetchCoachStudents,
+  type CoachGroupCandidate,
   type CoachGroup,
   type PracticeCapsule,
   type PracticeCapsuleDispatchResult,
@@ -77,6 +81,17 @@ function buildAssignmentSuccessMessage(result: PracticeCapsuleDispatchResult) {
     result.targetLabel || (result.targetKind === "group" ? "selected group" : "selected student");
 
   return `Assignment bundle shared to ${recipientsLabel} via ${targetLabel}.`;
+}
+
+function isAssignableGroupMember(member: {
+  role?: "admin" | "user";
+  accessTier?: "standard" | "observer";
+} | null | undefined) {
+  return member?.role === "user" && member.accessTier !== "observer";
+}
+
+function getGroupCandidateLabel(candidate: CoachGroupCandidate) {
+  return candidate.role === "admin" ? `${candidate.name} (Admin)` : candidate.name;
 }
 
 type AssignmentItemDraft = {
@@ -359,12 +374,18 @@ export default function AdminStudentOversightPanel() {
     queryKey: ["coach", "groups"],
     queryFn: fetchCoachGroups,
   });
+  const groupCandidatesQuery = useQuery({
+    queryKey: ["coach", "group-candidates"],
+    queryFn: fetchCoachGroupCandidates,
+  });
 
   useQueryErrorLogger("AdminStudentOversightPanel:students", studentsQuery.error);
   useQueryErrorLogger("AdminStudentOversightPanel:groups", groupsQuery.error);
+  useQueryErrorLogger("AdminStudentOversightPanel:group-candidates", groupCandidatesQuery.error);
 
   const students = studentsQuery.data || [];
   const groups = groupsQuery.data || [];
+  const groupCandidates = groupCandidatesQuery.data || [];
 
   useEffect(() => {
     const firstStudentId = students[0]?.student.id || "";
@@ -413,21 +434,32 @@ export default function AdminStudentOversightPanel() {
   );
   const availableStudentsForSelectedGroup = useMemo(
     () =>
-      students.filter(
+      groupCandidates.filter(
         (entry) =>
-          !selectedGroupMemberIds.has(entry.student.id)
-          && !groupedStudentIds.has(entry.student.id),
+          !selectedGroupMemberIds.has(entry.id)
+          && !groupedStudentIds.has(entry.id),
       ),
-    [groupedStudentIds, selectedGroupMemberIds, students],
+    [groupCandidates, groupedStudentIds, selectedGroupMemberIds],
   );
   const availableStudentsForNewGroup = useMemo(
-    () => students.filter((entry) => !groupedStudentIds.has(entry.student.id)),
-    [groupedStudentIds, students],
+    () => groupCandidates.filter((entry) => !groupedStudentIds.has(entry.id)),
+    [groupCandidates, groupedStudentIds],
   );
   const draftGroupStudents = useMemo(
-    () => students.filter((entry) => draftGroupMemberIds.includes(entry.student.id)),
-    [draftGroupMemberIds, students],
+    () => groupCandidates.filter((entry) => draftGroupMemberIds.includes(entry.id)),
+    [draftGroupMemberIds, groupCandidates],
   );
+  const selectedGroupAssignmentCount = useMemo(() => {
+    if (!selectedGroup) {
+      return 0;
+    }
+
+    if (typeof selectedGroup.assignmentRecipientCount === "number") {
+      return selectedGroup.assignmentRecipientCount;
+    }
+
+    return selectedGroup.members.filter((member) => isAssignableGroupMember(member)).length;
+  }, [selectedGroup]);
 
   function resetCapsuleForm() {
     const nextDefaultDeadline = buildDefaultDeadlineDraft();
@@ -498,7 +530,7 @@ export default function AdminStudentOversightPanel() {
   const addGroupMembersMutation = useMutation({
     mutationFn: (studentUserIds: string[]) => {
       if (!selectedGroupId) {
-        throw new Error("Choose a group before adding students.");
+        throw new Error("Choose a group before adding members.");
       }
 
       return addCoachGroupMembers(selectedGroupId, studentUserIds);
@@ -509,10 +541,10 @@ export default function AdminStudentOversightPanel() {
         queryClient.invalidateQueries({ queryKey: ["coach", "groups"] }),
         queryClient.invalidateQueries({ queryKey: ["coach", "students"] }),
       ]);
-      toast.success(`Students added to ${group.name}.`);
+      toast.success(`Members added to ${group.name}.`);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Unable to add students to the group.");
+      toast.error(error instanceof Error ? error.message : "Unable to add members to the group.");
     },
   });
 
@@ -525,10 +557,31 @@ export default function AdminStudentOversightPanel() {
         queryClient.invalidateQueries({ queryKey: ["coach", "groups"] }),
         queryClient.invalidateQueries({ queryKey: ["coach", "students"] }),
       ]);
-      toast.success(`Student removed from ${group.name}.`);
+      toast.success(`Member removed from ${group.name}.`);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Unable to remove the student from this group.");
+      toast.error(error instanceof Error ? error.message : "Unable to remove this member from the group.");
+    },
+  });
+
+  const clearProofHistoryMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedStudentId) {
+        throw new Error("Choose a student before clearing proof history.");
+      }
+
+      return clearCoachStudentProofHistory(selectedStudentId);
+    },
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["coach", "students"] });
+      toast.success(
+        result.deleted
+          ? `Proof history cleared from ${result.deleted} uploaded item${result.deleted === 1 ? "" : "s"}.`
+          : "Proof history was already empty for this student.",
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to clear this student's proof history.");
     },
   });
 
@@ -539,6 +592,9 @@ export default function AdminStudentOversightPanel() {
       }
       if (targetType === "group" && !selectedGroupId) {
         throw new Error("Choose a group before sharing a capsule.");
+      }
+      if (targetType === "group" && selectedGroupAssignmentCount < 1) {
+        throw new Error("This group needs at least one student before it can receive assignments.");
       }
 
       const items = assignmentItems
@@ -564,6 +620,7 @@ export default function AdminStudentOversightPanel() {
       resetCapsuleForm();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["coach", "students"] }),
+        queryClient.invalidateQueries({ queryKey: ["coach", "groups"] }),
         queryClient.invalidateQueries({ queryKey: ["notifications", "recent"] }),
       ]);
       toast.success(buildAssignmentSuccessMessage(result));
@@ -585,7 +642,9 @@ export default function AdminStudentOversightPanel() {
         </p>
       </div>
 
-      {((studentsQuery.isPending && !students.length) || (groupsQuery.isPending && !groups.length)) && (
+      {((studentsQuery.isPending && !students.length)
+        || (groupsQuery.isPending && !groups.length)
+        || (groupCandidatesQuery.isPending && !groupCandidates.length)) && (
         <PageStatusPanel
           eyebrow="Coaching sync"
           title="Loading invited students and groups."
@@ -594,7 +653,7 @@ export default function AdminStudentOversightPanel() {
         />
       )}
 
-      {(studentsQuery.isError || groupsQuery.isError) && (
+      {(studentsQuery.isError || groupsQuery.isError || groupCandidatesQuery.isError) && (
         <PageStatusPanel
           eyebrow="Coaching fallback"
           title="Student oversight could not be fully loaded."
@@ -603,6 +662,7 @@ export default function AdminStudentOversightPanel() {
           onAction={() => {
             void studentsQuery.refetch();
             void groupsQuery.refetch();
+            void groupCandidatesQuery.refetch();
           }}
           tone="danger"
         />
@@ -735,6 +795,9 @@ export default function AdminStudentOversightPanel() {
                           className="inline-flex items-center gap-2 rounded-full border border-border/80 bg-card/60 px-3 py-2 text-sm text-foreground"
                         >
                           <span>{member.name}</span>
+                          <span className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                            {member.role === "admin" ? "Admin" : "Student"}
+                          </span>
                           <button
                             type="button"
                             className="rounded-full p-1 text-muted-foreground transition hover:bg-background/80 hover:text-foreground"
@@ -753,33 +816,33 @@ export default function AdminStudentOversightPanel() {
                       ))
                     ) : (
                       <p className="text-sm leading-6 text-muted-foreground">
-                        No students in this group yet.
+                        No members in this group yet.
                       </p>
                     )}
                   </div>
 
                   <div className="mt-4 border-t border-border/70 pt-4">
                     <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                      Add students to this group
+                      Add members to this group
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {availableStudentsForSelectedGroup.length ? (
                         availableStudentsForSelectedGroup.map((entry) => (
                           <Button
-                            key={entry.student.id}
+                            key={entry.id}
                             type="button"
                             variant="outline"
                             className="h-9 gap-2 border-border/80 bg-card/60"
                             disabled={addGroupMembersMutation.isPending}
-                            onClick={() => addGroupMembersMutation.mutate([entry.student.id])}
+                            onClick={() => addGroupMembersMutation.mutate([entry.id])}
                           >
                             <UserPlus className="h-4 w-4" />
-                            {entry.student.name}
+                            {getGroupCandidateLabel(entry)}
                           </Button>
                         ))
                       ) : (
                         <p className="text-sm leading-6 text-muted-foreground">
-                          Everyone in the roster is already part of this group.
+                          Everyone eligible is already part of a group.
                         </p>
                       )}
                     </div>
@@ -810,28 +873,28 @@ export default function AdminStudentOversightPanel() {
 
                   <div>
                     <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                      Add initial students
+                      Add initial members
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {availableStudentsForNewGroup.length ? (
                         availableStudentsForNewGroup.map((entry) => {
-                          const isSelected = draftGroupMemberIds.includes(entry.student.id);
+                          const isSelected = draftGroupMemberIds.includes(entry.id);
 
                           return (
                             <Button
-                              key={entry.student.id}
+                              key={entry.id}
                               type="button"
                               variant={isSelected ? "default" : "outline"}
                               className={`h-9 gap-2 ${isSelected ? "" : "border-border/80 bg-card/60"}`}
-                              onClick={() => toggleDraftStudent(entry.student.id)}
+                              onClick={() => toggleDraftStudent(entry.id)}
                             >
-                              {entry.student.name}
+                              {getGroupCandidateLabel(entry)}
                             </Button>
                           );
                         })
                       ) : (
                         <p className="text-sm leading-6 text-muted-foreground">
-                          Every student is already grouped. Remove someone from an existing group before adding them here.
+                          Every eligible account is already grouped. Remove someone from an existing group before adding them here.
                         </p>
                       )}
                     </div>
@@ -839,7 +902,7 @@ export default function AdminStudentOversightPanel() {
 
                   {!!draftGroupStudents.length && (
                     <div className="rounded-[1rem] border border-border/80 bg-card/60 px-4 py-3 text-sm text-muted-foreground">
-                      Ready to add: {draftGroupStudents.map((entry) => entry.student.name).join(", ")}
+                      Ready to add: {draftGroupStudents.map((entry) => getGroupCandidateLabel(entry)).join(", ")}
                     </div>
                   )}
 
@@ -897,7 +960,9 @@ export default function AdminStudentOversightPanel() {
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     {targetType === "group"
                       ? selectedGroup
-                        ? `${selectedGroup.memberCount} students will receive the same bundle, an in-app notification, and an individual email.`
+                        ? selectedGroupAssignmentCount > 0
+                          ? `${selectedGroupAssignmentCount} student${selectedGroupAssignmentCount === 1 ? "" : "s"} in this group will receive the same bundle, an in-app notification, and an individual email.`
+                          : "This group currently has only admin members. Add at least one student before assigning a bundle."
                         : "Create or select a group to share one assignment bundle with multiple students at once."
                       : selectedStudent
                         ? `${selectedStudent.student.email} will receive the bundle in tasks, notifications, and email.`
@@ -1011,7 +1076,9 @@ export default function AdminStudentOversightPanel() {
                   onClick={() => createCapsuleMutation.mutate()}
                   disabled={
                     createCapsuleMutation.isPending ||
-                    (targetType === "student" ? !selectedStudentId : !selectedGroupId)
+                    (targetType === "student"
+                      ? !selectedStudentId
+                      : !selectedGroupId || selectedGroupAssignmentCount < 1)
                   }
                 >
                   {createCapsuleMutation.isPending ? (
@@ -1112,9 +1179,20 @@ export default function AdminStudentOversightPanel() {
             </div>
 
             <div className="rounded-[1.35rem] border border-border/80 bg-card/60 p-5">
-              <div className="flex items-center gap-2 text-foreground">
-                <Camera className="h-4 w-4 text-primary" />
-                <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Recent proof uploads</p>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-foreground">
+                  <Camera className="h-4 w-4 text-primary" />
+                  <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Recent proof uploads</p>
+                </div>
+
+                <ClearHistoryButton
+                  title="Clear this student's proof history?"
+                  description="This removes saved proof uploads for this student account. Profile avatars will be kept."
+                  onConfirm={() => clearProofHistoryMutation.mutate()}
+                  pending={clearProofHistoryMutation.isPending}
+                  disabled={!selectedStudent.recentProofs.length}
+                  className="h-10 gap-2 border-border/80 bg-background/70"
+                />
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">

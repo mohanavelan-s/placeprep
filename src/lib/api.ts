@@ -177,6 +177,7 @@ export interface CoachGroupMember {
   userId: string;
   name: string;
   username?: string | null;
+  role: "admin" | "user";
   email: string;
   targetRole?: string | null;
   readinessScore: number;
@@ -184,6 +185,16 @@ export interface CoachGroupMember {
   addedBy?: string | null;
   addedByName?: string | null;
   createdAt: string;
+}
+
+export interface CoachGroupCandidate {
+  id: string;
+  name: string;
+  username?: string | null;
+  role: "admin" | "user";
+  email: string;
+  targetRole?: string | null;
+  accessTier?: "standard" | "observer";
 }
 
 export interface CoachGroup {
@@ -196,6 +207,7 @@ export interface CoachGroup {
   createdAt: string;
   updatedAt: string;
   memberCount: number;
+  assignmentRecipientCount?: number;
   members: CoachGroupMember[];
 }
 
@@ -960,6 +972,10 @@ export async function fetchCoachGroups() {
   return request<CoachGroup[]>("/coach/groups");
 }
 
+export async function fetchCoachGroupCandidates() {
+  return request<CoachGroupCandidate[]>("/coach/group-candidates");
+}
+
 export async function createCoachGroup(payload: {
   name: string;
   description?: string;
@@ -980,6 +996,12 @@ export async function addCoachGroupMembers(groupId: string, studentUserIds: stri
 
 export async function removeCoachGroupMember(groupId: string, studentUserId: string) {
   return request<CoachGroup>(`/coach/groups/${groupId}/members/${studentUserId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function clearCoachStudentProofHistory(studentUserId: string) {
+  return request<HistoryClearResult>(`/coach/students/${studentUserId}/proofs`, {
     method: "DELETE",
   });
 }

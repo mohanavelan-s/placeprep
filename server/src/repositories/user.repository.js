@@ -232,6 +232,25 @@ async function listStudentsForOversight(limit = 40) {
   return result.rows;
 }
 
+async function listGroupCandidates(limit = 80) {
+  const result = await query(
+    `SELECT ${publicColumns}
+     FROM users
+     WHERE role = 'admin'
+        OR (
+          role = 'user'
+          AND COALESCE(coach_metadata->>'accessTier', 'standard') <> 'observer'
+        )
+     ORDER BY
+       CASE WHEN role = 'admin' THEN 0 ELSE 1 END ASC,
+       created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+
+  return result.rows;
+}
+
 module.exports = {
   createUser,
   findByEmail,
@@ -242,4 +261,5 @@ module.exports = {
   touchLastLogin,
   listUsersForNotificationSweep,
   listStudentsForOversight,
+  listGroupCandidates,
 };

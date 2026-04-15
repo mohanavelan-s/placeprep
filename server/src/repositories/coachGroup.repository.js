@@ -27,6 +27,7 @@ const groupMemberColumns = `
   coach_group_members.user_id AS "userId",
   student.name,
   student.username,
+  student.role,
   student.email,
   student.target_role AS "targetRole",
   student.readiness_score AS "readinessScore",
@@ -199,8 +200,6 @@ async function listMembers(groupIds = []) {
      LEFT JOIN users AS admin
        ON admin.id = coach_group_members.added_by
      WHERE coach_group_members.group_id = ANY($1::UUID[])
-       AND student.role = 'user'
-       AND COALESCE(student.coach_metadata->>'accessTier', 'standard') <> 'observer'
      ORDER BY coach_group_members.group_id ASC, LOWER(student.name) ASC`,
     [groupIds]
   );

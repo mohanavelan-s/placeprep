@@ -12,6 +12,7 @@ router.use(requireAuth, requireAdmin);
 
 router.get('/students', asyncHandler(controller.listStudents));
 router.get('/groups', asyncHandler(controller.listGroups));
+router.get('/group-candidates', asyncHandler(controller.listGroupCandidates));
 
 router.post(
   '/groups',
@@ -44,6 +45,15 @@ router.delete(
   ],
   validate,
   asyncHandler(controller.removeGroupMember)
+);
+
+router.delete(
+  '/students/:studentUserId/proofs',
+  [
+    param('studentUserId').isUUID(),
+  ],
+  validate,
+  asyncHandler(controller.clearStudentProofHistory)
 );
 
 router.post(

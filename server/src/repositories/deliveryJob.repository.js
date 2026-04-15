@@ -5,21 +5,27 @@ function getExecutor(client) {
   return client ? client.query.bind(client) : query;
 }
 
-const deliveryJobColumns = `
-  id,
-  type,
-  dedupe_key AS "dedupeKey",
-  status,
-  attempts,
-  max_attempts AS "maxAttempts",
-  available_at AS "availableAt",
-  locked_at AS "lockedAt",
-  locked_by AS "lockedBy",
-  payload,
-  last_error AS "lastError",
-  created_at AS "createdAt",
-  updated_at AS "updatedAt"
-`;
+function buildDeliveryJobColumns(alias = '') {
+  const prefix = alias ? `${alias}.` : '';
+
+  return `
+    ${prefix}id,
+    ${prefix}type,
+    ${prefix}dedupe_key AS "dedupeKey",
+    ${prefix}status,
+    ${prefix}attempts,
+    ${prefix}max_attempts AS "maxAttempts",
+    ${prefix}available_at AS "availableAt",
+    ${prefix}locked_at AS "lockedAt",
+    ${prefix}locked_by AS "lockedBy",
+    ${prefix}payload,
+    ${prefix}last_error AS "lastError",
+    ${prefix}created_at AS "createdAt",
+    ${prefix}updated_at AS "updatedAt"
+  `;
+}
+
+const deliveryJobColumns = buildDeliveryJobColumns();
 
 async function createJob(payload, client = null) {
   const execute = getExecutor(client);
@@ -70,7 +76,7 @@ async function claimJobs(limit = 10, workerId = 'delivery-worker') {
        last_error = NULL
      FROM next_jobs
      WHERE jobs.id = next_jobs.id
-     RETURNING ${deliveryJobColumns}`,
+     RETURNING ${buildDeliveryJobColumns('jobs')}`,
     [Math.min(Math.max(Number(limit || 10), 1), 100), workerId]
   );
 

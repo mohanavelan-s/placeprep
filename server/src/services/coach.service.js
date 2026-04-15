@@ -12,6 +12,7 @@ const taskRepository = require('../repositories/task.repository');
 const userRepository = require('../repositories/user.repository');
 const { sendAdminAssignmentEmail } = require('./email.service');
 const { enqueueAdminAssignmentEmail, enqueueNotificationPush, processPendingDeliveryJobs } = require('./deliveryJob.service');
+const imageService = require('./image.service');
 const progressService = require('./progress.service');
 const userProfileService = require('./userProfile.service');
 
@@ -21,6 +22,22 @@ function buildTaskSummaryMap(rows) {
 
 function buildGroupNameConflictMessage(name) {
   return `A group named ${name} already exists. Use a unique group name.`;
+}
+
+function isObserverAccess(user) {
+  return user?.role !== 'admin' && user?.accessTier === 'observer';
+}
+
+function isAssignableStudent(user) {
+  return user?.role === 'user' && !isObserverAccess(user);
+}
+
+function isEligibleGroupMember(user) {
+  return user?.role === 'admin' || isAssignableStudent(user);
+}
+
+function countAssignmentRecipients(members = []) {
+  return members.filter(isAssignableStudent).length;
 }
 
 function groupRowsBy(rows, key) {
@@ -347,9 +364,14 @@ async function listGroupsForAdmin() {
     return {
       ...group,
       memberCount: groupMembers.length,
+      assignmentRecipientCount: countAssignmentRecipients(groupMembers),
       members: groupMembers,
     };
   });
+}
+
+async function listGroupCandidatesForAdmin() {
+  return userRepository.listGroupCandidates();
 }
 
 async function resolveStudentTargets(studentUserIds = []) {
@@ -360,19 +382,36 @@ async function resolveStudentTargets(studentUserIds = []) {
 
   const students = await Promise.all(uniqueIds.map((studentUserId) => userRepository.findById(studentUserId)));
   const missingStudent = students.find((student) => !student);
-  if (missingStudent === undefined) {
-    const invalidStudent = students.find(
-      (student) => student.role !== 'user' || student.accessTier === 'observer'
-    );
-
-    if (invalidStudent) {
-      throw new AppError('Only student accounts can be added to coach groups or admin assignments.', 400);
-    }
-
-    return students;
+  if (missingStudent !== undefined) {
+    throw new AppError('One or more student accounts could not be found.', 404);
   }
 
-  throw new AppError('One or more student accounts could not be found.', 404);
+  const invalidStudent = students.find((student) => !isAssignableStudent(student));
+  if (invalidStudent) {
+    throw new AppError('Only student accounts can receive admin assignments.', 400);
+  }
+
+  return students;
+}
+
+async function resolveGroupMemberTargets(userIds = []) {
+  const uniqueIds = Array.from(new Set((userIds || []).filter(Boolean)));
+  if (!uniqueIds.length) {
+    return [];
+  }
+
+  const users = await Promise.all(uniqueIds.map((userId) => userRepository.findById(userId)));
+  const missingUser = users.find((user) => !user);
+  if (missingUser !== undefined) {
+    throw new AppError('One or more accounts could not be found.', 404);
+  }
+
+  const invalidUser = users.find((user) => !isEligibleGroupMember(user));
+  if (invalidUser) {
+    throw new AppError('Only active students and admins can join coach groups.', 400);
+  }
+
+  return users;
 }
 
 async function assertGroupNameAvailable(name, client = null) {
@@ -382,8 +421,8 @@ async function assertGroupNameAvailable(name, client = null) {
   }
 }
 
-async function assertStudentsCanJoinSingleGroup(studentIds = [], client = null, currentGroupId = null) {
-  const memberships = await coachGroupRepository.listMembershipsByUserIds(studentIds, client);
+async function assertMembersCanJoinSingleGroup(userIds = [], client = null, currentGroupId = null) {
+  const memberships = await coachGroupRepository.listMembershipsByUserIds(userIds, client);
   const conflictingMemberships = memberships.filter((membership) => membership.groupId !== currentGroupId);
 
   if (!conflictingMemberships.length) {
@@ -397,7 +436,7 @@ async function assertStudentsCanJoinSingleGroup(studentIds = [], client = null, 
     Array.from(conflictByUserId.keys()).map(async (studentId) => {
       const student = await userRepository.findById(studentId);
       return {
-        name: student?.name || 'A selected student',
+        name: student?.name || 'A selected member',
         groupName: conflictByUserId.get(studentId),
       };
     })
@@ -408,7 +447,7 @@ async function assertStudentsCanJoinSingleGroup(studentIds = [], client = null, 
     .join(', ');
 
   throw new AppError(
-    `Each student can only stay in one group. These students are already grouped: ${conflictSummary}.`,
+    `Each member can only stay in one group. These accounts are already grouped: ${conflictSummary}.`,
     409,
   );
 }
@@ -424,6 +463,7 @@ async function hydrateGroup(groupId) {
   return {
     ...group,
     memberCount: members.length,
+    assignmentRecipientCount: countAssignmentRecipients(members),
     members: members.sort((left, right) => toSafeString(left.name).localeCompare(toSafeString(right.name))),
   };
 }
@@ -434,11 +474,11 @@ async function createGroup(adminUser, payload) {
     throw new AppError('Group name must be at least 2 characters.', 400);
   }
 
-  const students = await resolveStudentTargets(payload.studentUserIds || []);
+  const members = await resolveGroupMemberTargets(payload.studentUserIds || []);
   const group = await withTransaction(async (client) => {
     await assertGroupNameAvailable(name, client);
-    await assertStudentsCanJoinSingleGroup(
-      students.map((student) => student.id),
+    await assertMembersCanJoinSingleGroup(
+      members.map((member) => member.id),
       client,
     );
 
@@ -451,10 +491,10 @@ async function createGroup(adminUser, payload) {
       client
     );
 
-    if (students.length) {
+    if (members.length) {
       await coachGroupRepository.addMembers(
         createdGroup.id,
-        students.map((student) => student.id),
+        members.map((member) => member.id),
         adminUser.id,
         client
       );
@@ -472,13 +512,13 @@ async function addGroupMembers(adminUser, groupId, studentUserIds = []) {
     throw new AppError('Coach group not found.', 404);
   }
 
-  const students = await resolveStudentTargets(studentUserIds);
-  if (!students.length) {
-    throw new AppError('Choose at least one student to add.', 400);
+  const members = await resolveGroupMemberTargets(studentUserIds);
+  if (!members.length) {
+    throw new AppError('Choose at least one member to add.', 400);
   }
 
-  const memberships = await assertStudentsCanJoinSingleGroup(
-    students.map((student) => student.id),
+  const memberships = await assertMembersCanJoinSingleGroup(
+    members.map((member) => member.id),
     null,
     groupId,
   );
@@ -487,17 +527,17 @@ async function addGroupMembers(adminUser, groupId, studentUserIds = []) {
       .filter((membership) => membership.groupId === groupId)
       .map((membership) => membership.userId)
   );
-  const studentIdsToAdd = students
-    .map((student) => student.id)
-    .filter((studentId) => !existingMemberIds.has(studentId));
+  const memberIdsToAdd = members
+    .map((member) => member.id)
+    .filter((memberId) => !existingMemberIds.has(memberId));
 
-  if (!studentIdsToAdd.length) {
+  if (!memberIdsToAdd.length) {
     return hydrateGroup(groupId);
   }
 
   await coachGroupRepository.addMembers(
     groupId,
-    studentIdsToAdd,
+    memberIdsToAdd,
     adminUser.id
   );
 
@@ -512,7 +552,7 @@ async function removeGroupMember(groupId, studentUserId) {
 
   const removed = await coachGroupRepository.removeMember(groupId, studentUserId);
   if (!removed) {
-    throw new AppError('Student is not part of this group.', 404);
+    throw new AppError('Member is not part of this group.', 404);
   }
 
   return hydrateGroup(groupId);
@@ -540,11 +580,15 @@ async function resolvePracticeTargets(payload) {
   }
 
   const group = await hydrateGroup(payload.groupId);
-  if (!group.members.length) {
-    throw new AppError('This group has no students yet. Add students before sharing a bundle.', 400);
+  const recipientIds = group.members
+    .filter(isAssignableStudent)
+    .map((member) => member.userId);
+
+  if (!recipientIds.length) {
+    throw new AppError('This group has no student members yet. Add at least one student before sharing a bundle.', 400);
   }
 
-  const recipients = await resolveStudentTargets(group.members.map((member) => member.userId));
+  const recipients = await resolveStudentTargets(recipientIds);
 
   return {
     assignmentId: randomUUID(),
@@ -835,12 +879,19 @@ async function createPracticeCapsule(adminUser, payload) {
   };
 }
 
+async function clearStudentProofHistory(studentUserId) {
+  const [student] = await resolveStudentTargets([studentUserId]);
+  return imageService.clearProofHistoryForUserId(student.id);
+}
+
 module.exports = {
   listStudentsForAdmin,
   listGroupsForAdmin,
+  listGroupCandidatesForAdmin,
   createGroup,
   addGroupMembers,
   removeGroupMember,
   createPracticeCapsule,
+  clearStudentProofHistory,
   groupPracticeCapsules,
 };

@@ -10,6 +10,11 @@ async function listGroups(req, res) {
   res.json({ success: true, data: groups });
 }
 
+async function listGroupCandidates(req, res) {
+  const candidates = await coachService.listGroupCandidatesForAdmin(req.user);
+  res.json({ success: true, data: candidates });
+}
+
 async function createGroup(req, res) {
   const group = await coachService.createGroup(req.user, req.body);
   res.status(201).json({ success: true, data: group });
@@ -34,11 +39,18 @@ async function createPracticeCapsule(req, res) {
   res.status(201).json({ success: true, data: capsule });
 }
 
+async function clearStudentProofHistory(req, res) {
+  const result = await coachService.clearStudentProofHistory(req.params.studentUserId);
+  res.json({ success: true, data: result });
+}
+
 module.exports = {
   listStudents,
   listGroups,
+  listGroupCandidates,
   createGroup,
   addGroupMembers,
   removeGroupMember,
   createPracticeCapsule,
+  clearStudentProofHistory,
 };
