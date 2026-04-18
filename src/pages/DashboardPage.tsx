@@ -12,9 +12,9 @@ import DashboardCoachPanel from "@/components/DashboardCoachPanel";
 import DashboardDailyTasks from "@/components/DashboardDailyTasks";
 import DashboardPowerPocket from "@/components/DashboardPowerPocket";
 import DashboardProgressCharts from "@/components/DashboardProgressCharts";
-import PageStatusPanel from "@/components/PageStatusPanel";
 import SoftSyncNotice from "@/components/SoftSyncNotice";
 import StatsGrid from "@/components/StatsGrid";
+import { DashboardSkeleton } from "@/components/WorkspaceSkeletons";
 import XPBar from "@/components/XPBar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
@@ -231,6 +231,10 @@ export default function DashboardPage() {
     });
   }
 
+  if (isInitialSync) {
+    return <DashboardSkeleton />;
+  }
+
   return (
     <div className="relative">
       <AnimatePresence>
@@ -274,15 +278,6 @@ export default function DashboardPage() {
             </Button>
           </div>
         </div>
-
-        {isInitialSync && (
-          <PageStatusPanel
-            eyebrow="Dashboard sync"
-            title="Loading your command center."
-            description="PlacePrep is restoring progress, tasks, Power Pocket state, and architect context."
-            loading
-          />
-        )}
 
         {hasSyncError && (
           <SoftSyncNotice

@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Code2, Github, Globe2, Linkedin } from "lucide-react";
 
-import PageStatusPanel from "@/components/PageStatusPanel";
 import PlacePrepLogo from "@/components/PlacePrepLogo";
 import ResumeSigilIcon from "@/components/ResumeSigilIcon";
 import SoftSyncNotice from "@/components/SoftSyncNotice";
+import { ProfileSkeleton } from "@/components/WorkspaceSkeletons";
 import { useAuth } from "@/context/AuthContext";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import { fetchLatestPrepPlan, fetchUserProfile } from "@/lib/api";
@@ -34,6 +34,10 @@ export default function ProfilePage() {
   const profile = profileQuery.data ?? null;
   const latestPlan = prepPlanQuery.data ?? null;
 
+  if (profileQuery.isPending && !profile && prepPlanQuery.isPending) {
+    return <ProfileSkeleton />;
+  }
+
   return (
     <div className="grid gap-6">
       <section className="surface-panel-strong p-6 md:p-7">
@@ -57,15 +61,6 @@ export default function ProfilePage() {
         </p>
 
         <div className="mt-8 flex flex-wrap gap-4">
-          {profileQuery.isPending && (
-            <PageStatusPanel
-              eyebrow="Profile sync"
-              title="Loading your personal links."
-              description="LinkedIn, GitHub, LeetCode, and portfolio links are being restored."
-              loading
-            />
-          )}
-
           {profileQuery.isError && (
             <SoftSyncNotice
               title="Profile links are temporarily unavailable."

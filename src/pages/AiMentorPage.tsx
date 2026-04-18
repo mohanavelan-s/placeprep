@@ -4,8 +4,8 @@ import { Send } from "lucide-react";
 import { toast } from "sonner";
 
 import ClearHistoryButton from "@/components/ClearHistoryButton";
-import PageStatusPanel from "@/components/PageStatusPanel";
 import SoftSyncNotice from "@/components/SoftSyncNotice";
+import { MentorSkeleton } from "@/components/WorkspaceSkeletons";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
@@ -55,6 +55,10 @@ export default function AiMentorPage() {
 
   const history = Array.isArray(historyQuery.data) ? historyQuery.data : [];
 
+  if (historyQuery.isPending && !history.length) {
+    return <MentorSkeleton />;
+  }
+
   return (
     <div className="grid gap-6">
       <section className="surface-panel-strong p-6 md:p-7">
@@ -84,15 +88,6 @@ export default function AiMentorPage() {
         </div>
 
         <div className="max-h-[520px] overflow-y-auto px-6 py-5">
-          {historyQuery.isPending && !history.length && (
-            <PageStatusPanel
-              eyebrow="Mentor sync"
-              title="Loading message history."
-              description="Nocturne Mentor is restoring your earlier conversations."
-              loading
-            />
-          )}
-
           {historyQuery.isError && (
             <SoftSyncNotice
               title="Saved mentor history is temporarily unavailable."

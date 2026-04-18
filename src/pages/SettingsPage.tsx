@@ -6,10 +6,10 @@ import { toast } from "sonner";
 import AdminInvitePanel from "@/components/AdminInvitePanel";
 import AndroidAccessPanel from "@/components/AndroidAccessPanel";
 import ClearHistoryButton from "@/components/ClearHistoryButton";
-import PageStatusPanel from "@/components/PageStatusPanel";
 import PersonalProfilePanel from "@/components/PersonalProfilePanel";
 import ResumeAnalysisPanel from "@/components/ResumeAnalysisPanel";
 import SoftSyncNotice from "@/components/SoftSyncNotice";
+import { SettingsSkeleton } from "@/components/WorkspaceSkeletons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -27,6 +27,7 @@ import {
   type PrepNotification,
   type UserProfile,
 } from "@/lib/api";
+import { isPlacePrepAndroidApp } from "@/lib/platform";
 
 function buildProfilePayload(profile?: UserProfile | null, overrides?: Partial<UserProfile>) {
   const next = { ...profile, ...overrides };
@@ -87,6 +88,7 @@ function renderNotificationEyebrow(type: PrepNotification["type"]) {
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const { user, refreshProfile } = useAuth();
+  const runningInsideAndroidApp = isPlacePrepAndroidApp();
   const profileQuery = useQuery({
     queryKey: ["user-profile"],
     queryFn: fetchUserProfile,
@@ -114,12 +116,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     setNotificationPrefs(getNotificationDefaults(profileQuery.data));
-  }, [
-    profileQuery.data?.notificationBrowserEnabled,
-    profileQuery.data?.notificationBrowserPermission,
-    profileQuery.data?.notificationEmailEnabled,
-    profileQuery.data?.notificationsEnabled,
-  ]);
+  }, [profileQuery.data]);
 
   const unreadCount = useMemo(
     () => (notificationsQuery.data || []).filter((item) => !item.read).length,
@@ -230,7 +227,9 @@ export default function SettingsPage() {
   async function handleNotificationSave() {
     try {
       let nextPermission = notificationPrefs.notificationBrowserPermission || "default";
-      let nextBrowserEnabled = notificationPrefs.notificationBrowserEnabled;
+      let nextBrowserEnabled = runningInsideAndroidApp
+        ? false
+        : notificationPrefs.notificationBrowserEnabled;
 
       if (notificationPrefs.notificationsEnabled && nextBrowserEnabled) {
         if (typeof window === "undefined" || !("Notification" in window)) {
@@ -275,6 +274,10 @@ export default function SettingsPage() {
     }
   }
 
+  if (profileQuery.isPending && !profileQuery.data && notificationsQuery.isPending) {
+    return <SettingsSkeleton />;
+  }
+
   return (
     <div className="grid gap-6">
       <section className="surface-panel-strong p-6 md:p-7">
@@ -283,15 +286,6 @@ export default function SettingsPage() {
           Control identity, links, and system behavior.
         </h2>
       </section>
-
-      {profileQuery.isPending && !profileQuery.data && (
-        <PageStatusPanel
-          eyebrow="Settings sync"
-          title="Loading your saved preferences."
-          description="Account settings and personal links are being restored."
-          loading
-        />
-      )}
 
       {profileQuery.isError && (
         <SoftSyncNotice
@@ -401,15 +395,19 @@ export default function SettingsPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-foreground">
                     <Monitor className="h-4 w-4" />
-                    <p className="text-base">Background browser alerts</p>
+                    <p className="text-base">
+                      {runningInsideAndroidApp ? "Browser alerts unavailable in app" : "Background browser alerts"}
+                    </p>
                   </div>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    Real web push for this browser, even when PlacePrep is closed.
+                    {runningInsideAndroidApp
+                      ? "The Android APK now opens the full web workspace, but browser push still belongs to desktop and mobile browsers rather than the embedded app shell."
+                      : "Real web push for this browser, even when PlacePrep is closed."}
                   </p>
                 </div>
                 <Switch
-                  checked={notificationPrefs.notificationBrowserEnabled}
-                  disabled={!notificationPrefs.notificationsEnabled}
+                  checked={runningInsideAndroidApp ? false : notificationPrefs.notificationBrowserEnabled}
+                  disabled={runningInsideAndroidApp || !notificationPrefs.notificationsEnabled}
                   onCheckedChange={(checked) =>
                     setNotificationPrefs((current) => ({ ...current, notificationBrowserEnabled: checked }))
                   }

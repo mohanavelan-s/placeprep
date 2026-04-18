@@ -19,6 +19,7 @@ import {
   type AuthResult,
   type User,
 } from "@/lib/api";
+import { activateDemoMode, isDemoModeEnabled } from "@/lib/demo-mode";
 
 interface RegisterInput {
   name: string;
@@ -36,8 +37,10 @@ interface AuthContextValue {
   user: User | null;
   isAuthenticated: boolean;
   isInitializing: boolean;
+  isDemoMode: boolean;
   login: (payload: { identifier: string; password: string }) => Promise<AuthResult>;
   register: (payload: RegisterInput) => Promise<AuthResult>;
+  enterDemoMode: () => AuthResult;
   logout: () => void;
   refreshProfile: () => Promise<User>;
 }
@@ -55,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [isInitializing, setIsInitializing] = useState(Boolean(getStoredToken()));
+  const [isDemoMode, setIsDemoMode] = useState(() => isDemoModeEnabled());
 
   useEffect(() => {
     if (!token) {
@@ -72,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         window.localStorage.setItem("placeprep.user", JSON.stringify(profile));
         setUser(profile);
+        setIsDemoMode(isDemoModeEnabled());
       })
       .catch(() => {
         if (cancelled) {
@@ -81,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearStoredSession();
         setToken(null);
         setUser(null);
+        setIsDemoMode(false);
         queryClient.clear();
       })
       .finally(() => {
@@ -99,31 +105,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     isAuthenticated: Boolean(token && user),
     isInitializing,
+    isDemoMode,
     async login(payload) {
       const session = await loginRequest(payload);
+      clearStoredSession();
       queryClient.clear();
       applySession(session, setToken, setUser);
+      setIsDemoMode(false);
       return session;
     },
     async register(payload) {
       const session = await registerRequest(payload);
+      clearStoredSession();
       queryClient.clear();
       applySession(session, setToken, setUser);
+      setIsDemoMode(false);
+      return session;
+    },
+    enterDemoMode() {
+      const session = activateDemoMode();
+      queryClient.clear();
+      applySession(session, setToken, setUser);
+      setIsDemoMode(true);
       return session;
     },
     logout() {
       clearStoredSession();
       setToken(null);
       setUser(null);
+      setIsDemoMode(false);
       queryClient.clear();
     },
     async refreshProfile() {
       const profile = await fetchProfile();
       window.localStorage.setItem("placeprep.user", JSON.stringify(profile));
       setUser(profile);
+      setIsDemoMode(isDemoModeEnabled());
       return profile;
     },
-  }), [isInitializing, queryClient, token, user]);
+  }), [isDemoMode, isInitializing, queryClient, token, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

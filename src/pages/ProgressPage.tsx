@@ -4,9 +4,9 @@ import { toast } from "sonner";
 import AdminStudentOversightPanel from "@/components/AdminStudentOversightPanel";
 import ClearHistoryButton from "@/components/ClearHistoryButton";
 import DashboardProgressCharts from "@/components/DashboardProgressCharts";
-import PageStatusPanel from "@/components/PageStatusPanel";
 import SoftSyncNotice from "@/components/SoftSyncNotice";
 import StatsGrid from "@/components/StatsGrid";
+import { ProgressSkeleton } from "@/components/WorkspaceSkeletons";
 import XPBar from "@/components/XPBar";
 import { useAuth } from "@/context/AuthContext";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
@@ -53,6 +53,10 @@ export default function ProgressPage() {
     void historyQuery.refetch();
   }
 
+  if (isBooting) {
+    return <ProgressSkeleton />;
+  }
+
   return (
     <div className="grid gap-6">
       <section className="surface-panel-strong p-6 md:p-7">
@@ -61,15 +65,6 @@ export default function ProgressPage() {
           Track the trend, not just today's mood.
         </h2>
       </section>
-
-      {isBooting && (
-        <PageStatusPanel
-          eyebrow="Progress sync"
-          title="Loading readiness telemetry."
-          description="PlacePrep is pulling your streaks, consistency, charts, and history."
-          loading
-        />
-      )}
 
       {hasError && (
         <SoftSyncNotice

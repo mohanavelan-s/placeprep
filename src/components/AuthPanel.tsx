@@ -22,6 +22,7 @@ interface AuthPanelProps {
     placementDate?: string;
     weakAreas?: string[];
   }) => Promise<unknown>;
+  onEnterDemo: () => void;
   initialMode?: "login" | "register";
   initialInviteCode?: string;
 }
@@ -29,6 +30,7 @@ interface AuthPanelProps {
 export default function AuthPanel({
   onLogin,
   onRegister,
+  onEnterDemo,
   initialMode = "login",
   initialInviteCode = "",
 }: AuthPanelProps) {
@@ -431,6 +433,11 @@ export default function AuthPanel({
                   PlacePrep keeps your authenticated session active so your command center is ready
                   when you return.
                 </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Button type="button" variant="outline" className="border-border/80 bg-background/60" onClick={onEnterDemo}>
+                    Explore demo workspace
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

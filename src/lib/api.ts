@@ -1,3 +1,9 @@
+import {
+  clearDemoMode,
+  handleDemoRequest,
+  isDemoModeEnabled,
+} from "@/lib/demo-mode";
+
 export interface User {
   id: string;
   name: string;
@@ -621,6 +627,10 @@ function buildHeaders(options: RequestOptions, token: string | null) {
 
 async function request<T>(path: string, options: RequestOptions = {}) {
   try {
+    if (typeof window !== "undefined" && isDemoModeEnabled()) {
+      return await handleDemoRequest<T>(path, options);
+    }
+
     const token = getStoredToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
@@ -686,6 +696,7 @@ export function persistSession(session: AuthResult) {
 }
 
 export function clearStoredSession() {
+  clearDemoMode();
   window.localStorage.removeItem(TOKEN_STORAGE_KEY);
   window.localStorage.removeItem(USER_STORAGE_KEY);
 }

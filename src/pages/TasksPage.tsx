@@ -7,6 +7,7 @@ import HoursInput from "@/components/HoursInput";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import StudentPracticeCapsulesPanel from "@/components/StudentPracticeCapsulesPanel";
 import TaskStatusControl from "@/components/TaskStatusControl";
+import { TasksSkeleton } from "@/components/WorkspaceSkeletons";
 import WorkProofPanel from "@/components/WorkProofPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -117,7 +118,10 @@ export default function TasksPage() {
     },
   });
 
-  const tasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
+  const tasks = useMemo(
+    () => (Array.isArray(tasksQuery.data) ? tasksQuery.data : []),
+    [tasksQuery.data],
+  );
   const groupedCounts = useMemo(
     () => ({
       total: tasks.length,
@@ -127,6 +131,10 @@ export default function TasksPage() {
     [tasks]
   );
   const shouldShowStudentPanels = user?.role === "user" && !isObserverUser(user);
+
+  if (tasksQuery.isPending && !tasks.length) {
+    return <TasksSkeleton />;
+  }
 
   return (
     <div className="grid gap-6">
@@ -237,17 +245,6 @@ export default function TasksPage() {
         </div>
 
         <div>
-          {tasksQuery.isPending && !tasks.length && (
-            <div className="px-6 py-6">
-              <PageStatusPanel
-                eyebrow="Task sync"
-                title="Loading your mission list."
-                description="Tasks, statuses, and filters are being restored."
-                loading
-              />
-            </div>
-          )}
-
           {tasksQuery.isError && (
             <div className="px-6 py-6">
               <PageStatusPanel

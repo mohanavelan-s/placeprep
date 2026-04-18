@@ -99,6 +99,191 @@ const FLASHCARD_BANK = {
   },
 };
 
+const TOPIC_REFERENCE_BANK = [
+  {
+    pattern: /array/i,
+    article: { title: 'GeeksforGeeks: Top 50 Array Interview Problems', url: 'https://www.geeksforgeeks.org/top-50-array-coding-problems-for-interviews/' },
+    newsletter: { title: 'TLDR: practical engineering updates', url: 'https://tldr.tech/' },
+    videos: [
+      { title: 'freeCodeCamp: Arrays and interview patterns', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+arrays+interview+patterns' },
+      { title: 'Bro Code: Arrays walkthrough', url: 'https://www.youtube.com/results?search_query=Bro+Code+arrays+tutorial' },
+    ],
+    problems: [
+      { label: 'LeetCode: Two Sum', difficulty: 'Easy', url: 'https://leetcode.com/problems/two-sum/' },
+      { label: 'HackerRank: Arrays - DS', difficulty: 'Easy', url: 'https://www.hackerrank.com/challenges/arrays-ds/problem' },
+      { label: 'CodeChef: TSORT', difficulty: 'Medium', url: 'https://www.codechef.com/problems/TSORT' },
+    ],
+  },
+  {
+    pattern: /string/i,
+    article: { title: 'GeeksforGeeks: Top 50 String Interview Questions', url: 'https://www.geeksforgeeks.org/top-50-string-coding-problems-for-interviews/' },
+    newsletter: { title: 'Bytes.dev: concise frontend and language patterns', url: 'https://bytes.dev/' },
+    videos: [
+      { title: 'CodeWithMosh: String interview practice', url: 'https://www.youtube.com/results?search_query=CodeWithMosh+string+interview+questions' },
+      { title: 'freeCodeCamp: String algorithms and pattern drills', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+string+algorithms+interview' },
+    ],
+    problems: [
+      { label: 'LeetCode: Longest Substring Without Repeating Characters', difficulty: 'Medium', url: 'https://leetcode.com/problems/longest-substring-without-repeating-characters/' },
+      { label: 'HackerRank: Strings - Making Anagrams', difficulty: 'Easy', url: 'https://www.hackerrank.com/challenges/ctci-making-anagrams/problem' },
+      { label: 'CodeChef: FLOW006', difficulty: 'Easy', url: 'https://www.codechef.com/problems/FLOW006' },
+    ],
+  },
+  {
+    pattern: /linked list/i,
+    article: { title: 'GeeksforGeeks: Linked List Data Structure', url: 'https://www.geeksforgeeks.org/data-structures/linked-list/' },
+    newsletter: { title: 'The Pragmatic Engineer: system thinking for implementation work', url: 'https://www.pragmaticengineer.com/' },
+    videos: [
+      { title: 'Bro Code: Linked list fundamentals', url: 'https://www.youtube.com/results?search_query=Bro+Code+linked+list+tutorial' },
+      { title: 'freeCodeCamp: Linked list interview questions', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+linked+list+interview+questions' },
+    ],
+    problems: [
+      { label: 'LeetCode: Reverse Linked List', difficulty: 'Easy', url: 'https://leetcode.com/problems/reverse-linked-list/' },
+      { label: 'HackerRank: Insert a Node at a Specific Position in a Linked List', difficulty: 'Easy', url: 'https://www.hackerrank.com/challenges/insert-a-node-at-a-specific-position-in-a-linked-list/problem' },
+      { label: 'CodeChef: MARCHA1', difficulty: 'Medium', url: 'https://www.codechef.com/problems/MARCHA1' },
+    ],
+  },
+  {
+    pattern: /stack/i,
+    article: { title: 'GeeksforGeeks: Stack Data Structure', url: 'https://www.geeksforgeeks.org/stack-data-structure/' },
+    newsletter: { title: 'TLDR: practical coding + systems briefs', url: 'https://tldr.tech/' },
+    videos: [
+      { title: 'Bro Code: Stack tutorial', url: 'https://www.youtube.com/results?search_query=Bro+Code+stack+data+structure' },
+      { title: 'freeCodeCamp: Stack interview prep', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+stack+interview+prep' },
+    ],
+    problems: [
+      { label: 'LeetCode: Valid Parentheses', difficulty: 'Easy', url: 'https://leetcode.com/problems/valid-parentheses/' },
+      { label: 'HackerRank: Balanced Brackets', difficulty: 'Medium', url: 'https://www.hackerrank.com/challenges/balanced-brackets/problem' },
+      { label: 'CodeChef: ZCO14003', difficulty: 'Medium', url: 'https://www.codechef.com/problems/ZCO14003' },
+    ],
+  },
+  {
+    pattern: /queue/i,
+    article: { title: 'GeeksforGeeks: Queue Data Structure', url: 'https://www.geeksforgeeks.org/queue-data-structure/' },
+    newsletter: { title: 'TLDR: practical coding + systems briefs', url: 'https://tldr.tech/' },
+    videos: [
+      { title: 'Bro Code: Queue tutorial', url: 'https://www.youtube.com/results?search_query=Bro+Code+queue+data+structure' },
+      { title: 'freeCodeCamp: Queue interview prep', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+queue+interview+questions' },
+    ],
+    problems: [
+      { label: 'LeetCode: Implement Queue using Stacks', difficulty: 'Easy', url: 'https://leetcode.com/problems/implement-queue-using-stacks/' },
+      { label: 'HackerRank: Queue using Two Stacks', difficulty: 'Medium', url: 'https://www.hackerrank.com/challenges/queue-using-two-stacks/problem' },
+      { label: 'CodeChef: INTEST', difficulty: 'Easy', url: 'https://www.codechef.com/problems/INTEST' },
+    ],
+  },
+  {
+    pattern: /tree|bst/i,
+    article: { title: 'GeeksforGeeks: Binary Tree Data Structure', url: 'https://www.geeksforgeeks.org/binary-tree-data-structure/' },
+    newsletter: { title: 'ByteByteGo: structured systems intuition', url: 'https://bytebytego.com/' },
+    videos: [
+      { title: 'freeCodeCamp: Binary tree interview patterns', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+binary+tree+interview' },
+      { title: 'Bro Code: Binary tree basics', url: 'https://www.youtube.com/results?search_query=Bro+Code+binary+tree+tutorial' },
+    ],
+    problems: [
+      { label: 'LeetCode: Binary Tree Level Order Traversal', difficulty: 'Medium', url: 'https://leetcode.com/problems/binary-tree-level-order-traversal/' },
+      { label: 'HackerRank: Tree - Height of a Binary Tree', difficulty: 'Easy', url: 'https://www.hackerrank.com/challenges/tree-height-of-a-binary-tree/problem' },
+      { label: 'CodeChef: COINS', difficulty: 'Medium', url: 'https://www.codechef.com/problems/COINS' },
+    ],
+  },
+  {
+    pattern: /graph/i,
+    article: { title: 'GeeksforGeeks: Graph Data Structure and Algorithms', url: 'https://www.geeksforgeeks.org/graph-data-structure-and-algorithms/' },
+    newsletter: { title: 'ByteByteGo: systems patterns and graph intuition', url: 'https://bytebytego.com/' },
+    videos: [
+      { title: 'freeCodeCamp: Graph algorithms for interviews', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+graph+algorithms+interview' },
+      { title: 'CodeWithMosh: Graphs and traversal intuition', url: 'https://www.youtube.com/results?search_query=CodeWithMosh+graph+algorithms' },
+    ],
+    problems: [
+      { label: 'LeetCode: Number of Islands', difficulty: 'Medium', url: 'https://leetcode.com/problems/number-of-islands/' },
+      { label: 'HackerRank: BFS - Shortest Reach in a Graph', difficulty: 'Medium', url: 'https://www.hackerrank.com/challenges/bfsshortreach/problem' },
+      { label: 'CodeChef: COINS', difficulty: 'Medium', url: 'https://www.codechef.com/problems/COINS' },
+    ],
+  },
+  {
+    pattern: /dynamic programming|dp/i,
+    article: { title: 'GeeksforGeeks: Dynamic Programming', url: 'https://www.geeksforgeeks.org/dynamic-programming/' },
+    newsletter: { title: 'ByteByteGo: methodical systems and pattern thinking', url: 'https://bytebytego.com/' },
+    videos: [
+      { title: 'freeCodeCamp: Dynamic programming interview prep', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+dynamic+programming+interview' },
+      { title: 'CodeWithMosh: Dynamic programming intuition', url: 'https://www.youtube.com/results?search_query=CodeWithMosh+dynamic+programming' },
+    ],
+    problems: [
+      { label: 'LeetCode: House Robber', difficulty: 'Medium', url: 'https://leetcode.com/problems/house-robber/' },
+      { label: 'HackerRank: Max Array Sum', difficulty: 'Medium', url: 'https://www.hackerrank.com/challenges/max-array-sum/problem' },
+      { label: 'CodeChef: COINS', difficulty: 'Medium', url: 'https://www.codechef.com/problems/COINS' },
+    ],
+  },
+  {
+    pattern: /greedy/i,
+    article: { title: 'GeeksforGeeks: Greedy Algorithms', url: 'https://www.geeksforgeeks.org/greedy-algorithms/' },
+    newsletter: { title: 'TLDR: sharp daily tech summaries', url: 'https://tldr.tech/' },
+    videos: [
+      { title: 'freeCodeCamp: Greedy algorithms interview prep', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+greedy+algorithms+interview' },
+      { title: 'Bro Code: Greedy problem solving', url: 'https://www.youtube.com/results?search_query=Bro+Code+greedy+algorithms' },
+    ],
+    problems: [
+      { label: 'LeetCode: Best Time to Buy and Sell Stock', difficulty: 'Easy', url: 'https://leetcode.com/problems/best-time-to-buy-and-sell-stock/' },
+      { label: 'HackerRank: Greedy Florist', difficulty: 'Medium', url: 'https://www.hackerrank.com/challenges/greedy-florist/problem' },
+      { label: 'CodeChef: ZCO14003', difficulty: 'Medium', url: 'https://www.codechef.com/problems/ZCO14003' },
+    ],
+  },
+  {
+    pattern: /recursion|backtracking/i,
+    article: { title: 'GeeksforGeeks: Recursion', url: 'https://www.geeksforgeeks.org/recursion/' },
+    newsletter: { title: 'TLDR: sharp daily tech summaries', url: 'https://tldr.tech/' },
+    videos: [
+      { title: 'freeCodeCamp: Recursion and backtracking for interviews', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+recursion+backtracking+interview' },
+      { title: 'Bro Code: Recursion tutorial', url: 'https://www.youtube.com/results?search_query=Bro+Code+recursion+tutorial' },
+    ],
+    problems: [
+      { label: 'LeetCode: Subsets', difficulty: 'Medium', url: 'https://leetcode.com/problems/subsets/' },
+      { label: 'HackerRank: Recursive Digit Sum', difficulty: 'Easy', url: 'https://www.hackerrank.com/challenges/recursive-digit-sum/problem' },
+      { label: 'CodeChef: MARCHA1', difficulty: 'Medium', url: 'https://www.codechef.com/problems/MARCHA1' },
+    ],
+  },
+  {
+    pattern: /system design/i,
+    article: { title: 'GeeksforGeeks: System Design Tutorial', url: 'https://www.geeksforgeeks.org/system-design-tutorial/' },
+    newsletter: { title: 'ByteByteGo: system design breakdowns', url: 'https://bytebytego.com/' },
+    videos: [
+      { title: 'freeCodeCamp: System design interview prep', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+system+design+interview' },
+      { title: 'CodeWithMosh: System design basics', url: 'https://www.youtube.com/results?search_query=CodeWithMosh+system+design+tutorial' },
+    ],
+    problems: [
+      { label: 'LeetCode: Design Twitter', difficulty: 'Medium', url: 'https://leetcode.com/problems/design-twitter/' },
+      { label: 'HackerRank: Simple Text Editor', difficulty: 'Medium', url: 'https://www.hackerrank.com/challenges/simple-text-editor/problem' },
+      { label: 'CodeChef: ZCO14003', difficulty: 'Medium', url: 'https://www.codechef.com/problems/ZCO14003' },
+    ],
+  },
+  {
+    pattern: /dbms|database/i,
+    article: { title: 'GeeksforGeeks: DBMS', url: 'https://www.geeksforgeeks.org/dbms/' },
+    newsletter: { title: 'DB Weekly: database internals and tooling', url: 'https://dbweekly.com/' },
+    videos: [
+      { title: 'freeCodeCamp: DBMS and SQL revision', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+DBMS+SQL+interview' },
+      { title: 'CodeWithMosh: SQL and relational database intuition', url: 'https://www.youtube.com/results?search_query=CodeWithMosh+SQL+database+tutorial' },
+    ],
+    problems: [
+      { label: 'LeetCode: Combine Two Tables', difficulty: 'Easy', url: 'https://leetcode.com/problems/combine-two-tables/' },
+      { label: 'HackerRank: Revising the Select Query I', difficulty: 'Easy', url: 'https://www.hackerrank.com/challenges/revising-the-select-query/problem' },
+      { label: 'CodeChef: INTEST', difficulty: 'Easy', url: 'https://www.codechef.com/problems/INTEST' },
+    ],
+  },
+  {
+    pattern: /operating systems|os/i,
+    article: { title: 'GeeksforGeeks: Operating Systems', url: 'https://www.geeksforgeeks.org/operating-systems/' },
+    newsletter: { title: 'Linux Weekly News: operating systems and kernel thinking', url: 'https://lwn.net/' },
+    videos: [
+      { title: 'freeCodeCamp: Operating Systems full revision', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+operating+systems+interview' },
+      { title: 'Bro Code: Operating systems walkthrough', url: 'https://www.youtube.com/results?search_query=Bro+Code+operating+systems+tutorial' },
+    ],
+    problems: [
+      { label: 'LeetCode: LRU Cache', difficulty: 'Medium', url: 'https://leetcode.com/problems/lru-cache/' },
+      { label: 'HackerRank: Queue using Two Stacks', difficulty: 'Medium', url: 'https://www.hackerrank.com/challenges/queue-using-two-stacks/problem' },
+      { label: 'CodeChef: INTEST', difficulty: 'Easy', url: 'https://www.codechef.com/problems/INTEST' },
+    ],
+  },
+];
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Number(value || min)));
 }
@@ -207,50 +392,104 @@ function buildSearchUrl(query) {
   return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
 }
 
-function buildArticleUrl(topic) {
+function getTopicReferenceProfile(topic) {
   const normalized = String(topic || '').toLowerCase();
-  const articles = [
-    { pattern: /array|string/, url: 'https://www.geeksforgeeks.org/top-50-array-coding-problems-for-interviews/' },
-    { pattern: /linked list/, url: 'https://www.geeksforgeeks.org/data-structures/linked-list/' },
-    { pattern: /stack/, url: 'https://www.geeksforgeeks.org/stack-data-structure/' },
-    { pattern: /queue/, url: 'https://www.geeksforgeeks.org/queue-data-structure/' },
-    { pattern: /tree/, url: 'https://www.geeksforgeeks.org/binary-tree-data-structure/' },
-    { pattern: /graph/, url: 'https://www.geeksforgeeks.org/graph-data-structure-and-algorithms/' },
-    { pattern: /dynamic programming|dp/, url: 'https://www.geeksforgeeks.org/dynamic-programming/' },
-    { pattern: /greedy/, url: 'https://www.geeksforgeeks.org/greedy-algorithms/' },
-    { pattern: /recursion|backtracking/, url: 'https://www.geeksforgeeks.org/recursion/' },
-    { pattern: /object-oriented|oop/, url: 'https://www.geeksforgeeks.org/object-oriented-programming-oops-concept-in-java/' },
-    { pattern: /system design/, url: 'https://www.geeksforgeeks.org/system-design-tutorial/' },
-    { pattern: /dbms/, url: 'https://www.geeksforgeeks.org/dbms/' },
-    { pattern: /operating systems/, url: 'https://www.geeksforgeeks.org/operating-systems/' },
-  ];
+  const match = TOPIC_REFERENCE_BANK.find((item) => item.pattern.test(normalized));
 
-  return articles.find((item) => item.pattern.test(normalized))?.url
-    || `https://www.geeksforgeeks.org/search/${encodeURIComponent(topic || 'interview preparation')}/`;
-}
-
-function topicToLeetCodeLink(topic) {
-  const normalized = String(topic || '').toLowerCase();
-  const links = [
-    { pattern: /array|string/, label: 'LeetCode: Two Sum', url: 'https://leetcode.com/problems/two-sum/' },
-    { pattern: /linked list/, label: 'LeetCode: Reverse Linked List', url: 'https://leetcode.com/problems/reverse-linked-list/' },
-    { pattern: /stack/, label: 'LeetCode: Valid Parentheses', url: 'https://leetcode.com/problems/valid-parentheses/' },
-    { pattern: /queue/, label: 'LeetCode: Implement Queue using Stacks', url: 'https://leetcode.com/problems/implement-queue-using-stacks/' },
-    { pattern: /binary tree|tree|bst/, label: 'LeetCode: Binary Tree Level Order Traversal', url: 'https://leetcode.com/problems/binary-tree-level-order-traversal/' },
-    { pattern: /graph/, label: 'LeetCode: Number of Islands', url: 'https://leetcode.com/problems/number-of-islands/' },
-    { pattern: /dynamic programming|dp/, label: 'LeetCode: House Robber', url: 'https://leetcode.com/problems/house-robber/' },
-    { pattern: /greedy/, label: 'LeetCode: Best Time to Buy and Sell Stock', url: 'https://leetcode.com/problems/best-time-to-buy-and-sell-stock/' },
-    { pattern: /recursion|backtracking/, label: 'LeetCode: Subsets', url: 'https://leetcode.com/problems/subsets/' },
-  ];
-
-  const match = links.find((item) => item.pattern.test(normalized));
   if (match) {
     return match;
   }
 
   return {
-    label: `LeetCode search: ${topic || 'practice'}`,
-    url: `https://leetcode.com/problemset/?search=${encodeURIComponent(topic || 'interview')}`,
+    article: {
+      title: `GeeksforGeeks: ${topic || 'Interview preparation'}`,
+      url: `https://www.geeksforgeeks.org/search/${encodeURIComponent(topic || 'interview preparation')}/`,
+    },
+    newsletter: {
+      title: 'TLDR: practical engineering updates',
+      url: 'https://tldr.tech/',
+    },
+    videos: [
+      {
+        title: `freeCodeCamp: ${topic || 'interview preparation'}`,
+        url: buildSearchUrl(`freeCodeCamp ${topic || 'interview preparation'}`),
+      },
+      {
+        title: `Bro Code: ${topic || 'interview preparation'}`,
+        url: buildSearchUrl(`Bro Code ${topic || 'interview preparation'}`),
+      },
+    ],
+    problems: [
+      {
+        label: `LeetCode: ${topic || 'practice'} practice`,
+        difficulty: 'Medium',
+        url: `https://leetcode.com/problemset/?search=${encodeURIComponent(topic || 'interview')}`,
+      },
+    ],
+  };
+}
+
+function buildArticleUrl(topic) {
+  return getTopicReferenceProfile(topic).article.url;
+}
+
+function buildProblemSet(topic) {
+  return getTopicReferenceProfile(topic).problems;
+}
+
+function buildCuratedResourceItems(topic) {
+  const profile = getTopicReferenceProfile(topic);
+  return [
+    {
+      title: profile.videos[0].title,
+      type: 'youtube',
+      url: profile.videos[0].url,
+    },
+    {
+      title: profile.article.title,
+      type: 'article',
+      url: profile.article.url,
+    },
+    {
+      title: profile.newsletter.title,
+      type: 'newsletter',
+      url: profile.newsletter.url,
+    },
+    {
+      title: profile.videos[1].title,
+      type: 'youtube',
+      url: profile.videos[1].url,
+    },
+  ].filter((item) => item.url);
+}
+
+function buildProjectReference(targetRole) {
+  const role = String(targetRole || '').toLowerCase();
+
+  if (/backend/.test(role)) {
+    return {
+      label: 'roadmap.sh backend projects',
+      url: 'https://roadmap.sh/backend/projects',
+    };
+  }
+
+  if (/frontend/.test(role)) {
+    return {
+      label: 'roadmap.sh frontend projects',
+      url: 'https://roadmap.sh/frontend/projects',
+    };
+  }
+
+  if (/full.?stack/.test(role)) {
+    return {
+      label: 'roadmap.sh full stack projects',
+      url: 'https://roadmap.sh/full-stack',
+    };
+  }
+
+  return {
+    label: 'roadmap.sh computer science projects',
+    url: 'https://roadmap.sh/computer-science',
   };
 }
 
@@ -310,6 +549,7 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole)
   const dsaTopics = prioritizedTopics.filter((topic) => !/dbms|operating systems|system design|object-oriented/i.test(topic));
   const revisionTopics = prioritizedTopics.filter((topic) => /dbms|operating systems|system design|object-oriented/i.test(topic));
   const projectFocus = getRoleBiasTopics(targetRole)[0] || targetRole || 'Placement project';
+  const projectReference = buildProjectReference(targetRole);
   const days = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'];
   const totalMinutes = clamp(timePerDay || 120, 60, 480);
   const chunks = [
@@ -325,8 +565,8 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole)
     const revisionTopic = revisionTopics[index % Math.max(revisionTopics.length, 1)]
       || prioritizedTopics[index % Math.max(prioritizedTopics.length, 1)]
       || 'Operating Systems';
-    const primaryLink = topicToLeetCodeLink(primaryTopic);
-    const secondaryLink = topicToLeetCodeLink(secondaryTopic);
+    const primaryProblem = buildProblemSet(primaryTopic)[0];
+    const secondaryProblem = buildProblemSet(secondaryTopic)[1] || buildProblemSet(secondaryTopic)[0];
 
     return {
       day,
@@ -334,20 +574,20 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole)
       totalEstimatedMinutes: chunks.reduce((sum, minutes) => sum + minutes, 0),
       items: [
         {
-          title: `${primaryTopic} pattern warm-up`,
+          title: `${primaryTopic} platform warm-up`,
           type: 'DSA',
           estimatedMinutes: chunks[0],
-          difficulty: 'Easy',
-          referenceLabel: primaryLink.label,
-          referenceUrl: primaryLink.url,
+          difficulty: primaryProblem.difficulty,
+          referenceLabel: primaryProblem.label,
+          referenceUrl: primaryProblem.url,
         },
         {
           title: `${secondaryTopic} medium checkpoint`,
           type: 'DSA',
           estimatedMinutes: chunks[1],
-          difficulty: 'Medium',
-          referenceLabel: secondaryLink.label,
-          referenceUrl: secondaryLink.url,
+          difficulty: secondaryProblem.difficulty,
+          referenceLabel: secondaryProblem.label,
+          referenceUrl: secondaryProblem.url,
         },
         {
           title: `Revision: ${revisionTopic}`,
@@ -362,8 +602,8 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole)
           type: 'Project',
           estimatedMinutes: chunks[3],
           difficulty: knownTopics.length >= 3 ? 'Medium' : 'Easy',
-          referenceLabel: `${projectFocus} checklist`,
-          referenceUrl: buildSearchUrl(`${projectFocus} project task`),
+          referenceLabel: projectReference.label,
+          referenceUrl: projectReference.url,
         },
       ],
     };
@@ -375,23 +615,7 @@ function buildResources(prioritizedTopics, targetRole) {
 
   return topics.map((topic) => ({
     topic,
-    items: [
-      {
-        title: `YouTube: ${topic} interview prep`,
-        type: 'youtube',
-        url: buildSearchUrl(`${topic} interview preparation`),
-      },
-      {
-        title: `GeeksforGeeks: ${topic}`,
-        type: 'article',
-        url: buildArticleUrl(topic),
-      },
-      {
-        title: `YouTube: ${topic} intuition`,
-        type: 'youtube',
-        url: buildSearchUrl(`${topic} intuition`),
-      },
-    ],
+    items: buildCuratedResourceItems(topic),
   }));
 }
 
@@ -465,25 +689,18 @@ function normalizePlanResult(rawPlan, fallbackPlan) {
           type: String(item.type || fallbackPlan.tasks[index]?.items[itemIndex]?.type || 'DSA').trim(),
           estimatedMinutes: clamp(item.estimatedMinutes || fallbackPlan.tasks[index]?.items[itemIndex]?.estimatedMinutes || 30, 10, 240),
           difficulty: String(item.difficulty || fallbackPlan.tasks[index]?.items[itemIndex]?.difficulty || 'Medium').trim(),
-          referenceLabel: String(item.referenceLabel || fallbackPlan.tasks[index]?.items[itemIndex]?.referenceLabel || 'Reference').trim(),
-          referenceUrl: item.referenceUrl || fallbackPlan.tasks[index]?.items[itemIndex]?.referenceUrl || null,
+          referenceLabel: String(
+            fallbackPlan.tasks[index]?.items[itemIndex]?.referenceLabel
+            || item.referenceLabel
+            || 'Reference'
+          ).trim(),
+          referenceUrl: fallbackPlan.tasks[index]?.items[itemIndex]?.referenceUrl || item.referenceUrl || null,
         }))
         : fallbackPlan.tasks[index]?.items || [],
     }))
     : fallbackPlan.tasks;
 
-  const resources = Array.isArray(rawPlan.resources) && rawPlan.resources.length
-    ? rawPlan.resources.slice(0, 6).map((resource, index) => ({
-      topic: String(resource.topic || fallbackPlan.resources[index]?.topic || 'Interview prep').trim(),
-      items: Array.isArray(resource.items) && resource.items.length
-        ? resource.items.slice(0, 4).map((item) => ({
-          title: String(item.title || 'Reference').trim(),
-          type: String(item.type || 'article').trim(),
-          url: String(item.url || item.link || '').trim(),
-        })).filter((item) => item.url)
-        : fallbackPlan.resources[index]?.items || [],
-    }))
-    : fallbackPlan.resources;
+  const resources = fallbackPlan.resources;
 
   const flashcards = Array.isArray(rawPlan.flashcards) && rawPlan.flashcards.length
     ? rawPlan.flashcards.slice(0, 10).map((card, index) => ({
@@ -781,12 +998,13 @@ async function generatePlan(user, payload = {}) {
       'Generate:',
       '1. Weekly roadmap',
       '2. Daily tasks:',
-      '   * 2 DSA problems (with links)',
+      '   * 2 DSA problems (with direct links and specific problem names from LeetCode, HackerRank, or CodeChef)',
       '   * 1 revision topic',
-      '   * 1 project task',
+      '   * 1 project task with a direct resource link',
       '3. Resources:',
-      '   * YouTube search links',
-      '   * Articles',
+      '   * Creator-specific YouTube resources (freeCodeCamp, Bro Code, CodeWithMosh when relevant)',
+      '   * Direct article links such as GeeksforGeeks',
+      '   * One relevant newsletter or reading stream',
       '4. Flashcards:',
       '   * 5-10 Q&A cards',
       '',
@@ -794,6 +1012,7 @@ async function generatePlan(user, payload = {}) {
       '* Focus on weak areas',
       '* Keep it realistic',
       '* No fluff',
+      '* Avoid broad generic search links when a direct problem or targeted creator search is possible',
       '',
       'Return JSON in this exact shape:',
       '{',
@@ -843,6 +1062,8 @@ async function updatePlan(user, payload = {}) {
       `Target role: ${input.targetRole}`,
       '',
       'Regenerate the title, roadmap, tasks, resources, and flashcards while keeping the plan realistic and editable.',
+      'Use direct, specific practice problems instead of broad problem-set searches whenever possible.',
+      'Prefer creator-specific YouTube resources and direct articles/newsletters over generic searches.',
       'Return the same JSON structure as the original plan generation request.',
     ].join('\n'),
     () => fallbackPlan

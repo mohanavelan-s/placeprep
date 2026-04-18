@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { History, PencilLine, RefreshCcw, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import HoursInput from "@/components/HoursInput";
-import PageStatusPanel from "@/components/PageStatusPanel";
 import PrepPlanView from "@/components/PrepPlanView";
 import SoftSyncNotice from "@/components/SoftSyncNotice";
 import TopicTagInput from "@/components/TopicTagInput";
+import { PrepArchitectSkeleton } from "@/components/WorkspaceSkeletons";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -203,7 +203,10 @@ export default function PrepArchitectPage() {
 
   const pending = generateMutation.isPending || updateMutation.isPending;
   const latestPlan = latestPlanQuery.data ?? null;
-  const history = Array.isArray(historyQuery.data) ? historyQuery.data : [];
+  const history = useMemo(
+    () => (Array.isArray(historyQuery.data) ? historyQuery.data : []),
+    [historyQuery.data],
+  );
 
   useEffect(() => {
     setSelectedPlanIds((current) => current.filter((planId) => history.some((plan) => plan.id === planId)));
@@ -229,6 +232,10 @@ export default function PrepArchitectPage() {
     setPlanToRename(plan);
     setRenameTitle(plan.title || "");
     setRenameDialogOpen(true);
+  }
+
+  if (latestPlanQuery.isPending && !latestPlan) {
+    return <PrepArchitectSkeleton />;
   }
 
   return (
@@ -274,15 +281,6 @@ export default function PrepArchitectPage() {
           )}
         </div>
       </section>
-
-      {latestPlanQuery.isPending && !latestPlan && (
-        <PageStatusPanel
-          eyebrow="Architect sync"
-          title="Loading your latest plan."
-          description="Known topics, targets, and saved versions are being restored."
-          loading
-        />
-      )}
 
       {latestPlanQuery.isError && (
         <SoftSyncNotice

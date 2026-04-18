@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
   motion,
   type Variants,
@@ -18,7 +18,9 @@ import {
 import { Link } from "react-router-dom";
 
 import PlacePrepLogo from "@/components/PlacePrepLogo";
+import HowItWorksDialog from "@/components/HowItWorksDialog";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/AuthContext";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 26, filter: "blur(10px)" },
@@ -108,6 +110,8 @@ const heroSignals = [
 const heroPills = ["Private by default", "AI roadmap engine", "No-noise mentoring"];
 
 export default function LandingPage() {
+  const { enterDemoMode } = useAuth();
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const pointerX = useMotionValue(0);
   const pointerY = useMotionValue(0);
 
@@ -188,6 +192,16 @@ export default function LandingPage() {
                 <Link to="/auth?mode=login">Enter PlacePrep</Link>
               </Button>
             </motion.div>
+            <motion.div whileHover={{ y: -2, scale: 1.02 }} whileTap={{ scale: 0.985 }}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setHowItWorksOpen(true)}
+                className="rounded-full border border-white/8 bg-white/[0.02] px-5 text-sm text-muted-foreground shadow-[0_0_0_rgba(139,0,0,0)] transition-all duration-500 hover:border-[#8b0000]/35 hover:bg-white/[0.05] hover:text-foreground hover:shadow-[0_0_24px_rgba(139,0,0,0.12)]"
+              >
+                How it works
+              </Button>
+            </motion.div>
             <motion.div whileHover={{ y: -2, scale: 1.03 }} whileTap={{ scale: 0.985 }}>
               <Button
                 asChild
@@ -248,12 +262,13 @@ export default function LandingPage() {
 
               <motion.div whileHover={{ y: -2, scale: 1.02 }} whileTap={{ scale: 0.985 }}>
                 <Button
-                  asChild
                   size="lg"
                   variant="outline"
+                  type="button"
+                  onClick={() => enterDemoMode()}
                   className="h-12 rounded-full border-white/10 bg-white/[0.02] px-8 text-sm uppercase tracking-[0.18em] text-[#e6e6e6] transition-all duration-500 hover:border-[#8b0000]/28 hover:bg-white/[0.05] hover:shadow-[0_0_24px_rgba(139,0,0,0.1)]"
                 >
-                  <Link to="/auth?mode=login">Enter PlacePrep</Link>
+                  Explore demo
                 </Button>
               </motion.div>
             </motion.div>
@@ -500,6 +515,12 @@ export default function LandingPage() {
           </motion.div>
         </section>
       </main>
+
+      <HowItWorksDialog
+        open={howItWorksOpen}
+        onOpenChange={setHowItWorksOpen}
+        onEnterDemo={() => enterDemoMode()}
+      />
     </motion.div>
   );
 }

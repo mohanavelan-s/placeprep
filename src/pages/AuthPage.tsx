@@ -15,9 +15,10 @@ interface AuthPageProps {
     placementDate?: string;
     weakAreas?: string[];
   }) => Promise<unknown>;
+  onEnterDemo: () => void;
 }
 
-export default function AuthPage({ onLogin, onRegister }: AuthPageProps) {
+export default function AuthPage({ onLogin, onRegister, onEnterDemo }: AuthPageProps) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const requestedMode = searchParams.get("mode");
@@ -42,6 +43,7 @@ export default function AuthPage({ onLogin, onRegister }: AuthPageProps) {
       <AuthPanel
         onLogin={onLogin}
         onRegister={onRegister}
+        onEnterDemo={onEnterDemo}
         initialMode={initialMode}
         initialInviteCode={initialInviteCode}
       />
