@@ -153,15 +153,34 @@ function createDemoTextDataUrl(content: string) {
   return `data:text/plain;charset=UTF-8,${encodeURIComponent(content)}`;
 }
 
+function getRoleBiasTopics(targetRole: string) {
+  const normalized = String(targetRole || "").toLowerCase();
+
+  if (/data analyst/.test(normalized)) {
+    return ["SQL", "Statistics", "Pandas", "Data Visualization", "Power BI"];
+  }
+  if (/data engineer/.test(normalized)) {
+    return ["SQL", "ETL", "Data Warehousing", "Spark", "Airflow"];
+  }
+  if (/data scientist/.test(normalized)) {
+    return ["Python", "Statistics", "Machine Learning", "Pandas"];
+  }
+  if (/backend/.test(normalized)) {
+    return ["Operating Systems", "DBMS", "System Design"];
+  }
+
+  return ["Dynamic Programming", "Graphs"];
+}
+
 function getTopicRecipe(topic: string) {
   return topicBank.find((entry) => entry.pattern.test(topic)) || {
-    article: [`GeeksforGeeks: ${topic}`, `https://www.geeksforgeeks.org/search/${encodeURIComponent(topic)}/`],
+    article: ["GeeksforGeeks: Binary Search", "https://www.geeksforgeeks.org/binary-search/"],
     newsletter: ["TLDR: practical engineering updates", "https://tldr.tech/"],
     videos: [
       [`freeCodeCamp: ${topic}`, buildYouTubeSearchUrl(`freeCodeCamp ${topic}`)],
       [`Bro Code: ${topic}`, buildYouTubeSearchUrl(`Bro Code ${topic}`)],
     ],
-    problems: [[`LeetCode: ${topic} practice`, "Medium", `https://leetcode.com/problemset/?search=${encodeURIComponent(topic)}`]],
+    problems: [["LeetCode: Binary Search", "Easy", "https://leetcode.com/problems/binary-search/"]],
   };
 }
 
@@ -222,16 +241,14 @@ function buildTaskItems(topic: string, revisionTopic: string) {
 function buildPlan(input: { knownTopics: string[]; targetTopics: string[]; targetRole?: string; timePerDay?: number }, version = 1, sourcePlanId: string | null = null) {
   const knownTopics = cleanTopics(input.knownTopics, 8);
   const targetTopics = cleanTopics(input.targetTopics, 8);
+  const roleBias = getRoleBiasTopics(String(input.targetRole || ""));
   const orderedTopics = cleanTopics([
     ...targetTopics,
-    String(input.targetRole || "").toLowerCase().includes("backend") ? "Operating Systems" : "",
-    String(input.targetRole || "").toLowerCase().includes("backend") ? "DBMS" : "",
-    String(input.targetRole || "").toLowerCase().includes("backend") ? "System Design" : "",
-    "Dynamic Programming",
+    ...roleBias,
   ], 5);
   const primary = orderedTopics[0] || "Operating Systems";
   const secondary = orderedTopics[1] || "DBMS";
-  const targetRole = input.targetRole || "Backend Engineer Intern";
+  const targetRole = input.targetRole || "Backend Engineer";
   const now = new Date().toISOString();
 
   const roadmap = orderedTopics.slice(0, 4).map((topic, index) => ({
@@ -267,10 +284,10 @@ function buildPlan(input: { knownTopics: string[]; targetTopics: string[]; targe
     tasks,
     resources: orderedTopics.slice(0, 4).map(buildStudyStack),
     flashcards: [
-      { topic: primary, question: `What is the clean mental model for ${primary}?`, answer: `Define ${primary} in one sentence, name one tradeoff, then tie it to a real interview use-case.` },
-      { topic: secondary, question: `How do you explain ${secondary} without sounding memorized?`, answer: `Use one concrete example, one common mistake, and one performance tradeoff.` },
-      { topic: "System Design", question: "What should anchor the first two minutes of a design answer?", answer: "Clarify traffic, read-write ratio, reliability expectations, and the likely bottleneck." },
-      { topic: "Dynamic Programming", question: "What makes a DP state strong?", answer: "A precise subproblem, a clean transition, and a base case you can trust." },
+      { topic: primary, question: `What is the clean mental model for ${primary} in a ${targetRole} interview?`, answer: `Define ${primary} in one sentence, name one tradeoff, then tie it directly to the first task in the plan.` },
+      { topic: secondary, question: `How do you explain ${secondary} without sounding memorized?`, answer: `Use one concrete example, one common mistake, and one performance tradeoff that would matter for ${targetRole}.` },
+      { topic: orderedTopics[2] || "System Design", question: `How would ${orderedTopics[2] || "System Design"} show up in the planned work?`, answer: `Connect it to the structured execution block, then explain the practical decision you would make under interview pressure.` },
+      { topic: orderedTopics[3] || "Dynamic Programming", question: `What would you say out loud before solving a problem on ${orderedTopics[3] || "Dynamic Programming"}?`, answer: "State the pattern, the data structure or state you need, and the edge case that could break a rushed solution." },
     ],
     timePerDay: input.timePerDay || 180,
     targetRole,
@@ -800,8 +817,22 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
 
   if (pathname === "/uploads/images" && method === "POST") {
     const file = body.image instanceof File ? body.image : null;
-    const proof = { id: createId("proof"), userId: "demo-user", secureUrl: file ? await readFileAsDataUrl(file) : createDemoSvgDataUrl("Demo Upload"), publicId: createId("proof-file"), mimeType: file?.type || "image/svg+xml", proofDate: typeof body.proofDate === "string" ? body.proofDate : new Date().toISOString().slice(0, 10), caption: typeof body.caption === "string" ? body.caption : "Demo proof upload", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-    return updateState((current) => ({ ...current, uploads: [proof, ...(current.uploads as unknown[])] })).uploads[0] as T;
+    const taskId = typeof body.taskId === "string" ? body.taskId : null;
+    const proof = { id: createId("proof"), userId: "demo-user", taskId, secureUrl: file ? await readFileAsDataUrl(file) : createDemoSvgDataUrl("Demo Upload"), publicId: createId("proof-file"), mimeType: file?.type || "image/svg+xml", proofDate: typeof body.proofDate === "string" ? body.proofDate : new Date().toISOString().slice(0, 10), caption: typeof body.caption === "string" ? body.caption : "Demo proof upload", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    const nextState = updateState((current) => {
+      const nextTasks = (current.tasks as Array<Record<string, unknown>>).map((task) => (
+        task.id === taskId
+          ? { ...task, status: "completed", completedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), metadata: { ...(task.metadata as Record<string, unknown>), autoVerification: { verified: true, provider: "proof", method: "demo-proof-upload", reason: "Demo proof matched the linked task." } } }
+          : task
+      ));
+      return refreshState({ ...current, uploads: [proof, ...(current.uploads as unknown[])], tasks: nextTasks });
+    });
+    return {
+      ...(nextState.uploads[0] as Record<string, unknown>),
+      verification: taskId
+        ? { attempted: true, verified: true, method: "demo-proof-upload", reason: "Demo proof matched the linked task.", taskId, taskStatus: "completed" }
+        : undefined,
+    } as T;
   }
 
   if (pathname === "/apk" && method === "POST") {

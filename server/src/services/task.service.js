@@ -1,6 +1,20 @@
 const taskRepository = require('../repositories/task.repository');
 const AppError = require('../utils/appError');
 const { formatDateInTimezone, getTodayInTimezone, normalizeDate, normalizeDateTime } = require('../utils/date');
+const taskVerificationService = require('./taskVerification.service');
+
+function assertAutoVerifiableTaskIsNotManuallyCompleted(task, nextStatus) {
+  if (
+    nextStatus === 'completed'
+    && task?.status !== 'completed'
+    && taskVerificationService.canAutoVerifyTask(task)
+  ) {
+    throw new AppError(
+      'This task is auto-verified. Complete it through the linked account sync or by uploading proof.',
+      400
+    );
+  }
+}
 
 async function refreshProgress(user) {
   const progressService = require('./progress.service');
@@ -9,6 +23,7 @@ async function refreshProgress(user) {
 
 async function createTask(user, payload) {
   const status = payload.status || 'pending';
+  assertAutoVerifiableTaskIsNotManuallyCompleted(payload, status);
   const dueAt = payload.dueAt ? normalizeDateTime(payload.dueAt, user.timezone) : null;
   const scheduledFor = payload.scheduledFor
     ? normalizeDate(payload.scheduledFor, user.timezone)
@@ -45,11 +60,24 @@ async function listTasks(user, filters = {}) {
     ? getTodayInTimezone(user.timezone)
     : (filters.date ? normalizeDate(filters.date, user.timezone) : undefined);
 
-  return taskRepository.listByUser(user.id, {
+  const tasks = await taskRepository.listByUser(user.id, {
     date: dateFilter,
     status: filters.status,
     category: filters.category,
   });
+
+  const autoVerifiedTaskIds = await taskVerificationService.autoVerifyTasksFromLeetCode(user, tasks);
+  if (autoVerifiedTaskIds.length) {
+    await refreshProgress(user);
+
+    return taskRepository.listByUser(user.id, {
+      date: dateFilter,
+      status: filters.status,
+      category: filters.category,
+    });
+  }
+
+  return tasks;
 }
 
 async function getTask(user, taskId) {
@@ -65,6 +93,7 @@ async function getTask(user, taskId) {
 async function updateTask(user, taskId, updates) {
   const existingTask = await getTask(user, taskId);
   const nextStatus = updates.status || existingTask.status;
+  assertAutoVerifiableTaskIsNotManuallyCompleted(existingTask, nextStatus);
   const dueAt = updates.dueAt ? normalizeDateTime(updates.dueAt, user.timezone) : undefined;
   const task = await taskRepository.updateTask(taskId, user.id, {
     ...updates,

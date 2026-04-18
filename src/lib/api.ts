@@ -112,6 +112,15 @@ export interface UploadedImage {
   storageProvider?: string | null;
   proofDate?: string | null;
   caption?: string | null;
+  verification?: {
+    attempted: boolean;
+    verified: boolean;
+    method: string;
+    reason: string;
+    confidence?: number;
+    taskId?: string;
+    taskStatus?: TaskStatus;
+  };
   createdAt?: string;
   updatedAt?: string;
 }

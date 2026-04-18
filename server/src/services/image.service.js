@@ -1,7 +1,10 @@
 const imageRepository = require('../repositories/image.repository');
+const taskRepository = require('../repositories/task.repository');
 const { deleteStoredAsset, uploadBuffer } = require('./storage.service');
 const { normalizeDate } = require('../utils/date');
 const AppError = require('../utils/appError');
+const taskVerificationService = require('./taskVerification.service');
+const progressService = require('./progress.service');
 
 async function uploadImage(user, file, payload) {
   if (!file) {
@@ -16,7 +19,7 @@ async function uploadImage(user, file, payload) {
     resourceType: 'image',
   });
 
-  return imageRepository.createImage({
+  const image = await imageRepository.createImage({
     userId: user.id,
     taskId: payload.taskId,
     dailyLogId: payload.dailyLogId,
@@ -32,6 +35,24 @@ async function uploadImage(user, file, payload) {
     proofDate: normalizeDate(payload.proofDate, user.timezone),
     caption: payload.caption,
   });
+
+  if (payload.taskId) {
+    const task = await taskRepository.findById(payload.taskId, user.id);
+    if (task && taskVerificationService.taskSupportsProofVerification(task)) {
+      const verificationResult = await taskVerificationService.verifyTaskAgainstProof(user, task, image);
+
+      if (verificationResult?.verification?.verified) {
+        await progressService.refreshProgressStats(user.id, user.timezone);
+      }
+
+      return {
+        ...image,
+        verification: verificationResult.verification,
+      };
+    }
+  }
+
+  return image;
 }
 
 async function listImages(user, filters = {}) {

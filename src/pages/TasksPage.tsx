@@ -30,6 +30,7 @@ import {
 } from "@/lib/api";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import { formatHoursFromMinutes, parseHoursToMinutes } from "@/lib/time";
+import { allowsManualCompletion, getTaskVerificationHint } from "@/lib/task-verification";
 
 const statuses = ["all", "pending", "in_progress", "completed", "skipped"] as const;
 const categories = ["all", "DSA", "Core", "Project", "Aptitude", "Resume", "MockInterview", "Other"] as const;
@@ -266,12 +267,18 @@ export default function TasksPage() {
                   {task.category} / {formatHoursFromMinutes(task.estimatedMinutes)} / {task.referenceLabel || task.weakArea || "Focus"}
                   {task.dueAt ? ` / Due ${formatTaskDueLabel(task.dueAt)}` : ""}
                 </p>
+                {getTaskVerificationHint(task) && (
+                  <p className="mt-2 text-xs uppercase tracking-[0.14em] text-muted-foreground/80">
+                    {getTaskVerificationHint(task)}
+                  </p>
+                )}
               </div>
 
               <TaskStatusControl
                 status={task.status}
                 disabled={updateMutation.isPending && updateMutation.variables?.taskId === task.id}
                 compact
+                allowCompletedSelection={allowsManualCompletion(task)}
                 onChange={(status) => updateMutation.mutate({ taskId: task.id, status })}
               />
 
@@ -303,7 +310,7 @@ export default function TasksPage() {
 
       {shouldShowStudentPanels && <StudentPracticeCapsulesPanel />}
 
-      {shouldShowStudentPanels && <WorkProofPanel />}
+      {shouldShowStudentPanels && <WorkProofPanel tasks={tasks} />}
     </div>
   );
 }

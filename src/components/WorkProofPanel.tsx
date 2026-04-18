@@ -7,9 +7,17 @@ import ClearHistoryButton from "@/components/ClearHistoryButton";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
-import { clearUploadedProofHistory, fetchUploadedImages, uploadImage } from "@/lib/api";
+import { clearUploadedProofHistory, fetchUploadedImages, type Task, uploadImage } from "@/lib/api";
+import { getTaskVerificationMode } from "@/lib/task-verification";
 
 function formatProofDate(value?: string | null) {
   if (!value) {
@@ -29,12 +37,18 @@ function formatProofDate(value?: string | null) {
   }
 }
 
-export default function WorkProofPanel() {
+interface WorkProofPanelProps {
+  tasks?: Task[];
+}
+
+export default function WorkProofPanel({ tasks = [] }: WorkProofPanelProps) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [caption, setCaption] = useState("");
   const [proofDate, setProofDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedTaskId, setSelectedTaskId] = useState("none");
+  const openTasks = tasks.filter((task) => task.status !== "completed" && task.status !== "skipped");
 
   const proofsQuery = useQuery({
     queryKey: ["uploads", "proofs"],
@@ -50,14 +64,32 @@ export default function WorkProofPanel() {
       }
 
       return uploadImage(file, {
+        taskId: selectedTaskId !== "none" ? selectedTaskId : undefined,
         caption: caption.trim() || undefined,
         proofDate: proofDate || undefined,
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       setFile(null);
       setCaption("");
+      setSelectedTaskId("none");
       await queryClient.invalidateQueries({ queryKey: ["uploads", "proofs"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["tasks", "today"] }),
+        queryClient.invalidateQueries({ queryKey: ["progress-summary"] }),
+      ]);
+
+      if (result.verification?.verified) {
+        toast.success("Proof verified and the linked task was marked complete.");
+        return;
+      }
+
+      if (result.verification?.attempted) {
+        toast.message("Proof uploaded. Verification needs a clearer task match before completion.");
+        return;
+      }
+
       toast.success("Proof uploaded.");
     },
     onError: (error) => {
@@ -88,7 +120,7 @@ export default function WorkProofPanel() {
           Drop a visual record after you finish.
         </h3>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Upload screenshots or photographs of completed work so admins can see the trail, not just the numbers.
+          Upload screenshots or photographs of completed work. When the upload is linked to a task, PlacePrep can verify it and mark the task complete automatically.
         </p>
       </div>
 
@@ -154,10 +186,43 @@ export default function WorkProofPanel() {
               className="h-11 border-border/80 bg-background/70"
             />
 
+            <Select value={selectedTaskId} onValueChange={setSelectedTaskId}>
+              <SelectTrigger className="h-11 border-border/80 bg-background/70">
+                <SelectValue placeholder="Link this proof to a task" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">General proof upload</SelectItem>
+                {openTasks.map((task) => (
+                  <SelectItem key={task.id} value={task.id}>
+                    {task.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground/80">
+              {selectedTaskId !== "none"
+                ? (() => {
+                    const selectedTask = openTasks.find((task) => task.id === selectedTaskId);
+                    const mode = selectedTask ? getTaskVerificationMode(selectedTask) : "manual";
+
+                    if (mode === "leetcode_profile_or_proof") {
+                      return "This task can auto-check against the saved LeetCode profile or this uploaded proof.";
+                    }
+
+                    if (mode === "proof_upload") {
+                      return "This linked task will be auto-verified from the uploaded proof.";
+                    }
+
+                    return "This linked task still supports manual completion.";
+                  })()
+                : "Choose a task if you want PlacePrep to auto-verify and complete it from the uploaded proof."}
+            </p>
+
             <Textarea
               value={caption}
               onChange={(event) => setCaption(event.target.value)}
-              placeholder="What did you finish? Example: Solved 2 DP questions and revised OS paging notes."
+              placeholder="What did you finish? Example: Solved Two Sum on LeetCode and uploaded the accepted submission screen."
               className="min-h-[130px] border-border/80 bg-background/70"
             />
 

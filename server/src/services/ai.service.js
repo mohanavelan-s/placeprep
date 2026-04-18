@@ -247,6 +247,16 @@ function topicToLeetCodeLink(topic) {
       label: 'LeetCode: Best Time to Buy and Sell Stock',
       url: 'https://leetcode.com/problems/best-time-to-buy-and-sell-stock/',
     },
+    {
+      pattern: /sql|dbms|database/,
+      label: 'LeetCode: Combine Two Tables',
+      url: 'https://leetcode.com/problems/combine-two-tables/',
+    },
+    {
+      pattern: /operating system|system design|cache/,
+      label: 'LeetCode: LRU Cache',
+      url: 'https://leetcode.com/problems/lru-cache/',
+    },
   ];
 
   const matched = links.find((item) => item.pattern.test(normalized));
@@ -254,10 +264,9 @@ function topicToLeetCodeLink(topic) {
     return matched;
   }
 
-  const searchTopic = encodeURIComponent(topic || 'leetcode');
   return {
-    label: `LeetCode search: ${topic || 'practice'}`,
-    url: `https://leetcode.com/problemset/?search=${searchTopic}`,
+    label: 'LeetCode: Binary Search',
+    url: 'https://leetcode.com/problems/binary-search/',
   };
 }
 

@@ -30,6 +30,20 @@ const TOPIC_DATASET = [
   'System Design',
   'DBMS',
   'Operating Systems',
+  'SQL',
+  'Python',
+  'Statistics',
+  'Pandas',
+  'Data Visualization',
+  'Excel',
+  'Power BI',
+  'Tableau',
+  'ETL',
+  'Data Warehousing',
+  'Data Modeling',
+  'Spark',
+  'Airflow',
+  'Machine Learning',
 ];
 
 const FLASHCARD_BANK = {
@@ -96,6 +110,46 @@ const FLASHCARD_BANK = {
   'Operating Systems': {
     question: 'What makes an OS answer sound strong instead of memorized?',
     answer: 'Tie the concept to behavior under scheduling, memory pressure, contention, or isolation.',
+  },
+  SQL: {
+    question: 'What makes a SQL answer interview-ready instead of just syntactically correct?',
+    answer: 'Choose the right join or aggregation, explain why it works, and sanity-check nulls, duplicates, and ordering.',
+  },
+  Python: {
+    question: 'What is the best Python habit for interview code?',
+    answer: 'Keep the solution readable, use built-in data structures well, and avoid clever shortcuts that hide the logic.',
+  },
+  Statistics: {
+    question: 'How do you make a statistics answer feel practical?',
+    answer: 'Define the metric, explain what it means, then connect it to uncertainty, variance, or business impact.',
+  },
+  Pandas: {
+    question: 'What is a strong first instinct in a pandas problem?',
+    answer: 'Clarify the grain of the data, then group, filter, reshape, or merge only after checking the columns and null behavior.',
+  },
+  ETL: {
+    question: 'What makes an ETL explanation credible?',
+    answer: 'Describe the source, the transformations, the destination, and how you keep the pipeline reliable when data changes.',
+  },
+  'Data Warehousing': {
+    question: 'What should you mention first when discussing a warehouse design?',
+    answer: 'State the business grain, the fact tables, the key dimensions, and how fresh and historical data will be handled.',
+  },
+  'Data Modeling': {
+    question: 'What is the safest way to explain data modeling in interviews?',
+    answer: 'Start with the business questions, then show how entities, relationships, grain, and constraints support those questions.',
+  },
+  Spark: {
+    question: 'What is a practical Spark interview explanation?',
+    answer: 'Talk about distributed transforms, shuffles, partitioning, and how those choices affect job speed and reliability.',
+  },
+  Airflow: {
+    question: 'What makes an Airflow answer strong?',
+    answer: 'Explain the DAG, task dependencies, retries, scheduling, and how failures are observed and recovered.',
+  },
+  'Machine Learning': {
+    question: 'What anchors a machine learning explanation?',
+    answer: 'Start with the prediction goal, the data, the evaluation metric, and the trade-off between accuracy and generalization.',
   },
 };
 
@@ -255,6 +309,90 @@ const TOPIC_REFERENCE_BANK = [
     ],
   },
   {
+    pattern: /sql|postgres|mysql|query/i,
+    article: { title: 'GeeksforGeeks: SQL Tutorial', url: 'https://www.geeksforgeeks.org/sql-tutorial/' },
+    newsletter: { title: 'DB Weekly: database internals and SQL practice', url: 'https://dbweekly.com/' },
+    videos: [
+      { title: 'freeCodeCamp: SQL full course', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+SQL+full+course' },
+      { title: 'CodeWithMosh: SQL tutorial for beginners', url: 'https://www.youtube.com/results?search_query=CodeWithMosh+SQL+tutorial' },
+    ],
+    problems: [
+      { label: 'LeetCode: Combine Two Tables', difficulty: 'Easy', url: 'https://leetcode.com/problems/combine-two-tables/' },
+      { label: 'HackerRank: Revising the Select Query I', difficulty: 'Easy', url: 'https://www.hackerrank.com/challenges/revising-the-select-query/problem' },
+      { label: 'LeetCode: Rank Scores', difficulty: 'Medium', url: 'https://leetcode.com/problems/rank-scores/' },
+    ],
+  },
+  {
+    pattern: /python|pandas/i,
+    article: { title: 'GeeksforGeeks: Python Tutorial', url: 'https://www.geeksforgeeks.org/python-programming-language-tutorial/' },
+    newsletter: { title: 'Python Weekly: practical Python updates', url: 'https://www.pythonweekly.com/' },
+    videos: [
+      { title: 'freeCodeCamp: Python for beginners', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+python+for+beginners' },
+      { title: 'CodeWithMosh: Python tutorial', url: 'https://www.youtube.com/results?search_query=CodeWithMosh+python+tutorial' },
+    ],
+    problems: [
+      { label: 'HackerRank: Python Lists', difficulty: 'Easy', url: 'https://www.hackerrank.com/challenges/python-lists/problem' },
+      { label: 'HackerRank: Find the Runner-Up Score!', difficulty: 'Easy', url: 'https://www.hackerrank.com/challenges/find-second-maximum-number-in-a-list/problem' },
+      { label: 'LeetCode: Contains Duplicate', difficulty: 'Easy', url: 'https://leetcode.com/problems/contains-duplicate/' },
+    ],
+  },
+  {
+    pattern: /statistics|probability|a\/b testing|experimentation/i,
+    article: { title: 'GeeksforGeeks: Statistics for Data Science', url: 'https://www.geeksforgeeks.org/statistics-for-data-science/' },
+    newsletter: { title: 'Data Elixir: analytics and experimentation reading', url: 'https://dataelixir.com/' },
+    videos: [
+      { title: 'freeCodeCamp: Statistics for data science', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+statistics+for+data+science' },
+      { title: 'codebasics: Statistics for analytics interviews', url: 'https://www.youtube.com/results?search_query=codebasics+statistics+for+data+science' },
+    ],
+    problems: [
+      { label: 'LeetCode: Statistics from a Large Sample', difficulty: 'Hard', url: 'https://leetcode.com/problems/statistics-from-a-large-sample/' },
+      { label: 'HackerRank: Day 0 - Mean, Median, and Mode', difficulty: 'Easy', url: 'https://www.hackerrank.com/challenges/s10-basic-statistics/problem' },
+      { label: 'HackerRank: Day 4 - Binomial Distribution I', difficulty: 'Medium', url: 'https://www.hackerrank.com/challenges/s10-binomial-distribution-1/problem' },
+    ],
+  },
+  {
+    pattern: /data visualization|dashboard|excel|power bi|tableau/i,
+    article: { title: 'GeeksforGeeks: Data Visualization Tutorial', url: 'https://www.geeksforgeeks.org/data-visualization-tutorial/' },
+    newsletter: { title: 'Data Elixir: analytics and dashboard thinking', url: 'https://dataelixir.com/' },
+    videos: [
+      { title: 'freeCodeCamp: Data visualization projects', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+data+visualization+projects' },
+      { title: 'codebasics: Power BI and dashboard walkthroughs', url: 'https://www.youtube.com/results?search_query=codebasics+power+bi+dashboard+tutorial' },
+    ],
+    problems: [
+      { label: 'LeetCode: Department Highest Salary', difficulty: 'Medium', url: 'https://leetcode.com/problems/department-highest-salary/' },
+      { label: 'HackerRank: Top Earners', difficulty: 'Easy', url: 'https://www.hackerrank.com/challenges/earnings-of-employees/problem' },
+      { label: 'HackerRank: Weather Observation Station 20', difficulty: 'Medium', url: 'https://www.hackerrank.com/challenges/weather-observation-station-20/problem' },
+    ],
+  },
+  {
+    pattern: /etl|data warehouse|data warehousing|data modeling|spark|airflow|pipeline/i,
+    article: { title: 'GeeksforGeeks: ETL Full Form and Process', url: 'https://www.geeksforgeeks.org/etl-extract-transform-load-process/' },
+    newsletter: { title: 'Data Engineering Weekly: pipelines and warehousing', url: 'https://www.dataengineeringweekly.com/' },
+    videos: [
+      { title: 'freeCodeCamp: Data engineering basics', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+data+engineering+tutorial' },
+      { title: 'codebasics: Data engineering projects and pipelines', url: 'https://www.youtube.com/results?search_query=codebasics+data+engineering+project' },
+    ],
+    problems: [
+      { label: 'LeetCode: Trips and Users', difficulty: 'Hard', url: 'https://leetcode.com/problems/trips-and-users/' },
+      { label: 'HackerRank: SQL Project Planning', difficulty: 'Medium', url: 'https://www.hackerrank.com/challenges/sql-projects/problem' },
+      { label: 'HackerRank: Occupations', difficulty: 'Medium', url: 'https://www.hackerrank.com/challenges/the-pads/problem' },
+    ],
+  },
+  {
+    pattern: /machine learning|ml/i,
+    article: { title: 'GeeksforGeeks: Machine Learning', url: 'https://www.geeksforgeeks.org/machine-learning/' },
+    newsletter: { title: 'Data Elixir: machine learning and data science reading', url: 'https://dataelixir.com/' },
+    videos: [
+      { title: 'freeCodeCamp: Machine learning for beginners', url: 'https://www.youtube.com/results?search_query=freeCodeCamp+machine+learning+for+beginners' },
+      { title: 'codebasics: Machine learning roadmap', url: 'https://www.youtube.com/results?search_query=codebasics+machine+learning+roadmap' },
+    ],
+    problems: [
+      { label: 'LeetCode: Evaluate Division', difficulty: 'Medium', url: 'https://leetcode.com/problems/evaluate-division/' },
+      { label: 'HackerRank: Day 6 - The Central Limit Theorem I', difficulty: 'Medium', url: 'https://www.hackerrank.com/challenges/s10-central-limit-theorem-1/problem' },
+      { label: 'HackerRank: Day 8 - Least Square Regression Line', difficulty: 'Medium', url: 'https://www.hackerrank.com/challenges/s10-least-square-regression-line/problem' },
+    ],
+  },
+  {
     pattern: /dbms|database/i,
     article: { title: 'GeeksforGeeks: DBMS', url: 'https://www.geeksforgeeks.org/dbms/' },
     newsletter: { title: 'DB Weekly: database internals and tooling', url: 'https://dbweekly.com/' },
@@ -283,6 +421,117 @@ const TOPIC_REFERENCE_BANK = [
     ],
   },
 ];
+
+const ROLE_PREP_PROFILES = [
+  {
+    pattern: /backend/i,
+    biasTopics: ['DBMS', 'Operating Systems', 'System Design', 'Object-Oriented Programming', 'SQL'],
+    practiceTopics: ['Arrays', 'Strings', 'Graphs', 'Dynamic Programming'],
+    revisionTopics: ['DBMS', 'Operating Systems', 'System Design', 'Object-Oriented Programming'],
+    projectFocus: 'backend APIs and service design',
+    projectReference: {
+      label: 'roadmap.sh backend projects',
+      url: 'https://roadmap.sh/backend/projects',
+    },
+    outcomeLabel: 'backend interview signal',
+  },
+  {
+    pattern: /frontend/i,
+    biasTopics: ['Strings', 'Arrays', 'Object-Oriented Programming'],
+    practiceTopics: ['Strings', 'Arrays', 'Greedy Algorithms'],
+    revisionTopics: ['Object-Oriented Programming'],
+    projectFocus: 'frontend UI delivery and state handling',
+    projectReference: {
+      label: 'roadmap.sh frontend projects',
+      url: 'https://roadmap.sh/frontend/projects',
+    },
+    outcomeLabel: 'frontend interview signal',
+  },
+  {
+    pattern: /full.?stack/i,
+    biasTopics: ['DBMS', 'System Design', 'Object-Oriented Programming', 'SQL'],
+    practiceTopics: ['Arrays', 'Strings', 'Graphs'],
+    revisionTopics: ['DBMS', 'System Design', 'Object-Oriented Programming'],
+    projectFocus: 'full-stack feature delivery',
+    projectReference: {
+      label: 'roadmap.sh full stack projects',
+      url: 'https://roadmap.sh/full-stack',
+    },
+    outcomeLabel: 'full-stack interview signal',
+  },
+  {
+    pattern: /software engineer/i,
+    biasTopics: ['Arrays', 'Strings', 'Binary Trees', 'Graphs', 'Dynamic Programming', 'Object-Oriented Programming'],
+    practiceTopics: ['Arrays', 'Strings', 'Binary Trees', 'Graphs', 'Dynamic Programming'],
+    revisionTopics: ['Object-Oriented Programming', 'DBMS', 'Operating Systems'],
+    projectFocus: 'core engineering implementation',
+    projectReference: {
+      label: 'roadmap.sh computer science projects',
+      url: 'https://roadmap.sh/computer-science',
+    },
+    outcomeLabel: 'software engineering interview signal',
+  },
+  {
+    pattern: /sde intern/i,
+    biasTopics: ['Arrays', 'Strings', 'Binary Trees', 'DBMS', 'Operating Systems'],
+    practiceTopics: ['Arrays', 'Strings', 'Binary Trees', 'Graphs'],
+    revisionTopics: ['DBMS', 'Operating Systems', 'Object-Oriented Programming'],
+    projectFocus: 'intern-level implementation reps',
+    projectReference: {
+      label: 'roadmap.sh computer science projects',
+      url: 'https://roadmap.sh/computer-science',
+    },
+    outcomeLabel: 'intern interview signal',
+  },
+  {
+    pattern: /data analyst/i,
+    biasTopics: ['SQL', 'Statistics', 'Python', 'Pandas', 'Data Visualization', 'Power BI'],
+    practiceTopics: ['SQL', 'Statistics', 'Python', 'Pandas'],
+    revisionTopics: ['Data Visualization', 'Excel', 'Power BI', 'Tableau'],
+    projectFocus: 'analysis storytelling and dashboard delivery',
+    projectReference: {
+      label: 'Kaggle Learn: analysis portfolio projects',
+      url: 'https://www.kaggle.com/learn',
+    },
+    outcomeLabel: 'data analyst interview signal',
+  },
+  {
+    pattern: /data engineer/i,
+    biasTopics: ['SQL', 'Python', 'ETL', 'Data Warehousing', 'Data Modeling', 'Spark', 'Airflow'],
+    practiceTopics: ['SQL', 'Python', 'DBMS'],
+    revisionTopics: ['ETL', 'Data Warehousing', 'Data Modeling', 'Spark', 'Airflow'],
+    projectFocus: 'data pipelines and warehouse design',
+    projectReference: {
+      label: 'DataTalksClub: data engineering projects',
+      url: 'https://github.com/DataTalksClub/data-engineering-zoomcamp',
+    },
+    outcomeLabel: 'data engineering interview signal',
+  },
+  {
+    pattern: /data scientist/i,
+    biasTopics: ['Python', 'Statistics', 'Pandas', 'SQL', 'Machine Learning', 'Data Visualization'],
+    practiceTopics: ['Python', 'Statistics', 'SQL', 'Pandas'],
+    revisionTopics: ['Machine Learning', 'Data Visualization'],
+    projectFocus: 'modeling and experiment storytelling',
+    projectReference: {
+      label: 'Kaggle Learn: data science portfolio projects',
+      url: 'https://www.kaggle.com/learn',
+    },
+    outcomeLabel: 'data science interview signal',
+  },
+];
+
+const DEFAULT_ROLE_PREP_PROFILE = {
+  biasTopics: ['Arrays', 'Strings', 'Binary Trees', 'Graphs', 'Dynamic Programming'],
+  practiceTopics: ['Arrays', 'Strings', 'Binary Trees', 'Graphs'],
+  revisionTopics: ['Object-Oriented Programming'],
+  projectFocus: 'project-based learning',
+  projectReference: {
+    label: 'roadmap.sh computer science projects',
+    url: 'https://roadmap.sh/computer-science',
+  },
+  outcomeLabel: 'interview signal',
+};
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Number(value || min)));
@@ -392,7 +641,87 @@ function buildSearchUrl(query) {
   return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
 }
 
-function getTopicReferenceProfile(topic) {
+function getRolePrepProfile(targetRole) {
+  const normalizedRole = String(targetRole || '').toLowerCase();
+  return ROLE_PREP_PROFILES.find((profile) => profile.pattern.test(normalizedRole)) || DEFAULT_ROLE_PREP_PROFILE;
+}
+
+function isRevisionTopic(topic) {
+  return /dbms|operating systems|system design|object-oriented|data visualization|excel|power bi|tableau|etl|data warehousing|data modeling|spark|airflow|machine learning/i.test(String(topic || ''));
+}
+
+function getRoleReferenceFallbackTopic(targetRole) {
+  const role = String(targetRole || '').toLowerCase();
+
+  if (/data analyst/.test(role)) {
+    return 'SQL';
+  }
+  if (/data engineer/.test(role)) {
+    return 'ETL';
+  }
+  if (/data scientist/.test(role)) {
+    return 'Python';
+  }
+  if (/backend/.test(role)) {
+    return 'DBMS';
+  }
+  if (/frontend/.test(role)) {
+    return 'Strings';
+  }
+  if (/full.?stack/.test(role)) {
+    return 'System Design';
+  }
+
+  return 'Arrays';
+}
+
+function getTopicAliasFallbackTopic(topic, targetRole) {
+  const normalized = String(topic || '').toLowerCase();
+
+  if (/sliding window|two pointer|prefix|hash|sorting|sort|interval|matrix/.test(normalized)) {
+    return 'Arrays';
+  }
+  if (/heap|priority queue/.test(normalized)) {
+    return 'Queues';
+  }
+  if (/trie|substring|pattern matching/.test(normalized)) {
+    return 'Strings';
+  }
+  if (/tree traversal|bst|dfs|bfs/.test(normalized)) {
+    return 'Binary Trees';
+  }
+  if (/shortest path|union find|topological|graph/.test(normalized)) {
+    return 'Graphs';
+  }
+  if (/memoization|tabulation/.test(normalized)) {
+    return 'Dynamic Programming';
+  }
+  if (/rest|api|microservice|distributed|cache/.test(normalized)) {
+    return 'System Design';
+  }
+  if (/sql|query|postgres|mysql/.test(normalized)) {
+    return 'SQL';
+  }
+  if (/python|numpy|pandas|eda|cleaning|wrangling/.test(normalized)) {
+    return 'Python';
+  }
+  if (/dashboard|analytics|reporting|kpi|insight|storytelling|visual/.test(normalized)) {
+    return 'Data Visualization';
+  }
+  if (/stat|probability|experiment|ab test|a\/b/.test(normalized)) {
+    return 'Statistics';
+  }
+  if (/warehouse|lake|etl|elt|pipeline|orchestration|spark|airflow|modeling/.test(normalized)) {
+    return 'Data Warehousing';
+  }
+  if (/machine learning|regression|classification|clustering|ml/.test(normalized)) {
+    return 'Machine Learning';
+  }
+
+  return getRoleReferenceFallbackTopic(targetRole);
+}
+
+function getTopicReferenceProfile(topic, targetRole = '') {
   const normalized = String(topic || '').toLowerCase();
   const match = TOPIC_REFERENCE_BANK.find((item) => item.pattern.test(normalized));
 
@@ -400,45 +729,21 @@ function getTopicReferenceProfile(topic) {
     return match;
   }
 
-  return {
-    article: {
-      title: `GeeksforGeeks: ${topic || 'Interview preparation'}`,
-      url: `https://www.geeksforgeeks.org/search/${encodeURIComponent(topic || 'interview preparation')}/`,
-    },
-    newsletter: {
-      title: 'TLDR: practical engineering updates',
-      url: 'https://tldr.tech/',
-    },
-    videos: [
-      {
-        title: `freeCodeCamp: ${topic || 'interview preparation'}`,
-        url: buildSearchUrl(`freeCodeCamp ${topic || 'interview preparation'}`),
-      },
-      {
-        title: `Bro Code: ${topic || 'interview preparation'}`,
-        url: buildSearchUrl(`Bro Code ${topic || 'interview preparation'}`),
-      },
-    ],
-    problems: [
-      {
-        label: `LeetCode: ${topic || 'practice'} practice`,
-        difficulty: 'Medium',
-        url: `https://leetcode.com/problemset/?search=${encodeURIComponent(topic || 'interview')}`,
-      },
-    ],
-  };
+  const fallbackTopic = getTopicAliasFallbackTopic(topic, targetRole);
+  return TOPIC_REFERENCE_BANK.find((item) => item.pattern.test(String(fallbackTopic).toLowerCase()))
+    || TOPIC_REFERENCE_BANK[0];
 }
 
-function buildArticleUrl(topic) {
-  return getTopicReferenceProfile(topic).article.url;
+function buildArticleUrl(topic, targetRole) {
+  return getTopicReferenceProfile(topic, targetRole).article.url;
 }
 
-function buildProblemSet(topic) {
-  return getTopicReferenceProfile(topic).problems;
+function buildProblemSet(topic, targetRole) {
+  return getTopicReferenceProfile(topic, targetRole).problems;
 }
 
-function buildCuratedResourceItems(topic) {
-  const profile = getTopicReferenceProfile(topic);
+function buildCuratedResourceItems(topic, targetRole) {
+  const profile = getTopicReferenceProfile(topic, targetRole);
   return [
     {
       title: profile.videos[0].title,
@@ -464,48 +769,24 @@ function buildCuratedResourceItems(topic) {
 }
 
 function buildProjectReference(targetRole) {
-  const role = String(targetRole || '').toLowerCase();
-
-  if (/backend/.test(role)) {
-    return {
-      label: 'roadmap.sh backend projects',
-      url: 'https://roadmap.sh/backend/projects',
-    };
-  }
-
-  if (/frontend/.test(role)) {
-    return {
-      label: 'roadmap.sh frontend projects',
-      url: 'https://roadmap.sh/frontend/projects',
-    };
-  }
-
-  if (/full.?stack/.test(role)) {
-    return {
-      label: 'roadmap.sh full stack projects',
-      url: 'https://roadmap.sh/full-stack',
-    };
-  }
-
-  return {
-    label: 'roadmap.sh computer science projects',
-    url: 'https://roadmap.sh/computer-science',
-  };
+  return getRolePrepProfile(targetRole).projectReference || DEFAULT_ROLE_PREP_PROFILE.projectReference;
 }
 
 function getRoleBiasTopics(targetRole) {
-  const role = String(targetRole || '').toLowerCase();
-  if (/backend/.test(role)) {
-    return ['DBMS', 'Operating Systems', 'System Design', 'Object-Oriented Programming'];
-  }
-  if (/frontend/.test(role)) {
-    return ['Strings', 'Arrays', 'Object-Oriented Programming'];
-  }
-  if (/full.?stack/.test(role)) {
-    return ['DBMS', 'System Design', 'Object-Oriented Programming'];
+  return getRolePrepProfile(targetRole).biasTopics || [];
+}
+
+function buildCoachLine(knownTopics, prioritizedTopics, targetRole) {
+  const roleProfile = getRolePrepProfile(targetRole);
+  const foundation = knownTopics[0] || 'the basics';
+  const primaryFocus = prioritizedTopics[0] || roleProfile.biasTopics[0] || 'core placement topics';
+  const secondaryFocus = prioritizedTopics[1] || roleProfile.biasTopics[1] || '';
+
+  if (secondaryFocus) {
+    return `You already know ${foundation}. Now turn ${primaryFocus} and ${secondaryFocus} into ${roleProfile.outcomeLabel}.`;
   }
 
-  return [];
+  return `You already know ${foundation}. Now build disciplined pressure on ${primaryFocus} for ${roleProfile.outcomeLabel}.`;
 }
 
 function prioritizeTopics(knownTopics, targetTopics, targetRole) {
@@ -545,13 +826,28 @@ function buildRoadmap(prioritizedTopics, timePerDay, targetRole) {
   }));
 }
 
-function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole) {
-  const dsaTopics = prioritizedTopics.filter((topic) => !/dbms|operating systems|system design|object-oriented/i.test(topic));
-  const revisionTopics = prioritizedTopics.filter((topic) => /dbms|operating systems|system design|object-oriented/i.test(topic));
-  const projectFocus = getRoleBiasTopics(targetRole)[0] || targetRole || 'Placement project';
+function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole, targetTopics = []) {
+  const roleProfile = getRolePrepProfile(targetRole);
+  const practiceTopics = cleanTopics([
+    ...prioritizedTopics.filter((topic) => !isRevisionTopic(topic)),
+    ...targetTopics.filter((topic) => !isRevisionTopic(topic)),
+    ...roleProfile.practiceTopics,
+  ], 8);
+  const revisionTopics = cleanTopics([
+    ...targetTopics.filter((topic) => isRevisionTopic(topic)),
+    ...prioritizedTopics.filter((topic) => isRevisionTopic(topic)),
+    ...roleProfile.revisionTopics,
+  ], 8);
+  const projectFocus = cleanTopics([...targetTopics, ...roleProfile.biasTopics], 2).join(' + ')
+    || roleProfile.projectFocus
+    || targetRole
+    || 'Placement project';
   const projectReference = buildProjectReference(targetRole);
   const days = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'];
   const totalMinutes = clamp(timePerDay || 120, 60, 480);
+  const practiceType = /data analyst|data engineer|data scientist/i.test(String(targetRole || ''))
+    ? 'Practice'
+    : 'DSA';
   const chunks = [
     Math.round(totalMinutes * 0.25),
     Math.round(totalMinutes * 0.28),
@@ -560,13 +856,16 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole)
   ];
 
   return days.map((day, index) => {
-    const primaryTopic = dsaTopics[index % Math.max(dsaTopics.length, 1)] || 'Arrays';
-    const secondaryTopic = dsaTopics[(index + 1) % Math.max(dsaTopics.length, 1)] || 'Binary Trees';
+    const primaryTopic = practiceTopics[index % Math.max(practiceTopics.length, 1)] || roleProfile.practiceTopics[0] || 'Arrays';
+    const secondaryTopic = practiceTopics[(index + 1) % Math.max(practiceTopics.length, 1)] || roleProfile.practiceTopics[1] || 'Binary Trees';
     const revisionTopic = revisionTopics[index % Math.max(revisionTopics.length, 1)]
       || prioritizedTopics[index % Math.max(prioritizedTopics.length, 1)]
+      || roleProfile.revisionTopics[0]
       || 'Operating Systems';
-    const primaryProblem = buildProblemSet(primaryTopic)[0];
-    const secondaryProblem = buildProblemSet(secondaryTopic)[1] || buildProblemSet(secondaryTopic)[0];
+    const primaryProblemSet = buildProblemSet(primaryTopic, targetRole);
+    const secondaryProblemSet = buildProblemSet(secondaryTopic, targetRole);
+    const primaryProblem = primaryProblemSet[0];
+    const secondaryProblem = secondaryProblemSet[1] || secondaryProblemSet[0];
 
     return {
       day,
@@ -574,16 +873,16 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole)
       totalEstimatedMinutes: chunks.reduce((sum, minutes) => sum + minutes, 0),
       items: [
         {
-          title: `${primaryTopic} platform warm-up`,
-          type: 'DSA',
+          title: practiceType === 'Practice' ? `${primaryTopic} focused drill` : `${primaryTopic} platform warm-up`,
+          type: practiceType,
           estimatedMinutes: chunks[0],
           difficulty: primaryProblem.difficulty,
           referenceLabel: primaryProblem.label,
           referenceUrl: primaryProblem.url,
         },
         {
-          title: `${secondaryTopic} medium checkpoint`,
-          type: 'DSA',
+          title: practiceType === 'Practice' ? `${secondaryTopic} applied checkpoint` : `${secondaryTopic} medium checkpoint`,
+          type: practiceType,
           estimatedMinutes: chunks[1],
           difficulty: secondaryProblem.difficulty,
           referenceLabel: secondaryProblem.label,
@@ -595,7 +894,7 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole)
           estimatedMinutes: chunks[2],
           difficulty: 'Medium',
           referenceLabel: revisionTopic,
-          referenceUrl: buildArticleUrl(revisionTopic),
+          referenceUrl: buildArticleUrl(revisionTopic, targetRole),
         },
         {
           title: `Project task: apply ${projectFocus}`,
@@ -615,25 +914,72 @@ function buildResources(prioritizedTopics, targetRole) {
 
   return topics.map((topic) => ({
     topic,
-    items: buildCuratedResourceItems(topic),
+    items: buildCuratedResourceItems(topic, targetRole),
   }));
 }
 
-function buildFlashcards(prioritizedTopics, knownTopics) {
-  const topics = cleanTopics([...prioritizedTopics, ...knownTopics], 8);
-  return topics.slice(0, 8).map((topic) => ({
-    topic,
-    question: FLASHCARD_BANK[topic]?.question || `What is the interview-safe mental model for ${topic}?`,
-    answer: FLASHCARD_BANK[topic]?.answer || `Define ${topic} clearly, name the core pattern, and connect it to one practical interview use-case.`,
-  }));
+function matchesRelevantTopic(value, relevantTopics = []) {
+  const normalizedValue = String(value || '').toLowerCase();
+  if (!normalizedValue) {
+    return false;
+  }
+
+  return relevantTopics.some((topic) => {
+    const normalizedTopic = String(topic || '').toLowerCase();
+    return normalizedValue.includes(normalizedTopic) || normalizedTopic.includes(normalizedValue);
+  });
+}
+
+function buildFlashcards(prioritizedTopics, knownTopics, taskDays = [], targetRole = '') {
+  const roleProfile = getRolePrepProfile(targetRole);
+  const taskTopics = Array.isArray(taskDays)
+    ? taskDays.flatMap((day) => splitThemeTopics(day?.theme))
+    : [];
+  const focusTopics = cleanTopics([
+    ...prioritizedTopics,
+    ...taskTopics,
+    ...roleProfile.biasTopics,
+    ...knownTopics,
+  ], 8);
+
+  return focusTopics.slice(0, 8).map((topic, index) => {
+    const relatedDay = taskDays.find((day) => matchesRelevantTopic(day?.theme, [topic]));
+    const relatedTask = relatedDay?.items?.find((item) => (
+      matchesRelevantTopic(`${item?.title || ''} ${item?.referenceLabel || ''}`, [topic])
+    )) || relatedDay?.items?.[0] || null;
+    const roleSuffix = targetRole ? ` for a ${targetRole} interview` : '';
+    const taskAnchor = relatedTask?.referenceLabel || relatedTask?.title || relatedDay?.theme || null;
+
+    if (FLASHCARD_BANK[topic] && index % 2 === 0) {
+      return {
+        topic,
+        question: FLASHCARD_BANK[topic].question,
+        answer: `${FLASHCARD_BANK[topic].answer}${taskAnchor ? ` Anchor it with ${taskAnchor}.` : ''}`,
+      };
+    }
+
+    if (relatedTask) {
+      return {
+        topic,
+        question: `How would you explain ${topic}${roleSuffix} while working through ${relatedTask.title}?`,
+        answer: `State the core idea in one sentence, call out the tradeoff that matters most, then connect it directly to ${taskAnchor || relatedTask.title}.`,
+      };
+    }
+
+    return {
+      topic,
+      question: `What is the interview-safe mental model for ${topic}${roleSuffix}?`,
+      answer: `Define ${topic} clearly, name the core pattern, and connect it to one practical use-case that matters for ${targetRole || 'your next role'}.`,
+    };
+  });
 }
 
 function buildFallbackPlan({ knownTopics, targetTopics, timePerDay, targetRole, planId = null, version = 1 }) {
   const prioritizedTopics = prioritizeTopics(knownTopics, targetTopics, targetRole);
   const roadmap = buildRoadmap(prioritizedTopics, timePerDay, targetRole);
-  const tasks = buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole);
+  const tasks = buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole, targetTopics);
   const resources = buildResources(prioritizedTopics, targetRole);
-  const flashcards = buildFlashcards(prioritizedTopics, knownTopics);
+  const flashcards = buildFlashcards(prioritizedTopics, knownTopics, tasks, targetRole);
   const titles = resolvePlanTitles({
     targetRole,
     targetTopics,
@@ -650,7 +996,7 @@ function buildFallbackPlan({ knownTopics, targetTopics, timePerDay, targetRole, 
     title: titles.title,
     autoTitle: titles.autoTitle,
     titleSource: titles.titleSource,
-    coachLine: `You already know ${knownTopics[0] || 'the basics'}. Now build disciplined pressure on ${prioritizedTopics[0] || 'core placement topics'}.`,
+    coachLine: buildCoachLine(knownTopics, prioritizedTopics, targetRole),
     roadmap,
     tasks,
     resources,
@@ -661,53 +1007,84 @@ function buildFallbackPlan({ knownTopics, targetTopics, timePerDay, targetRole, 
 }
 
 function normalizePlanResult(rawPlan, fallbackPlan) {
+  const relevantTopics = cleanTopics([
+    ...fallbackPlan.targetTopics,
+    ...getRoleBiasTopics(fallbackPlan.targetRole),
+    ...fallbackPlan.knownTopics,
+  ], 12);
+
   const roadmap = Array.isArray(rawPlan.roadmap) && rawPlan.roadmap.length
     ? rawPlan.roadmap.slice(0, 4).map((week, index) => ({
       week: Number(week.week || index + 1),
       title: String(week.title || fallbackPlan.roadmap[index]?.title || `Week ${index + 1}`).trim(),
-      focusTopics: cleanTopics(week.focusTopics || week.topics || fallbackPlan.roadmap[index]?.focusTopics || [], 3),
+      focusTopics: (() => {
+        const rawFocusTopics = cleanTopics(week.focusTopics || week.topics || [], 3);
+        const relevantFocusTopics = rawFocusTopics.filter((topic) => matchesRelevantTopic(topic, relevantTopics));
+        return relevantFocusTopics.length
+          ? cleanTopics([...relevantFocusTopics, ...(fallbackPlan.roadmap[index]?.focusTopics || [])], 3)
+          : (fallbackPlan.roadmap[index]?.focusTopics || []);
+      })(),
       estimatedHours: clamp(week.estimatedHours || fallbackPlan.roadmap[index]?.estimatedHours || 12, 4, 30),
       goals: cleanTopics(week.goals || fallbackPlan.roadmap[index]?.goals || [], 4),
     }))
     : fallbackPlan.roadmap;
 
   const tasks = Array.isArray(rawPlan.tasks) && rawPlan.tasks.length
-    ? rawPlan.tasks.slice(0, 5).map((dayPlan, index) => ({
-      day: String(dayPlan.day || `Day ${index + 1}`),
-      theme: String(dayPlan.theme || fallbackPlan.tasks[index]?.theme || 'Focused prep'),
-      totalEstimatedMinutes: clamp(
-        dayPlan.totalEstimatedMinutes
-          || dayPlan.items?.reduce((sum, item) => sum + Number(item.estimatedMinutes || 0), 0)
-          || fallbackPlan.tasks[index]?.totalEstimatedMinutes
-          || 120,
-        60,
-        480
-      ),
-      items: Array.isArray(dayPlan.items) && dayPlan.items.length
-        ? dayPlan.items.slice(0, 4).map((item, itemIndex) => ({
-          title: String(item.title || fallbackPlan.tasks[index]?.items[itemIndex]?.title || 'Focused task').trim(),
-          type: String(item.type || fallbackPlan.tasks[index]?.items[itemIndex]?.type || 'DSA').trim(),
-          estimatedMinutes: clamp(item.estimatedMinutes || fallbackPlan.tasks[index]?.items[itemIndex]?.estimatedMinutes || 30, 10, 240),
-          difficulty: String(item.difficulty || fallbackPlan.tasks[index]?.items[itemIndex]?.difficulty || 'Medium').trim(),
-          referenceLabel: String(
-            fallbackPlan.tasks[index]?.items[itemIndex]?.referenceLabel
-            || item.referenceLabel
-            || 'Reference'
-          ).trim(),
-          referenceUrl: fallbackPlan.tasks[index]?.items[itemIndex]?.referenceUrl || item.referenceUrl || null,
-        }))
-        : fallbackPlan.tasks[index]?.items || [],
-    }))
+    ? rawPlan.tasks.slice(0, 5).map((dayPlan, index) => {
+      const rawTheme = String(dayPlan.theme || '');
+      const hasRelevantTheme = matchesRelevantTopic(rawTheme, relevantTopics);
+      const hasRelevantItems = Array.isArray(dayPlan.items) && dayPlan.items.some((item) => (
+        matchesRelevantTopic(`${item?.title || ''} ${item?.referenceLabel || ''}`, relevantTopics)
+      ));
+
+      if (!hasRelevantTheme && !hasRelevantItems) {
+        return fallbackPlan.tasks[index];
+      }
+
+      return {
+        day: String(dayPlan.day || `Day ${index + 1}`),
+        theme: rawTheme || fallbackPlan.tasks[index]?.theme || 'Focused prep',
+        totalEstimatedMinutes: clamp(
+          dayPlan.totalEstimatedMinutes
+            || dayPlan.items?.reduce((sum, item) => sum + Number(item.estimatedMinutes || 0), 0)
+            || fallbackPlan.tasks[index]?.totalEstimatedMinutes
+            || 120,
+          60,
+          480
+        ),
+        items: Array.isArray(dayPlan.items) && dayPlan.items.length
+          ? dayPlan.items.slice(0, 4).map((item, itemIndex) => ({
+            title: String(item.title || fallbackPlan.tasks[index]?.items[itemIndex]?.title || 'Focused task').trim(),
+            type: String(item.type || fallbackPlan.tasks[index]?.items[itemIndex]?.type || 'DSA').trim(),
+            estimatedMinutes: clamp(item.estimatedMinutes || fallbackPlan.tasks[index]?.items[itemIndex]?.estimatedMinutes || 30, 10, 240),
+            difficulty: String(item.difficulty || fallbackPlan.tasks[index]?.items[itemIndex]?.difficulty || 'Medium').trim(),
+            referenceLabel: String(
+              fallbackPlan.tasks[index]?.items[itemIndex]?.referenceLabel
+              || item.referenceLabel
+              || 'Reference'
+            ).trim(),
+            referenceUrl: fallbackPlan.tasks[index]?.items[itemIndex]?.referenceUrl || item.referenceUrl || null,
+          }))
+          : fallbackPlan.tasks[index]?.items || [],
+      };
+    })
     : fallbackPlan.tasks;
 
   const resources = fallbackPlan.resources;
 
   const flashcards = Array.isArray(rawPlan.flashcards) && rawPlan.flashcards.length
-    ? rawPlan.flashcards.slice(0, 10).map((card, index) => ({
-      topic: String(card.topic || fallbackPlan.flashcards[index]?.topic || 'Prep').trim(),
-      question: String(card.question || fallbackPlan.flashcards[index]?.question || 'Question').trim(),
-      answer: String(card.answer || fallbackPlan.flashcards[index]?.answer || 'Answer').trim(),
-    }))
+    ? rawPlan.flashcards.slice(0, 10).map((card, index) => {
+      const topic = String(card.topic || fallbackPlan.flashcards[index]?.topic || 'Prep').trim();
+      if (!matchesRelevantTopic(topic, relevantTopics)) {
+        return fallbackPlan.flashcards[index] || fallbackPlan.flashcards[0];
+      }
+
+      return {
+        topic,
+        question: String(card.question || fallbackPlan.flashcards[index]?.question || 'Question').trim(),
+        answer: String(card.answer || fallbackPlan.flashcards[index]?.answer || 'Answer').trim(),
+      };
+    })
     : fallbackPlan.flashcards;
   const titles = resolvePlanTitles({
     targetRole: fallbackPlan.targetRole,
@@ -1006,9 +1383,13 @@ async function generatePlan(user, payload = {}) {
       '   * Direct article links such as GeeksforGeeks',
       '   * One relevant newsletter or reading stream',
       '4. Flashcards:',
-      '   * 5-10 Q&A cards',
+      '   * 5-10 Q&A cards tied to the selected role, the user target topics, and the planned tasks/problems',
+      '   * Make them useful for recall under interview pressure, not textbook definitions',
       '',
       'Rules:',
+      '* Blend the selected role with the user target topics. The role should shape the plan, but the listed target topics must stay visible in the roadmap, tasks, and resources.',
+      '* Make the daily work role-aware: data analyst plans should lean into SQL, analysis, dashboards, and insight delivery; data engineer plans should lean into pipelines, modeling, warehousing, and orchestration; software roles should lean into coding patterns, CS fundamentals, and systems.',
+      '* Keep the roadmap and daily tasks tightly relevant to the provided topics. Do not introduce random focus areas outside the chosen role and target topics.',
       '* Focus on weak areas',
       '* Keep it realistic',
       '* No fluff',
@@ -1062,6 +1443,10 @@ async function updatePlan(user, payload = {}) {
       `Target role: ${input.targetRole}`,
       '',
       'Regenerate the title, roadmap, tasks, resources, and flashcards while keeping the plan realistic and editable.',
+      'Blend the selected role with the target topics so the result feels role-specific instead of generic.',
+      'For data analyst and data engineer roles, lean into SQL, analytics, pipelines, warehousing, dashboards, and role-specific project work when relevant.',
+      'Keep the plan tightly relevant to the supplied target topics. Avoid drifting into unrelated areas.',
+      'Make flashcards specific to the planned work and useful for fast recall under interview pressure.',
       'Use direct, specific practice problems instead of broad problem-set searches whenever possible.',
       'Prefer creator-specific YouTube resources and direct articles/newsletters over generic searches.',
       'Return the same JSON structure as the original plan generation request.',

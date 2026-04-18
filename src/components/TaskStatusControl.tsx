@@ -23,6 +23,7 @@ interface TaskStatusControlProps {
   compact?: boolean;
   className?: string;
   stopPropagation?: boolean;
+  allowCompletedSelection?: boolean;
   onChange: (status: TaskStatus) => void;
 }
 
@@ -32,11 +33,15 @@ export default function TaskStatusControl({
   compact = false,
   className,
   stopPropagation = false,
+  allowCompletedSelection = true,
   onChange,
 }: TaskStatusControlProps) {
+  const coreStatusOptions = allowCompletedSelection || status === "completed"
+    ? baseStatusOptions
+    : baseStatusOptions.filter((option) => option.value !== "completed");
   const statusOptions = status === "skipped"
-    ? [...baseStatusOptions, { value: "skipped" as const, label: "Skipped" }]
-    : baseStatusOptions;
+    ? [...coreStatusOptions, { value: "skipped" as const, label: "Skipped" }]
+    : coreStatusOptions;
 
   return (
     <div className={cn("flex flex-wrap items-center gap-2", className)}>

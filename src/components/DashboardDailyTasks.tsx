@@ -4,6 +4,7 @@ import { ArrowUpRight } from "lucide-react";
 import TaskStatusControl from "@/components/TaskStatusControl";
 import type { Task, TaskStatus } from "@/lib/api";
 import { formatHoursFromMinutes } from "@/lib/time";
+import { allowsManualCompletion, getTaskVerificationHint } from "@/lib/task-verification";
 
 const categoryAccent: Record<string, string> = {
   DSA: "border-l-primary/50",
@@ -139,6 +140,11 @@ export default function DashboardDailyTasks({
                 <span>{formatDifficulty(mission.difficulty)}</span>
                 <span>{mission.referenceLabel || mission.subcategory || mission.weakArea || "Focus"}</span>
               </div>
+              {getTaskVerificationHint(mission) && (
+                <p className="mt-2 text-xs uppercase tracking-[0.14em] text-muted-foreground/80">
+                  {getTaskVerificationHint(mission)}
+                </p>
+              )}
               {mission.description && (
                 <p className={`mt-2 max-w-2xl text-sm leading-6 transition-all duration-300 ${
                   mission.status === "completed"
@@ -160,6 +166,7 @@ export default function DashboardDailyTasks({
                 status={mission.status}
                 disabled={updatingTaskId === mission.id}
                 compact
+                allowCompletedSelection={allowsManualCompletion(mission)}
                 onChange={(status) => onUpdateMissionStatus(mission, status)}
               />
             </div>

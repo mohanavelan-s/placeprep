@@ -213,6 +213,21 @@ export default function PrepArchitectPage() {
   }, [history]);
 
   const allVersionsSelected = history.length > 0 && selectedPlanIds.length === history.length;
+  const roleStrategyCopy = useMemo(() => {
+    if (/data analyst/i.test(targetRole)) {
+      return "Data Analyst plans bias toward SQL, statistics, dashboards, and stakeholder-ready analysis work while still honoring the topics you selected.";
+    }
+
+    if (/data engineer/i.test(targetRole)) {
+      return "Data Engineer plans bias toward SQL, pipelines, warehousing, orchestration, and build-oriented project work alongside your selected topics.";
+    }
+
+    if (/data scientist/i.test(targetRole)) {
+      return "Data Scientist plans bias toward Python, statistics, machine learning, and experiment-driven portfolio work while keeping your selected topics in focus.";
+    }
+
+    return "Plans bias toward the selected role while still prioritizing the topics you added above.";
+  }, [targetRole]);
 
   function toggleSelectedPlan(planId: string, checked: boolean | "indeterminate") {
     setSelectedPlanIds((current) => {
@@ -381,7 +396,7 @@ export default function PrepArchitectPage() {
                 </SelectContent>
               </Select>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                Backend-oriented plans automatically bias toward DBMS, Operating Systems, and System Design.
+                {roleStrategyCopy}
               </p>
             </div>
 

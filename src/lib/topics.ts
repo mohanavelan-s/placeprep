@@ -15,6 +15,20 @@ export const PREP_TOPICS = [
   "System Design",
   "DBMS",
   "Operating Systems",
+  "SQL",
+  "Python",
+  "Statistics",
+  "Pandas",
+  "Data Visualization",
+  "Excel",
+  "Power BI",
+  "Tableau",
+  "ETL",
+  "Data Warehousing",
+  "Data Modeling",
+  "Spark",
+  "Airflow",
+  "Machine Learning",
 ];
 
 export const TARGET_ROLES = [
@@ -23,4 +37,7 @@ export const TARGET_ROLES = [
   "Full Stack Engineer",
   "Software Engineer",
   "SDE Intern",
+  "Data Analyst",
+  "Data Engineer",
+  "Data Scientist",
 ];
