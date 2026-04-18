@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Analytics } from "@vercel/analytics/react";
 import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
@@ -156,6 +157,7 @@ function App() {
               <AppRoutes />
             </BrowserRouter>
           </RouteErrorBoundary>
+          <Analytics />
         </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>
