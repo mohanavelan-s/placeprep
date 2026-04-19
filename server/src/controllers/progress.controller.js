@@ -12,7 +12,7 @@ async function getHistory(req, res) {
 }
 
 async function clearHistory(req, res) {
-  const result = await progressService.clearHistory(req.user);
+  const result = await progressService.clearHistory(req.user, req.body || {});
   res.json({ success: true, data: result });
 }
 

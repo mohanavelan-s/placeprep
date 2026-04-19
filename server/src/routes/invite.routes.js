@@ -27,6 +27,22 @@ router.delete(
 );
 
 router.post(
+  '/bulk',
+  requireAuth,
+  requireAdmin,
+  [
+    body('role').optional().isIn(['admin', 'user']),
+    body('expiresAt').optional().isISO8601(),
+    body('expiresInDays').optional().isInt({ min: 1, max: 90 }),
+    body('label').optional().isString(),
+    body('createdFrom').optional().isString(),
+    body('quantity').optional().isInt({ min: 1, max: 100 }),
+  ],
+  validate,
+  asyncHandler(controller.createInviteBatch)
+);
+
+router.post(
   '/',
   requireAuth,
   requireAdmin,

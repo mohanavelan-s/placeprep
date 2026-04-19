@@ -196,6 +196,22 @@ async function generateInvite(adminUser, payload = {}) {
   return buildInviteView(invite);
 }
 
+async function generateInviteBatch(adminUser, payload = {}) {
+  const quantity = Math.min(Math.max(Number(payload.quantity || 1), 1), 100);
+  const invites = [];
+
+  for (let index = 0; index < quantity; index += 1) {
+    invites.push(await generateInvite(adminUser, {
+      ...payload,
+      code: quantity === 1 ? payload.code : undefined,
+      createdFrom: payload.createdFrom || 'dashboard-bulk',
+      label: payload.label ? `${payload.label}${quantity > 1 ? ` #${index + 1}` : ''}` : undefined,
+    }));
+  }
+
+  return invites;
+}
+
 async function listInvites(limit = 25) {
   const invites = await inviteRepository.listInvites(limit);
   return invites.map(buildInviteView);
@@ -298,6 +314,7 @@ module.exports = {
   previewInviteCode,
   assertInviteAvailable,
   generateInvite,
+  generateInviteBatch,
   listInvites,
   clearInviteHistory,
   markInviteUsed,

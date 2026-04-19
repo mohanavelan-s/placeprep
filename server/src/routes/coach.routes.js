@@ -56,6 +56,31 @@ router.delete(
   asyncHandler(controller.clearStudentProofHistory)
 );
 
+router.delete(
+  '/progress/history',
+  [
+    body('scope').optional().isIn(['selected', 'student', 'group']),
+    body('studentUserId').optional().isUUID(),
+    body('groupId').optional().isUUID(),
+    body('entryIds').optional().isArray({ min: 1, max: 120 }),
+    body('entryIds.*').optional().isUUID(),
+  ],
+  validate,
+  asyncHandler(controller.clearProgressHistory)
+);
+
+router.delete(
+  '/practice-capsules/history',
+  [
+    body('studentUserId').optional().isUUID(),
+    body('groupId').optional().isUUID(),
+    body('assignmentIds').isArray({ min: 1, max: 40 }),
+    body('assignmentIds.*').isString().trim().isLength({ min: 1, max: 80 }),
+  ],
+  validate,
+  asyncHandler(controller.clearPracticeCapsuleHistory)
+);
+
 router.post(
   '/practice-capsules',
   [

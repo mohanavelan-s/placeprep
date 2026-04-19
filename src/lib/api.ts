@@ -146,6 +146,7 @@ export interface PracticeCapsule {
   studentUserId: string;
   assignedById?: string | null;
   assignedByName?: string | null;
+  assignmentId?: string | null;
   dueAt?: string | null;
   scheduledFor: string;
   createdAt: string;
@@ -184,6 +185,7 @@ export interface StudentOversightRecord {
     overdue: number;
   };
   recentProofs: UploadedImage[];
+  progressHistory: ProgressHistoryItem[];
   practiceCapsules: PracticeCapsule[];
 }
 
@@ -301,6 +303,11 @@ export interface NotificationSyncResult {
 export interface HistoryClearResult {
   deleted: number;
   clearedAt: string;
+}
+
+export interface ScopedHistoryClearResult extends HistoryClearResult {
+  affectedUsers?: number;
+  scope?: "selected" | "student" | "group";
 }
 
 export type TaskStatus = "pending" | "in_progress" | "completed" | "skipped";
@@ -520,6 +527,7 @@ export interface PrepPlan {
   resources: PrepResourceGroup[];
   flashcards: Flashcard[];
   timePerDay: number;
+  durationMonths: number;
   targetRole?: string | null;
   version: number;
   isActive: boolean;
@@ -532,6 +540,98 @@ export interface PrepPlan {
   updatedAt: string;
   coachLine?: string;
   usedFallback?: boolean;
+}
+
+export type AssessmentType = "mcq" | "fill_blank" | "coding";
+
+export interface AssessmentQuestionChoice {
+  id: string;
+  label: string;
+  text: string;
+}
+
+export interface AssessmentQuestion {
+  id: string;
+  topic: string;
+  prompt: string;
+  type: AssessmentType;
+  averageTimeMinutes: number;
+  referenceLabel?: string | null;
+  referenceUrl?: string | null;
+  choices?: AssessmentQuestionChoice[];
+  placeholder?: string | null;
+  taskTitle?: string | null;
+}
+
+export interface AssessmentQuestionResult {
+  questionId: string;
+  topic: string;
+  score: number;
+  correct: boolean;
+  feedback: string;
+}
+
+export interface AssessmentRecommendation {
+  topic: string;
+  reason: string;
+  action: string;
+  resourceLabel?: string | null;
+  resourceUrl?: string | null;
+  problemLabel?: string | null;
+  problemUrl?: string | null;
+}
+
+export interface AssessmentSubmission {
+  answers?: Record<string, string>;
+  questionResults?: AssessmentQuestionResult[];
+  submittedAt?: string | null;
+}
+
+export interface AssessmentPlanSummary {
+  id: string;
+  title?: string | null;
+  targetRole?: string | null;
+  targetTopics: string[];
+  knownTopics: string[];
+  timePerDay: number;
+  durationMonths: number;
+  version: number;
+  isActive: boolean;
+}
+
+export interface AssessmentSession {
+  id: string;
+  userId: string;
+  planId?: string | null;
+  status: "draft" | "started" | "completed" | "skipped";
+  assessmentType: AssessmentType;
+  durationMinutes: number;
+  weakSpots: string[];
+  recommendations: AssessmentRecommendation[];
+  questions: AssessmentQuestion[];
+  submission: AssessmentSubmission;
+  score: number;
+  metadata: Record<string, unknown>;
+  startedAt?: string | null;
+  submittedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssessmentOverview {
+  activePlan: AssessmentPlanSummary | null;
+  currentSession: AssessmentSession | null;
+  recentSessions: AssessmentSession[];
+}
+
+export interface AssessmentGenerationResult {
+  activePlan: AssessmentPlanSummary;
+  session: AssessmentSession;
+}
+
+export interface AssessmentPlanUpdateResult {
+  session: AssessmentSession;
+  updatedPlan: PrepPlan;
 }
 
 export interface MentorMessage {
@@ -749,6 +849,18 @@ export async function createInvite(payload: {
   label?: string;
 }) {
   return request<InviteRecord>("/invites", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createInviteBatch(payload: {
+  role: "admin" | "user";
+  expiresInDays?: number;
+  label?: string;
+  quantity?: number;
+}) {
+  return request<InviteRecord[]>("/invites/bulk", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -1059,6 +1171,29 @@ export async function clearCoachStudentProofHistory(studentUserId: string) {
   });
 }
 
+export async function clearCoachProgressHistory(payload: {
+  scope?: "selected" | "student" | "group";
+  studentUserId?: string;
+  groupId?: string;
+  entryIds?: string[];
+}) {
+  return request<ScopedHistoryClearResult>("/coach/progress/history", {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function clearCoachPracticeCapsuleHistory(payload: {
+  studentUserId?: string;
+  groupId?: string;
+  assignmentIds: string[];
+}) {
+  return request<ScopedHistoryClearResult>("/coach/practice-capsules/history", {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function createPracticeCapsule(payload: {
   studentUserId?: string;
   groupId?: string;
@@ -1140,9 +1275,10 @@ export async function fetchProgressHistory(days = 14) {
   return request<ProgressHistoryItem[]>(`/progress/history?days=${days}`);
 }
 
-export async function clearProgressHistory() {
+export async function clearProgressHistory(entryIds?: string[]) {
   return request<HistoryClearResult>("/progress/history", {
     method: "DELETE",
+    body: JSON.stringify(entryIds?.length ? { entryIds } : {}),
   });
 }
 
@@ -1278,6 +1414,7 @@ export async function generatePrepPlan(payload: {
   knownTopics: string[];
   targetTopics: string[];
   timePerDay?: number;
+  durationMonths?: number;
   targetRole?: string;
 }) {
   return request<PrepPlan>("/ai/prep-architect", {
@@ -1291,6 +1428,7 @@ export async function updatePrepPlan(payload: {
   knownTopics: string[];
   targetTopics: string[];
   timePerDay?: number;
+  durationMonths?: number;
   targetRole?: string;
 }) {
   return request<PrepPlan>("/ai/prep-architect/update", {
@@ -1348,5 +1486,36 @@ export async function endPowerPocket(
 export async function clearUploadedProofHistory() {
   return request<HistoryClearResult>("/uploads/images/history", {
     method: "DELETE",
+  });
+}
+
+export async function fetchAssessmentOverview() {
+  return request<AssessmentOverview>("/assessments/overview");
+}
+
+export async function generateAssessment(payload: {
+  assessmentType: AssessmentType;
+  durationMinutes?: number;
+}) {
+  return request<AssessmentGenerationResult>("/assessments/generate", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function submitAssessment(
+  assessmentId: string,
+  payload: { answers: Record<string, string> },
+) {
+  return request<AssessmentSession>(`/assessments/${assessmentId}/submit`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function applyAssessmentPlanUpdate(assessmentId: string) {
+  return request<AssessmentPlanUpdateResult>(`/assessments/${assessmentId}/apply-plan-update`, {
+    method: "POST",
+    body: JSON.stringify({}),
   });
 }

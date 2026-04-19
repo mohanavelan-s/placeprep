@@ -294,17 +294,19 @@ async function listStudentsForAdmin() {
   }
 
   const userIds = students.map((student) => student.id);
-  const [latestStats, taskSummaries, recentProofs, recentPracticeTasks] = await Promise.all([
+  const [latestStats, taskSummaries, recentProofs, recentPracticeTasks, recentProgressHistory] = await Promise.all([
     progressRepository.listLatestByUsers(userIds),
     taskRepository.listSummaryByUsers(userIds),
     imageRepository.listRecentByUsers(userIds, 4),
     taskRepository.listRecentAdminPracticeTasksByUsers(userIds, 12),
+    progressRepository.listHistoryByUsers(userIds, 10),
   ]);
 
   const latestStatMap = new Map(latestStats.map((stat) => [stat.userId, stat]));
   const taskSummaryMap = buildTaskSummaryMap(taskSummaries);
   const proofsByUser = groupRowsBy(recentProofs, 'userId');
   const practiceTasksByUser = groupRowsBy(recentPracticeTasks, 'userId');
+  const progressHistoryByUser = groupRowsBy(recentProgressHistory, 'userId');
 
   return students.map((student) => {
     const latestStat = latestStatMap.get(student.id) || null;
@@ -342,6 +344,7 @@ async function listStudentsForAdmin() {
       },
       taskSummary: summary,
       recentProofs: proofsByUser.get(student.id) || [],
+      progressHistory: progressHistoryByUser.get(student.id) || [],
       practiceCapsules: groupPracticeCapsules(practiceTasksByUser.get(student.id) || []).slice(0, 3),
     };
   });
@@ -884,6 +887,89 @@ async function clearStudentProofHistory(studentUserId) {
   return imageService.clearProofHistoryForUserId(student.id);
 }
 
+async function resolveScopedStudentTargets(payload = {}) {
+  if (payload.groupId) {
+    const group = await hydrateGroup(payload.groupId);
+    const recipientIds = group.members
+      .filter(isAssignableStudent)
+      .map((member) => member.userId);
+
+    if (!recipientIds.length) {
+      throw new AppError('This group has no student members yet.', 400);
+    }
+
+    const recipients = await resolveStudentTargets(recipientIds);
+    return {
+      scope: 'group',
+      recipients,
+      group,
+    };
+  }
+
+  if (!payload.studentUserId) {
+    throw new AppError('Choose a student or a group first.', 400);
+  }
+
+  const recipients = await resolveStudentTargets([payload.studentUserId]);
+  return {
+    scope: 'student',
+    recipients,
+    group: null,
+  };
+}
+
+async function clearProgressHistory(adminUser, payload = {}) {
+  const normalizedScope = payload.scope === 'selected' ? 'selected' : payload.groupId ? 'group' : 'student';
+  const { recipients } = await resolveScopedStudentTargets(payload);
+  const userIds = recipients.map((student) => student.id);
+  const entryIds = Array.isArray(payload.entryIds)
+    ? Array.from(new Set(payload.entryIds.map((entryId) => String(entryId || '').trim()).filter(Boolean)))
+    : [];
+
+  if (normalizedScope === 'selected' && !entryIds.length) {
+    throw new AppError('Select at least one progress snapshot to clear.', 400);
+  }
+
+  const deleted = normalizedScope === 'selected'
+    ? await progressRepository.deleteHistoryByIds(userIds, entryIds)
+    : await progressRepository.deleteHistoryByUserIds(userIds);
+
+  await Promise.allSettled(
+    recipients.map((student) => progressService.refreshProgressStats(student.id, student.timezone))
+  );
+
+  return {
+    deleted,
+    affectedUsers: userIds.length,
+    scope: normalizedScope,
+    clearedAt: new Date().toISOString(),
+  };
+}
+
+async function clearPracticeCapsuleHistory(adminUser, payload = {}) {
+  const assignmentIds = Array.isArray(payload.assignmentIds)
+    ? Array.from(new Set(payload.assignmentIds.map((assignmentId) => String(assignmentId || '').trim()).filter(Boolean)))
+    : [];
+
+  if (!assignmentIds.length) {
+    throw new AppError('Select at least one admin assignment bundle to clear.', 400);
+  }
+
+  const { recipients } = await resolveScopedStudentTargets(payload);
+  const userIds = recipients.map((student) => student.id);
+  const deleted = await taskRepository.deleteAdminAssignmentsByAssignmentIds(userIds, assignmentIds);
+
+  await Promise.allSettled(
+    recipients.map((student) => progressService.refreshProgressStats(student.id, student.timezone))
+  );
+
+  return {
+    deleted,
+    affectedUsers: userIds.length,
+    clearedAt: new Date().toISOString(),
+  };
+}
+
 module.exports = {
   listStudentsForAdmin,
   listGroupsForAdmin,
@@ -893,5 +979,7 @@ module.exports = {
   removeGroupMember,
   createPracticeCapsule,
   clearStudentProofHistory,
+  clearProgressHistory,
+  clearPracticeCapsuleHistory,
   groupPracticeCapsules,
 };

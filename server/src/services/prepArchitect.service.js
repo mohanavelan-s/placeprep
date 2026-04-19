@@ -789,6 +789,10 @@ function buildCoachLine(knownTopics, prioritizedTopics, targetRole) {
   return `You already know ${foundation}. Now build disciplined pressure on ${primaryFocus} for ${roleProfile.outcomeLabel}.`;
 }
 
+function normalizeDurationMonths(value, fallback = 1) {
+  return clamp(value || fallback, 1, 12);
+}
+
 function prioritizeTopics(knownTopics, targetTopics, targetRole) {
   const knownSet = new Set(cleanTopics(knownTopics).map((topic) => topic.toLowerCase()));
   const roleBias = getRoleBiasTopics(targetRole);
@@ -802,28 +806,40 @@ function prioritizeTopics(knownTopics, targetTopics, targetRole) {
   return prioritized;
 }
 
-function buildRoadmap(prioritizedTopics, timePerDay, targetRole) {
-  const topics = prioritizedTopics.length ? prioritizedTopics : ['Arrays', 'Strings', 'Binary Trees', 'Graphs', 'Dynamic Programming'];
-  const groupedTopics = [];
-  for (let index = 0; index < topics.length; index += 2) {
-    groupedTopics.push(topics.slice(index, index + 2));
-  }
+function buildRoadmap(prioritizedTopics, timePerDay, targetRole, durationMonths = 1) {
+  const topics = prioritizedTopics.length
+    ? prioritizedTopics
+    : ['Arrays', 'Strings', 'Binary Trees', 'Graphs', 'Dynamic Programming'];
+  const totalWeeks = normalizeDurationMonths(durationMonths, 1) * 4;
+  const weeklyHours = Math.max(4, Math.round((timePerDay * 6) / 60));
 
-  return groupedTopics.slice(0, 4).map((topicGroup, index) => ({
-    week: index + 1,
-    title: index === 0
-      ? 'Foundation and pattern setup'
-      : index === groupedTopics.length - 1
-        ? 'Interview-pressure finishing pass'
-        : 'Focused build week',
-    focusTopics: topicGroup,
-    estimatedHours: Math.round((timePerDay * 6) / 60),
-    goals: [
-      `Lock the core patterns for ${topicGroup.join(' and ')}.`,
-      `Finish one revision loop and one timed practice block for ${topicGroup[0]}.`,
-      targetRole ? `Tie the learning back to ${targetRole} interview expectations.` : 'Tie the learning back to interview delivery.',
-    ],
-  }));
+  return Array.from({ length: totalWeeks }, (_, index) => {
+    const primaryTopic = topics[index % topics.length];
+    const secondaryTopic = topics[(index + 1) % topics.length] || primaryTopic;
+    const isFirstPhase = index < Math.max(2, Math.ceil(totalWeeks * 0.25));
+    const isFinalPhase = index >= Math.max(0, totalWeeks - 2);
+    const isProjectPhase = !isFirstPhase && !isFinalPhase && index % 3 === 2;
+
+    return {
+      week: index + 1,
+      title: isFirstPhase
+        ? 'Foundation and pattern setup'
+        : isFinalPhase
+          ? 'Interview-pressure finishing pass'
+          : isProjectPhase
+            ? 'Applied project and review week'
+            : 'Focused build week',
+      focusTopics: cleanTopics([primaryTopic, secondaryTopic], 2),
+      estimatedHours: weeklyHours,
+      goals: [
+        `Lock the core patterns for ${cleanTopics([primaryTopic, secondaryTopic], 2).join(' and ')}.`,
+        `Finish one revision loop and one timed practice block for ${primaryTopic}.`,
+        targetRole
+          ? `Tie the learning back to ${targetRole} interview expectations.`
+          : 'Tie the learning back to interview delivery.',
+      ],
+    };
+  });
 }
 
 function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole, targetTopics = []) {
@@ -974,9 +990,17 @@ function buildFlashcards(prioritizedTopics, knownTopics, taskDays = [], targetRo
   });
 }
 
-function buildFallbackPlan({ knownTopics, targetTopics, timePerDay, targetRole, planId = null, version = 1 }) {
+function buildFallbackPlan({
+  knownTopics,
+  targetTopics,
+  timePerDay,
+  durationMonths = 1,
+  targetRole,
+  planId = null,
+  version = 1,
+}) {
   const prioritizedTopics = prioritizeTopics(knownTopics, targetTopics, targetRole);
-  const roadmap = buildRoadmap(prioritizedTopics, timePerDay, targetRole);
+  const roadmap = buildRoadmap(prioritizedTopics, timePerDay, targetRole, durationMonths);
   const tasks = buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole, targetTopics);
   const resources = buildResources(prioritizedTopics, targetRole);
   const flashcards = buildFlashcards(prioritizedTopics, knownTopics, tasks, targetRole);
@@ -992,6 +1016,7 @@ function buildFallbackPlan({ knownTopics, targetTopics, timePerDay, targetRole, 
     knownTopics,
     targetTopics,
     timePerDay,
+    durationMonths,
     targetRole,
     title: titles.title,
     autoTitle: titles.autoTitle,
@@ -1006,6 +1031,29 @@ function buildFallbackPlan({ knownTopics, targetTopics, timePerDay, targetRole, 
   };
 }
 
+function hasValidReferenceUrl(value) {
+  return /^https?:\/\//i.test(String(value || '').trim());
+}
+
+function resolveTaskReferencePair(item = {}, fallbackItem = {}) {
+  const rawItemLabel = String(item.referenceLabel || item.title || '').trim();
+  const rawFallbackLabel = String(fallbackItem.referenceLabel || fallbackItem.title || '').trim();
+  const itemUrl = hasValidReferenceUrl(item.referenceUrl) ? String(item.referenceUrl).trim() : '';
+  const fallbackUrl = hasValidReferenceUrl(fallbackItem.referenceUrl) ? String(fallbackItem.referenceUrl).trim() : '';
+
+  if (itemUrl) {
+    return {
+      referenceLabel: rawItemLabel || rawFallbackLabel || 'Reference',
+      referenceUrl: itemUrl,
+    };
+  }
+
+  return {
+    referenceLabel: rawFallbackLabel || rawItemLabel || 'Reference',
+    referenceUrl: fallbackUrl || null,
+  };
+}
+
 function normalizePlanResult(rawPlan, fallbackPlan) {
   const relevantTopics = cleanTopics([
     ...fallbackPlan.targetTopics,
@@ -1014,7 +1062,7 @@ function normalizePlanResult(rawPlan, fallbackPlan) {
   ], 12);
 
   const roadmap = Array.isArray(rawPlan.roadmap) && rawPlan.roadmap.length
-    ? rawPlan.roadmap.slice(0, 4).map((week, index) => ({
+    ? rawPlan.roadmap.slice(0, fallbackPlan.roadmap.length).map((week, index) => ({
       week: Number(week.week || index + 1),
       title: String(week.title || fallbackPlan.roadmap[index]?.title || `Week ${index + 1}`).trim(),
       focusTopics: (() => {
@@ -1053,18 +1101,19 @@ function normalizePlanResult(rawPlan, fallbackPlan) {
           480
         ),
         items: Array.isArray(dayPlan.items) && dayPlan.items.length
-          ? dayPlan.items.slice(0, 4).map((item, itemIndex) => ({
-            title: String(item.title || fallbackPlan.tasks[index]?.items[itemIndex]?.title || 'Focused task').trim(),
-            type: String(item.type || fallbackPlan.tasks[index]?.items[itemIndex]?.type || 'DSA').trim(),
-            estimatedMinutes: clamp(item.estimatedMinutes || fallbackPlan.tasks[index]?.items[itemIndex]?.estimatedMinutes || 30, 10, 240),
-            difficulty: String(item.difficulty || fallbackPlan.tasks[index]?.items[itemIndex]?.difficulty || 'Medium').trim(),
-            referenceLabel: String(
-              fallbackPlan.tasks[index]?.items[itemIndex]?.referenceLabel
-              || item.referenceLabel
-              || 'Reference'
-            ).trim(),
-            referenceUrl: fallbackPlan.tasks[index]?.items[itemIndex]?.referenceUrl || item.referenceUrl || null,
-          }))
+          ? dayPlan.items.slice(0, 4).map((item, itemIndex) => {
+            const fallbackItem = fallbackPlan.tasks[index]?.items[itemIndex] || {};
+            const reference = resolveTaskReferencePair(item, fallbackItem);
+
+            return {
+              title: String(item.title || fallbackItem.title || 'Focused task').trim(),
+              type: String(item.type || fallbackItem.type || 'DSA').trim(),
+              estimatedMinutes: clamp(item.estimatedMinutes || fallbackItem.estimatedMinutes || 30, 10, 240),
+              difficulty: String(item.difficulty || fallbackItem.difficulty || 'Medium').trim(),
+              referenceLabel: reference.referenceLabel,
+              referenceUrl: reference.referenceUrl,
+            };
+          })
           : fallbackPlan.tasks[index]?.items || [],
       };
     })
@@ -1166,6 +1215,7 @@ function hydrateStoredPlan(plan) {
 
   return {
     ...plan,
+    durationMonths: normalizeDurationMonths(plan.durationMonths || plan.metadata?.durationMonths || 1, 1),
     title: titles.title,
     autoTitle: titles.autoTitle,
     titleSource: titles.titleSource,
@@ -1303,6 +1353,7 @@ async function persistPlan(user, plan, sourcePlanId = null) {
       resources: plan.resources,
       flashcards: plan.flashcards,
       timePerDay: plan.timePerDay,
+      durationMonths: plan.durationMonths,
       targetRole: plan.targetRole,
       version,
       sourcePlanId,
@@ -1312,6 +1363,7 @@ async function persistPlan(user, plan, sourcePlanId = null) {
         titleSource: titles.titleSource,
         coachLine: plan.coachLine,
         usedFallback: plan.usedFallback,
+        durationMonths: plan.durationMonths,
       },
     }, client);
   });
@@ -1329,6 +1381,7 @@ async function persistPlan(user, plan, sourcePlanId = null) {
     knownTopics: plan.knownTopics,
     targetTopics: plan.targetTopics,
     timePerDay: plan.timePerDay,
+    durationMonths: plan.durationMonths,
     targetRole: plan.targetRole,
     usedFallback: plan.usedFallback,
   };
@@ -1344,6 +1397,7 @@ function buildPlanRequestPayload(user, payload = {}, currentPlan = null) {
   const knownTopics = cleanTopics(payload.knownTopics || currentPlan?.knownTopics || user.strongTopics, 8);
   const targetTopics = cleanTopics(payload.targetTopics || currentPlan?.targetTopics || user.weakAreas, 8);
   const timePerDay = clamp(payload.timePerDay || currentPlan?.timePerDay || 120, 60, 480);
+  const durationMonths = normalizeDurationMonths(payload.durationMonths || currentPlan?.durationMonths || currentPlan?.metadata?.durationMonths || 1, 1);
   const targetRole = String(payload.targetRole || currentPlan?.targetRole || user.targetRole || 'Placement Engineer').trim();
 
   if (!knownTopics.length && !targetTopics.length) {
@@ -1354,6 +1408,7 @@ function buildPlanRequestPayload(user, payload = {}, currentPlan = null) {
     knownTopics,
     targetTopics,
     timePerDay,
+    durationMonths,
     targetRole,
   };
 }
@@ -1370,6 +1425,7 @@ async function generatePlan(user, payload = {}) {
       `User knows: ${input.knownTopics.join(', ') || 'Starting fresh'}`,
       `User wants to learn: ${input.targetTopics.join(', ') || 'Need role-guided focus'}`,
       `Time per day: ${input.timePerDay} minutes`,
+      `Plan duration: ${input.durationMonths} month${input.durationMonths === 1 ? '' : 's'}`,
       `Target role: ${input.targetRole}`,
       '',
       'Generate:',
@@ -1440,6 +1496,7 @@ async function updatePlan(user, payload = {}) {
       `User knows: ${input.knownTopics.join(', ') || 'Starting fresh'}`,
       `User wants to learn: ${input.targetTopics.join(', ') || 'Need role-guided focus'}`,
       `Time per day: ${input.timePerDay} minutes`,
+      `Plan duration: ${input.durationMonths} month${input.durationMonths === 1 ? '' : 's'}`,
       `Target role: ${input.targetRole}`,
       '',
       'Regenerate the title, roadmap, tasks, resources, and flashcards while keeping the plan realistic and editable.',

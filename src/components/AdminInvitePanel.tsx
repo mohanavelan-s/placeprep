@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { clearInviteHistory, createInvite, fetchInvites } from "@/lib/api";
+import { clearInviteHistory, createInvite, createInviteBatch, fetchInvites, type InviteRecord } from "@/lib/api";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 
 function formatInviteDate(value: string) {
@@ -54,6 +54,8 @@ export default function AdminInvitePanel() {
   const [role, setRole] = useState<"admin" | "user">("user");
   const [expiresInDays, setExpiresInDays] = useState("7");
   const [label, setLabel] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [latestBatch, setLatestBatch] = useState<InviteRecord[]>([]);
 
   const invitesQuery = useQuery({
     queryKey: ["invites"],
@@ -63,20 +65,39 @@ export default function AdminInvitePanel() {
   useQueryErrorLogger("AdminInvitePanel:invites", invitesQuery.error);
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      createInvite({
+    mutationFn: async () => {
+      const total = Math.min(100, Math.max(1, Number(quantity || 1)));
+      if (total > 1) {
+        return createInviteBatch({
+          role,
+          expiresInDays: Number(expiresInDays || 7),
+          label: label || undefined,
+          quantity: total,
+        });
+      }
+
+      const invite = await createInvite({
         role,
         expiresInDays: Number(expiresInDays || 7),
         label: label || undefined,
-      }),
-    onSuccess: async (invite) => {
+      });
+
+      return [invite];
+    },
+    onSuccess: async (invites) => {
       void queryClient.invalidateQueries({ queryKey: ["invites"] });
       setLabel("");
+      setQuantity("1");
+      setLatestBatch(invites);
       try {
-        await navigator.clipboard.writeText(invite.inviteLink);
-        toast.success("Invite created and copied.");
+        await navigator.clipboard.writeText(invites.map((invite) => invite.inviteLink).join("\n"));
+        toast.success(
+          invites.length === 1
+            ? "Invite created and copied."
+            : `${invites.length} invite links created and copied.`,
+        );
       } catch {
-        toast.success("Invite created.");
+        toast.success(invites.length === 1 ? "Invite created." : `${invites.length} invites created.`);
       }
     },
     onError: (error) => {
@@ -141,6 +162,14 @@ export default function AdminInvitePanel() {
               inputMode="numeric"
             />
 
+            <Input
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+              className="h-11 border-border/80 bg-background/70"
+              placeholder="Number of invites"
+              inputMode="numeric"
+            />
+
             <div className="md:col-span-2">
               <Input
                 value={label}
@@ -160,6 +189,39 @@ export default function AdminInvitePanel() {
             <Plus className="h-4 w-4" />
             {createMutation.isPending ? "Generating..." : "Generate invite"}
           </Button>
+
+          {!!latestBatch.length && (
+            <div className="mt-4 rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Latest batch</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {latestBatch.length === 1
+                  ? "Most recent invite is ready."
+                  : `${latestBatch.length} invite links were generated in the last batch.`}
+              </p>
+              <div className="mt-4 grid gap-3">
+                {latestBatch.slice(0, 8).map((invite) => (
+                  <div
+                    key={invite.id}
+                    className="flex flex-col gap-2 rounded-[1rem] border border-border/70 bg-card/60 px-4 py-3 md:flex-row md:items-center md:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm text-foreground">{invite.code}</p>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">{invite.inviteLink}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 gap-2 border-border/80 bg-background/70"
+                      onClick={() => void handleCopy(invite.inviteLink)}
+                    >
+                      <Copy className="h-4 w-4" />
+                      Copy
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="rounded-[1.4rem] border border-border/80 bg-card/60 p-5">

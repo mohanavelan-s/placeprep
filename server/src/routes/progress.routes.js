@@ -1,5 +1,5 @@
 const express = require('express');
-const { query } = require('express-validator');
+const { body, query } = require('express-validator');
 
 const controller = require('../controllers/progress.controller');
 const { requireAuth } = require('../middleware/auth');
@@ -19,6 +19,14 @@ router.get(
   asyncHandler(controller.getHistory)
 );
 
-router.delete('/history', asyncHandler(controller.clearHistory));
+router.delete(
+  '/history',
+  [
+    body('entryIds').optional().isArray({ min: 1, max: 60 }),
+    body('entryIds.*').optional().isUUID(),
+  ],
+  validate,
+  asyncHandler(controller.clearHistory)
+);
 
 module.exports = router;

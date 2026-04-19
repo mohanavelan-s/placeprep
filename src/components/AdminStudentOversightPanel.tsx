@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
@@ -10,6 +10,7 @@ import {
   Layers3,
   Loader2,
   Plus,
+  Search,
   ShieldCheck,
   Sigma,
   UserPlus,
@@ -23,11 +24,22 @@ import ClearHistoryButton from "@/components/ClearHistoryButton";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import SoftSyncNotice from "@/components/SoftSyncNotice";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import {
   addCoachGroupMembers,
+  clearCoachPracticeCapsuleHistory,
+  clearCoachProgressHistory,
   clearCoachStudentProofHistory,
   createCoachGroup,
   createPracticeCapsule,
@@ -93,6 +105,23 @@ function isAssignableGroupMember(member: {
 
 function getGroupCandidateLabel(candidate: CoachGroupCandidate) {
   return candidate.role === "admin" ? `${candidate.name} (Admin)` : candidate.name;
+}
+
+function matchesSearch(segments: Array<string | null | undefined>, rawQuery: string) {
+  const query = rawQuery.trim().toLowerCase();
+  if (!query) {
+    return true;
+  }
+
+  return segments.some((segment) => String(segment || "").toLowerCase().includes(query));
+}
+
+function toggleSelection(list: string[], value: string, checked: boolean | "indeterminate") {
+  if (checked) {
+    return list.includes(value) ? list : [...list, value];
+  }
+
+  return list.filter((item) => item !== value);
 }
 
 type AssignmentItemDraft = {
@@ -248,21 +277,39 @@ function OversightMetric({
   );
 }
 
-function PracticeCapsuleCard({ capsule }: { capsule: PracticeCapsule }) {
+function PracticeCapsuleCard({
+  capsule,
+  selected = false,
+  onSelectedChange,
+}: {
+  capsule: PracticeCapsule;
+  selected?: boolean;
+  onSelectedChange?: (checked: boolean | "indeterminate") => void;
+}) {
   const completedCount = capsule.items.filter((item) => item.status === "completed").length;
 
   return (
     <article className="rounded-[1.2rem] border border-border/80 bg-background/45 p-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p className="text-base text-foreground">{capsule.title}</p>
-          <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-            {completedCount}/{capsule.items.length} cleared
-            {capsule.assignedByName ? ` / shared by ${capsule.assignedByName}` : ""}
-          </p>
-          {capsule.note && (
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{capsule.note}</p>
+        <div className="flex items-start gap-3">
+          {onSelectedChange && (
+            <Checkbox
+              checked={selected}
+              onCheckedChange={onSelectedChange}
+              className="mt-1"
+              aria-label={`Select assignment bundle ${capsule.title}`}
+            />
           )}
+          <div>
+            <p className="text-base text-foreground">{capsule.title}</p>
+            <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+              {completedCount}/{capsule.items.length} cleared
+              {capsule.assignedByName ? ` / shared by ${capsule.assignedByName}` : ""}
+            </p>
+            {capsule.note && (
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{capsule.note}</p>
+            )}
+          </div>
         </div>
 
         <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
@@ -320,6 +367,48 @@ function PracticeCapsuleCard({ capsule }: { capsule: PracticeCapsule }) {
   );
 }
 
+function ProgressHistoryCard({
+  entry,
+  selected = false,
+  onSelectedChange,
+}: {
+  entry: StudentOversightRecord["progressHistory"][number];
+  selected?: boolean;
+  onSelectedChange?: (checked: boolean | "indeterminate") => void;
+}) {
+  return (
+    <article className="rounded-[1.1rem] border border-border/80 bg-background/45 p-4">
+      <div className="flex gap-3">
+        {onSelectedChange && (
+          <Checkbox
+            checked={selected}
+            onCheckedChange={onSelectedChange}
+            className="mt-1"
+            aria-label={`Select progress snapshot ${entry.statDate}`}
+          />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                {formatShortDate(entry.statDate)}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-foreground/80">
+                Execution {Math.round(Number(entry.executionRate) || 0)}% / Readiness{" "}
+                {Math.round(Number(entry.readinessScore) || 0)}% / Consistency{" "}
+                {Math.round(Number(entry.consistencyScore) || 0)}%
+              </p>
+            </div>
+            <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">
+              {entry.tasksCompleted} tasks / {Number(entry.totalHours || 0).toFixed(1)}h
+            </p>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function RecentProofCard({
   image,
 }: {
@@ -366,6 +455,17 @@ export default function AdminStudentOversightPanel() {
   const [groupName, setGroupName] = useState("");
   const [groupDescription, setGroupDescription] = useState("");
   const [draftGroupMemberIds, setDraftGroupMemberIds] = useState<string[]>([]);
+  const [rosterSearch, setRosterSearch] = useState("");
+  const [groupCandidateSearch, setGroupCandidateSearch] = useState("");
+  const [newGroupSearch, setNewGroupSearch] = useState("");
+  const [selectedGroupCandidateIds, setSelectedGroupCandidateIds] = useState<string[]>([]);
+  const [selectedProgressEntryIds, setSelectedProgressEntryIds] = useState<string[]>([]);
+  const [selectedAssignmentIds, setSelectedAssignmentIds] = useState<string[]>([]);
+  const [clearScopeDialog, setClearScopeDialog] = useState<null | "progress" | "assignments">(null);
+
+  const deferredRosterSearch = useDeferredValue(rosterSearch);
+  const deferredGroupCandidateSearch = useDeferredValue(groupCandidateSearch);
+  const deferredNewGroupSearch = useDeferredValue(newGroupSearch);
 
   const studentsQuery = useQuery({
     queryKey: ["coach", "students"],
@@ -464,6 +564,107 @@ export default function AdminStudentOversightPanel() {
 
     return selectedGroup.members.filter((member) => isAssignableGroupMember(member)).length;
   }, [selectedGroup]);
+  const filteredStudents = useMemo(
+    () =>
+      students.filter((entry) =>
+        matchesSearch(
+          [
+            entry.student.name,
+            entry.student.username,
+            entry.student.email,
+            entry.student.targetRole,
+          ],
+          deferredRosterSearch,
+        ),
+      ),
+    [deferredRosterSearch, students],
+  );
+  const filteredAvailableStudentsForSelectedGroup = useMemo(
+    () =>
+      availableStudentsForSelectedGroup.filter((entry) =>
+        matchesSearch([entry.name, entry.username, entry.email, entry.targetRole], deferredGroupCandidateSearch),
+      ),
+    [availableStudentsForSelectedGroup, deferredGroupCandidateSearch],
+  );
+  const filteredAvailableStudentsForNewGroup = useMemo(
+    () =>
+      availableStudentsForNewGroup.filter((entry) =>
+        matchesSearch([entry.name, entry.username, entry.email, entry.targetRole], deferredNewGroupSearch),
+      ),
+    [availableStudentsForNewGroup, deferredNewGroupSearch],
+  );
+  const selectedGroupStudentRecords = useMemo(() => {
+    if (!selectedGroup) {
+      return [];
+    }
+
+    const memberIds = new Set(
+      selectedGroup.members
+        .filter((member) => member.role === "user" && member.accessTier !== "observer")
+        .map((member) => member.userId),
+    );
+    return students.filter((entry) => memberIds.has(entry.student.id));
+  }, [selectedGroup, students]);
+  const selectedGroupProgressCount = useMemo(
+    () => selectedGroupStudentRecords.reduce((total, entry) => total + entry.progressHistory.length, 0),
+    [selectedGroupStudentRecords],
+  );
+  const selectedGroupAssignmentIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          selectedGroupStudentRecords.flatMap((entry) =>
+            entry.practiceCapsules
+              .map((capsule) => capsule.assignmentId)
+              .filter((assignmentId): assignmentId is string => Boolean(assignmentId)),
+          ),
+        ),
+      ),
+    [selectedGroupStudentRecords],
+  );
+  const ungroupedCandidateCount = useMemo(
+    () => groupCandidates.filter((entry) => !groupedStudentIds.has(entry.id)).length,
+    [groupCandidates, groupedStudentIds],
+  );
+  const totalAssignmentBundles = useMemo(
+    () => students.reduce((total, entry) => total + entry.practiceCapsules.length, 0),
+    [students],
+  );
+  const visibleRosterLabel = deferredRosterSearch.trim()
+    ? `${filteredStudents.length} of ${students.length}`
+    : `${students.length}`;
+  const allSelectedStudentProgressIds = (selectedStudent?.progressHistory || []).map((entry) => entry.id);
+  const allSelectedStudentAssignmentIds = (selectedStudent?.practiceCapsules || [])
+    .map((capsule) => capsule.assignmentId)
+    .filter((assignmentId): assignmentId is string => Boolean(assignmentId));
+  const allVisibleGroupCandidateIds = filteredAvailableStudentsForSelectedGroup.map((entry) => entry.id);
+  const allVisibleNewGroupCandidateIds = filteredAvailableStudentsForNewGroup.map((entry) => entry.id);
+
+  useEffect(() => {
+    setDraftGroupMemberIds((current) =>
+      current.filter((studentId) => availableStudentsForNewGroup.some((entry) => entry.id === studentId)),
+    );
+  }, [availableStudentsForNewGroup]);
+
+  useEffect(() => {
+    setSelectedGroupCandidateIds((current) =>
+      current.filter((studentId) => availableStudentsForSelectedGroup.some((entry) => entry.id === studentId)),
+    );
+  }, [availableStudentsForSelectedGroup]);
+
+  useEffect(() => {
+    setSelectedProgressEntryIds((current) =>
+      current.filter((entryId) => selectedStudent?.progressHistory.some((entry) => entry.id === entryId)),
+    );
+  }, [selectedStudent]);
+
+  useEffect(() => {
+    setSelectedAssignmentIds((current) =>
+      current.filter((assignmentId) =>
+        selectedStudent?.practiceCapsules.some((capsule) => capsule.assignmentId === assignmentId),
+      ),
+    );
+  }, [selectedStudent]);
 
   function resetCapsuleForm() {
     const nextDefaultDeadline = buildDefaultDeadlineDraft();
@@ -480,6 +681,18 @@ export default function AdminStudentOversightPanel() {
         ? current.filter((value) => value !== studentId)
         : [...current, studentId],
     );
+  }
+
+  function toggleSelectedGroupCandidate(studentId: string, checked: boolean | "indeterminate") {
+    setSelectedGroupCandidateIds((current) => toggleSelection(current, studentId, checked));
+  }
+
+  function toggleSelectedProgressEntry(entryId: string, checked: boolean | "indeterminate") {
+    setSelectedProgressEntryIds((current) => toggleSelection(current, entryId, checked));
+  }
+
+  function toggleSelectedAssignment(assignmentId: string, checked: boolean | "indeterminate") {
+    setSelectedAssignmentIds((current) => toggleSelection(current, assignmentId, checked));
   }
 
   function updateAssignmentItem(
@@ -518,6 +731,7 @@ export default function AdminStudentOversightPanel() {
       setGroupName("");
       setGroupDescription("");
       setDraftGroupMemberIds([]);
+      setNewGroupSearch("");
       setSelectedGroupId(group.id);
       setTargetType("group");
       await Promise.all([
@@ -541,6 +755,7 @@ export default function AdminStudentOversightPanel() {
     },
     onSuccess: async (group: CoachGroup) => {
       setSelectedGroupId(group.id);
+      setSelectedGroupCandidateIds([]);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["coach", "groups"] }),
         queryClient.invalidateQueries({ queryKey: ["coach", "students"] }),
@@ -589,6 +804,53 @@ export default function AdminStudentOversightPanel() {
     },
   });
 
+  const clearProgressHistoryMutation = useMutation({
+    mutationFn: async (
+      payload:
+        | { scope: "selected"; entryIds: string[] }
+        | { scope: "student"; studentUserId: string }
+        | { scope: "group"; groupId: string },
+    ) => clearCoachProgressHistory(payload),
+    onSuccess: async (result, variables) => {
+      setSelectedProgressEntryIds([]);
+      setClearScopeDialog((current) => (current === "progress" ? null : current));
+      await queryClient.invalidateQueries({ queryKey: ["coach", "students"] });
+      toast.success(
+        result.deleted
+          ? variables.scope === "selected"
+            ? `Cleared ${result.deleted} saved snapshot${result.deleted === 1 ? "" : "s"}.`
+            : variables.scope === "group"
+              ? `Cleared ${result.deleted} saved snapshot${result.deleted === 1 ? "" : "s"} across the selected group.`
+              : `Cleared ${result.deleted} saved snapshot${result.deleted === 1 ? "" : "s"} for this student.`
+          : "There were no saved snapshots to clear for that scope.",
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to clear saved progress history.");
+    },
+  });
+
+  const clearAssignmentHistoryMutation = useMutation({
+    mutationFn: async (payload: { studentUserId?: string; groupId?: string; assignmentIds: string[] }) =>
+      clearCoachPracticeCapsuleHistory(payload),
+    onSuccess: async (result, variables) => {
+      setSelectedAssignmentIds([]);
+      setClearScopeDialog((current) => (current === "assignments" ? null : current));
+      await queryClient.invalidateQueries({ queryKey: ["coach", "students"] });
+      await queryClient.invalidateQueries({ queryKey: ["coach", "groups"] });
+      toast.success(
+        result.deleted
+          ? variables.groupId
+            ? `Cleared ${result.deleted} admin assignment${result.deleted === 1 ? "" : "s"} across the selected group.`
+            : `Cleared ${result.deleted} admin assignment${result.deleted === 1 ? "" : "s"} for this student.`
+          : "There were no matching admin assignments to clear.",
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to clear admin assignment history.");
+    },
+  });
+
   const createCapsuleMutation = useMutation({
     mutationFn: () => {
       if (targetType === "student" && !selectedStudentId) {
@@ -633,6 +895,43 @@ export default function AdminStudentOversightPanel() {
       toast.error(error instanceof Error ? error.message : "Unable to assign practice capsule.");
     },
   });
+
+  const allStudentProgressSelected =
+    allSelectedStudentProgressIds.length > 0
+    && selectedProgressEntryIds.length === allSelectedStudentProgressIds.length;
+  const allStudentAssignmentsSelected =
+    allSelectedStudentAssignmentIds.length > 0
+    && selectedAssignmentIds.length === allSelectedStudentAssignmentIds.length;
+  const allVisibleGroupCandidatesSelected =
+    allVisibleGroupCandidateIds.length > 0
+    && allVisibleGroupCandidateIds.every((candidateId) => selectedGroupCandidateIds.includes(candidateId));
+  const allVisibleDraftCandidatesSelected =
+    allVisibleNewGroupCandidateIds.length > 0
+    && allVisibleNewGroupCandidateIds.every((candidateId) => draftGroupMemberIds.includes(candidateId));
+
+  function handleSelectVisibleGroupCandidates() {
+    setSelectedGroupCandidateIds((current) =>
+      allVisibleGroupCandidatesSelected
+        ? current.filter((candidateId) => !allVisibleGroupCandidateIds.includes(candidateId))
+        : Array.from(new Set([...current, ...allVisibleGroupCandidateIds])),
+    );
+  }
+
+  function handleSelectVisibleDraftCandidates() {
+    setDraftGroupMemberIds((current) =>
+      allVisibleDraftCandidatesSelected
+        ? current.filter((candidateId) => !allVisibleNewGroupCandidateIds.includes(candidateId))
+        : Array.from(new Set([...current, ...allVisibleNewGroupCandidateIds])),
+    );
+  }
+
+  function handleSelectAllProgressSnapshots() {
+    setSelectedProgressEntryIds(allStudentProgressSelected ? [] : allSelectedStudentProgressIds);
+  }
+
+  function handleSelectAllAssignments() {
+    setSelectedAssignmentIds(allStudentAssignmentsSelected ? [] : allSelectedStudentAssignmentIds);
+  }
 
   return (
     <section className="surface-panel p-6 md:p-7">
@@ -694,6 +993,31 @@ export default function AdminStudentOversightPanel() {
         </div>
       )}
 
+      {!!students.length && (
+        <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <OversightMetric
+            label="Students"
+            value={String(students.length)}
+            helper="Accounts currently visible to admin oversight."
+          />
+          <OversightMetric
+            label="Groups"
+            value={String(groups.length)}
+            helper="Named cohorts that can receive one assignment bundle together."
+          />
+          <OversightMetric
+            label="Ungrouped"
+            value={String(ungroupedCandidateCount)}
+            helper="Eligible accounts still waiting to be clustered into a group."
+          />
+          <OversightMetric
+            label="Assignments"
+            value={String(totalAssignmentBundles)}
+            helper="Recent admin-shared bundles still visible across the roster."
+          />
+        </div>
+      )}
+
       {!!selectedStudent && (
         <div className="grid gap-5 xl:grid-cols-[0.82fr_1.18fr]">
           <div className="space-y-4">
@@ -703,8 +1027,23 @@ export default function AdminStudentOversightPanel() {
                 <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Student roster</p>
               </div>
 
+              <div className="mt-4 rounded-[1rem] border border-border/80 bg-background/45 px-4 py-3">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Search className="h-4 w-4" />
+                  <Input
+                    value={rosterSearch}
+                    onChange={(event) => setRosterSearch(event.target.value)}
+                    placeholder="Search students by name, username, email, or role"
+                    className="h-10 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
+                  />
+                </div>
+                <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  Showing {visibleRosterLabel} student{students.length === 1 ? "" : "s"}
+                </p>
+              </div>
+
               <div className="mt-4 grid gap-3">
-                {students.map((entry) => {
+                {filteredStudents.map((entry) => {
                   const isActive = entry.student.id === selectedStudentId;
 
                   return (
@@ -735,6 +1074,11 @@ export default function AdminStudentOversightPanel() {
                     </button>
                   );
                 })}
+                {!filteredStudents.length && (
+                  <div className="rounded-[1.1rem] border border-border/80 bg-background/45 px-4 py-4 text-sm text-muted-foreground">
+                    No students match this search yet.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -836,27 +1180,71 @@ export default function AdminStudentOversightPanel() {
                   </div>
 
                   <div className="mt-4 border-t border-border/70 pt-4">
-                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                      Add members to this group
-                    </p>
+                    <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                          Add members to this group
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                          Search through ungrouped candidates, select visible rows, then add them in one pass.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 gap-2 border-border/80 bg-card/60"
+                          onClick={handleSelectVisibleGroupCandidates}
+                          disabled={!allVisibleGroupCandidateIds.length}
+                        >
+                          {allVisibleGroupCandidatesSelected ? "Clear visible" : "Select visible"}
+                        </Button>
+                        <Button
+                          type="button"
+                          className="h-9 gap-2"
+                          onClick={() => addGroupMembersMutation.mutate(selectedGroupCandidateIds)}
+                          disabled={addGroupMembersMutation.isPending || !selectedGroupCandidateIds.length}
+                        >
+                          <UserPlus className="h-4 w-4" />
+                          Add selected
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-[1rem] border border-border/80 bg-card/60 px-4 py-3">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Search className="h-4 w-4" />
+                        <Input
+                          value={groupCandidateSearch}
+                          onChange={(event) => setGroupCandidateSearch(event.target.value)}
+                          placeholder="Search candidates by name, email, or target role"
+                          className="h-10 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
+                        />
+                      </div>
+                    </div>
+
                     <div className="mt-3 flex flex-wrap gap-2">
                       {availableStudentsForSelectedGroup.length ? (
-                        availableStudentsForSelectedGroup.map((entry) => (
-                          <Button
+                        filteredAvailableStudentsForSelectedGroup.map((entry) => (
+                          <label
                             key={entry.id}
-                            type="button"
-                            variant="outline"
-                            className="h-9 gap-2 border-border/80 bg-card/60"
-                            disabled={addGroupMembersMutation.isPending}
-                            onClick={() => addGroupMembersMutation.mutate([entry.id])}
+                            className="inline-flex cursor-pointer items-center gap-3 rounded-full border border-border/80 bg-card/60 px-3 py-2 text-sm text-foreground transition hover:border-primary/30"
                           >
-                            <UserPlus className="h-4 w-4" />
+                            <Checkbox
+                              checked={selectedGroupCandidateIds.includes(entry.id)}
+                              onCheckedChange={(checked) => toggleSelectedGroupCandidate(entry.id, checked)}
+                            />
                             {getGroupCandidateLabel(entry)}
-                          </Button>
+                          </label>
                         ))
                       ) : (
                         <p className="text-sm leading-6 text-muted-foreground">
                           Everyone eligible is already part of a group.
+                        </p>
+                      )}
+                      {!!availableStudentsForSelectedGroup.length && !filteredAvailableStudentsForSelectedGroup.length && (
+                        <p className="text-sm leading-6 text-muted-foreground">
+                          No candidates match this search.
                         </p>
                       )}
                     </div>
@@ -886,29 +1274,68 @@ export default function AdminStudentOversightPanel() {
                   />
 
                   <div>
-                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                      Add initial members
-                    </p>
+                    <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                          Add initial members
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                          Select multiple students at once so large cohorts do not need one-by-one setup.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-9 gap-2 border-border/80 bg-card/60"
+                        onClick={handleSelectVisibleDraftCandidates}
+                        disabled={!allVisibleNewGroupCandidateIds.length}
+                      >
+                        {allVisibleDraftCandidatesSelected ? "Clear visible" : "Select visible"}
+                      </Button>
+                    </div>
+
+                    <div className="mt-4 rounded-[1rem] border border-border/80 bg-card/60 px-4 py-3">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Search className="h-4 w-4" />
+                        <Input
+                          value={newGroupSearch}
+                          onChange={(event) => setNewGroupSearch(event.target.value)}
+                          placeholder="Search ungrouped candidates by name, email, or role"
+                          className="h-10 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
+                        />
+                      </div>
+                    </div>
+
                     <div className="mt-3 flex flex-wrap gap-2">
                       {availableStudentsForNewGroup.length ? (
-                        availableStudentsForNewGroup.map((entry) => {
+                        filteredAvailableStudentsForNewGroup.map((entry) => {
                           const isSelected = draftGroupMemberIds.includes(entry.id);
 
                           return (
-                            <Button
+                            <label
                               key={entry.id}
-                              type="button"
-                              variant={isSelected ? "default" : "outline"}
-                              className={`h-9 gap-2 ${isSelected ? "" : "border-border/80 bg-card/60"}`}
-                              onClick={() => toggleDraftStudent(entry.id)}
+                              className={`inline-flex cursor-pointer items-center gap-3 rounded-full border px-3 py-2 text-sm transition ${
+                                isSelected
+                                  ? "border-primary/35 bg-primary/10 text-foreground"
+                                  : "border-border/80 bg-card/60 text-foreground hover:border-primary/30"
+                              }`}
                             >
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleDraftStudent(entry.id)}
+                              />
                               {getGroupCandidateLabel(entry)}
-                            </Button>
+                            </label>
                           );
                         })
                       ) : (
                         <p className="text-sm leading-6 text-muted-foreground">
                           Every eligible account is already grouped. Remove someone from an existing group before adding them here.
+                        </p>
+                      )}
+                      {!!availableStudentsForNewGroup.length && !filteredAvailableStudentsForNewGroup.length && (
+                        <p className="text-sm leading-6 text-muted-foreground">
+                          No ungrouped candidates match this search.
                         </p>
                       )}
                     </div>
@@ -1223,15 +1650,134 @@ export default function AdminStudentOversightPanel() {
             </div>
 
             <div className="rounded-[1.35rem] border border-border/80 bg-card/60 p-5">
-              <div className="flex items-center gap-2 text-foreground">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-foreground">
+                    <Activity className="h-4 w-4 text-primary" />
+                    <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Saved progress snapshots</p>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    Clear only selected rows, or clear all for this student or the selected group.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 gap-2 border-border/80 bg-background/70"
+                    disabled={!allSelectedStudentProgressIds.length}
+                    onClick={handleSelectAllProgressSnapshots}
+                  >
+                    {allStudentProgressSelected ? "Clear selection" : "Select all"}
+                  </Button>
+                  <ClearHistoryButton
+                    title="Clear selected saved snapshots?"
+                    description="Only the selected snapshot rows for this student will be removed."
+                    onConfirm={() =>
+                      clearProgressHistoryMutation.mutate({
+                        scope: "selected",
+                        entryIds: selectedProgressEntryIds,
+                      })
+                    }
+                    pending={clearProgressHistoryMutation.isPending}
+                    disabled={!selectedProgressEntryIds.length}
+                    buttonLabel="Clear selected"
+                    confirmLabel="Clear selected"
+                    className="h-10 gap-2 border-border/80 bg-background/70"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 gap-2 border-border/80 bg-background/70"
+                    disabled={!selectedStudent.progressHistory.length}
+                    onClick={() => setClearScopeDialog("progress")}
+                  >
+                    Clear all
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {selectedStudent.progressHistory.length ? (
+                  selectedStudent.progressHistory.map((entry) => (
+                    <ProgressHistoryCard
+                      key={entry.id}
+                      entry={entry}
+                      selected={selectedProgressEntryIds.includes(entry.id)}
+                      onSelectedChange={(checked) => toggleSelectedProgressEntry(entry.id, checked)}
+                    />
+                  ))
+                ) : (
+                  <div className="rounded-[1.1rem] border border-border/80 bg-background/45 px-4 py-4 text-sm text-muted-foreground">
+                    No saved snapshots yet for this student.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[1.35rem] border border-border/80 bg-card/60 p-5">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-foreground">
                     <Sigma className="h-4 w-4 text-primary" />
-                <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Recent admin assignments</p>
+                    <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Recent admin assignments</p>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    Select the bundles you want gone. Clear all can target only this student or everyone in the selected group.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 gap-2 border-border/80 bg-background/70"
+                    disabled={!allSelectedStudentAssignmentIds.length}
+                    onClick={handleSelectAllAssignments}
+                  >
+                    {allStudentAssignmentsSelected ? "Clear selection" : "Select all"}
+                  </Button>
+                  <ClearHistoryButton
+                    title="Clear selected admin assignments?"
+                    description="Only the selected assignment bundles for this student will be removed from the recent admin assignment history."
+                    onConfirm={() =>
+                      clearAssignmentHistoryMutation.mutate({
+                        studentUserId: selectedStudent.student.id,
+                        assignmentIds: selectedAssignmentIds,
+                      })
+                    }
+                    pending={clearAssignmentHistoryMutation.isPending}
+                    disabled={!selectedAssignmentIds.length}
+                    buttonLabel="Clear selected"
+                    confirmLabel="Clear selected"
+                    className="h-10 gap-2 border-border/80 bg-background/70"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 gap-2 border-border/80 bg-background/70"
+                    disabled={!selectedStudent.practiceCapsules.length}
+                    onClick={() => setClearScopeDialog("assignments")}
+                  >
+                    Clear all
+                  </Button>
+                </div>
               </div>
 
               <div className="mt-4 grid gap-3">
                 {selectedStudent.practiceCapsules.length ? (
                   selectedStudent.practiceCapsules.map((capsule) => (
-                    <PracticeCapsuleCard key={capsule.bundleId} capsule={capsule} />
+                    <PracticeCapsuleCard
+                      key={capsule.bundleId}
+                      capsule={capsule}
+                      selected={capsule.assignmentId ? selectedAssignmentIds.includes(capsule.assignmentId) : false}
+                      onSelectedChange={
+                        capsule.assignmentId
+                          ? (checked) => toggleSelectedAssignment(capsule.assignmentId as string, checked)
+                          : undefined
+                      }
+                    />
                   ))
                 ) : (
                   <div className="rounded-[1.1rem] border border-border/80 bg-background/45 px-4 py-4 text-sm text-muted-foreground">
@@ -1243,6 +1789,144 @@ export default function AdminStudentOversightPanel() {
           </div>
         </div>
       )}
+
+      <Dialog open={clearScopeDialog === "progress"} onOpenChange={(open) => setClearScopeDialog(open ? "progress" : null)}>
+        <DialogContent className="border-border/80 bg-card text-foreground">
+          <DialogHeader>
+            <DialogTitle>Clear all saved progress snapshots</DialogTitle>
+            <DialogDescription>
+              Choose whether the clear-all action should affect only the selected student or every student inside the selected group.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3">
+            <button
+              type="button"
+              className="rounded-[1rem] border border-border/80 bg-background/55 px-4 py-4 text-left transition hover:border-primary/30"
+              onClick={() => {
+                if (!selectedStudent) {
+                  return;
+                }
+
+                clearProgressHistoryMutation.mutate({
+                  scope: "student",
+                  studentUserId: selectedStudent.student.id,
+                });
+              }}
+              disabled={clearProgressHistoryMutation.isPending || !selectedStudent}
+            >
+              <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">This student</p>
+              <p className="mt-2 text-base text-foreground">{selectedStudent?.student.name || "Selected student"}</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Clear every saved progress snapshot for the selected student only.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              className="rounded-[1rem] border border-border/80 bg-background/55 px-4 py-4 text-left transition hover:border-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => {
+                if (!selectedGroup) {
+                  return;
+                }
+
+                clearProgressHistoryMutation.mutate({
+                  scope: "group",
+                  groupId: selectedGroup.id,
+                });
+              }}
+              disabled={clearProgressHistoryMutation.isPending || !selectedGroup || selectedGroupProgressCount < 1}
+            >
+              <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">Selected group</p>
+              <p className="mt-2 text-base text-foreground">{selectedGroup?.name || "No group selected"}</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {selectedGroup
+                  ? `Clear ${selectedGroupProgressCount} saved snapshot${selectedGroupProgressCount === 1 ? "" : "s"} across this group's students.`
+                  : "Choose a group first if you want to clear history for more than one student."}
+              </p>
+            </button>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" className="border-border/80 bg-background/70" onClick={() => setClearScopeDialog(null)}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={clearScopeDialog === "assignments"} onOpenChange={(open) => setClearScopeDialog(open ? "assignments" : null)}>
+        <DialogContent className="border-border/80 bg-card text-foreground">
+          <DialogHeader>
+            <DialogTitle>Clear all recent admin assignments</DialogTitle>
+            <DialogDescription>
+              Choose whether the clear-all action should affect this student only or the whole selected group.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3">
+            <button
+              type="button"
+              className="rounded-[1rem] border border-border/80 bg-background/55 px-4 py-4 text-left transition hover:border-primary/30"
+              onClick={() => {
+                if (!selectedStudent || !allSelectedStudentAssignmentIds.length) {
+                  return;
+                }
+
+                clearAssignmentHistoryMutation.mutate({
+                  studentUserId: selectedStudent.student.id,
+                  assignmentIds: allSelectedStudentAssignmentIds,
+                });
+              }}
+              disabled={
+                clearAssignmentHistoryMutation.isPending
+                || !selectedStudent
+                || !allSelectedStudentAssignmentIds.length
+              }
+            >
+              <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">This student</p>
+              <p className="mt-2 text-base text-foreground">{selectedStudent?.student.name || "Selected student"}</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Remove every recent admin assignment bundle currently shown for this student.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              className="rounded-[1rem] border border-border/80 bg-background/55 px-4 py-4 text-left transition hover:border-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => {
+                if (!selectedGroup || !selectedGroupAssignmentIds.length) {
+                  return;
+                }
+
+                clearAssignmentHistoryMutation.mutate({
+                  groupId: selectedGroup.id,
+                  assignmentIds: selectedGroupAssignmentIds,
+                });
+              }}
+              disabled={
+                clearAssignmentHistoryMutation.isPending
+                || !selectedGroup
+                || !selectedGroupAssignmentIds.length
+              }
+            >
+              <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">Selected group</p>
+              <p className="mt-2 text-base text-foreground">{selectedGroup?.name || "No group selected"}</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {selectedGroup
+                  ? `Remove ${selectedGroupAssignmentIds.length} tracked assignment bundle${selectedGroupAssignmentIds.length === 1 ? "" : "s"} across this group's students.`
+                  : "Choose a group first if you want to clear assignments for multiple students."}
+              </p>
+            </button>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" className="border-border/80 bg-background/70" onClick={() => setClearScopeDialog(null)}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

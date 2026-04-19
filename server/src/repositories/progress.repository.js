@@ -96,6 +96,30 @@ async function listLatestByUsers(userIds = []) {
   return result.rows;
 }
 
+async function listHistoryByUsers(userIds = [], limitPerUser = 14) {
+  if (!userIds.length) {
+    return [];
+  }
+
+  const result = await query(
+    `SELECT * FROM (
+       SELECT
+         ${statColumns},
+         ROW_NUMBER() OVER (
+           PARTITION BY user_id
+           ORDER BY stat_date DESC, created_at DESC
+         ) AS row_number
+       FROM progress_stats
+       WHERE user_id = ANY($1::uuid[])
+     ) AS ranked_stats
+     WHERE row_number <= $2
+     ORDER BY "createdAt" DESC`,
+    [userIds, limitPerUser]
+  );
+
+  return result.rows;
+}
+
 async function deleteHistory(userId) {
   const result = await query(
     `DELETE FROM progress_stats
@@ -107,9 +131,45 @@ async function deleteHistory(userId) {
   return result.rowCount;
 }
 
+async function deleteHistoryByUserIds(userIds = [], client = null) {
+  if (!userIds.length) {
+    return 0;
+  }
+
+  const execute = client?.query ? client.query.bind(client) : query;
+  const result = await execute(
+    `DELETE FROM progress_stats
+     WHERE user_id = ANY($1::uuid[])
+     RETURNING id`,
+    [userIds]
+  );
+
+  return result.rowCount || 0;
+}
+
+async function deleteHistoryByIds(userIds = [], entryIds = [], client = null) {
+  if (!userIds.length || !entryIds.length) {
+    return 0;
+  }
+
+  const execute = client?.query ? client.query.bind(client) : query;
+  const result = await execute(
+    `DELETE FROM progress_stats
+     WHERE user_id = ANY($1::uuid[])
+       AND id = ANY($2::uuid[])
+     RETURNING id`,
+    [userIds, entryIds]
+  );
+
+  return result.rowCount || 0;
+}
+
 module.exports = {
   upsertProgressStat,
   listHistory,
   listLatestByUsers,
+  listHistoryByUsers,
   deleteHistory,
+  deleteHistoryByUserIds,
+  deleteHistoryByIds,
 };

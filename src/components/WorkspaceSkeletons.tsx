@@ -122,6 +122,36 @@ export function ProgressSkeleton() {
   );
 }
 
+export function AssessmentsSkeleton() {
+  return (
+    <div className="grid gap-6">
+      <PanelShell>
+        <Skeleton className="h-4 w-28" />
+        <Skeleton className="mt-4 h-12 w-[34rem] max-w-full" />
+        <Skeleton className="mt-4 h-4 w-[28rem] max-w-full" />
+      </PanelShell>
+      <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+        <PanelShell>
+          <Skeleton className="h-4 w-24" />
+          <div className="mt-6 grid gap-3">
+            {Array.from({ length: 3 }, (_, index) => (
+              <Skeleton key={index} className="h-24 w-full rounded-2xl" />
+            ))}
+          </div>
+        </PanelShell>
+        <PanelShell>
+          <Skeleton className="h-4 w-28" />
+          <div className="mt-6 space-y-4">
+            {Array.from({ length: 4 }, (_, index) => (
+              <Skeleton key={index} className="h-36 w-full rounded-2xl" />
+            ))}
+          </div>
+        </PanelShell>
+      </div>
+    </div>
+  );
+}
+
 export function TasksSkeleton() {
   return (
     <div className="grid gap-6">

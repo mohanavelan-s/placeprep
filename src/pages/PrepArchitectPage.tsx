@@ -70,6 +70,7 @@ export default function PrepArchitectPage() {
   const [knownTopics, setKnownTopics] = useState<string[]>([]);
   const [targetTopics, setTargetTopics] = useState<string[]>([]);
   const [timePerDayHours, setTimePerDayHours] = useState("2");
+  const [durationMonths, setDurationMonths] = useState("1");
   const [targetRole, setTargetRole] = useState(user?.targetRole || "Backend Engineer");
   const [isEditing, setIsEditing] = useState(false);
   const [manageVersionsOpen, setManageVersionsOpen] = useState(false);
@@ -84,12 +85,14 @@ export default function PrepArchitectPage() {
       setTargetTopics(user?.weakAreas || []);
       setTargetRole(user?.targetRole || "Backend Engineer");
       setTimePerDayHours("2");
+      setDurationMonths("1");
       return;
     }
 
     setKnownTopics(latestPlanQuery.data.knownTopics || []);
     setTargetTopics(latestPlanQuery.data.targetTopics || []);
     setTimePerDayHours(hoursStringFromMinutes(latestPlanQuery.data.timePerDay || 120));
+    setDurationMonths(String(latestPlanQuery.data.durationMonths || 1));
     setTargetRole(latestPlanQuery.data.targetRole || user?.targetRole || "Backend Engineer");
   }, [latestPlanQuery.data, user?.strongTopics, user?.targetRole, user?.weakAreas]);
 
@@ -99,6 +102,7 @@ export default function PrepArchitectPage() {
         knownTopics,
         targetTopics,
         timePerDay: parseHoursToMinutes(timePerDayHours, 120),
+        durationMonths: Math.min(12, Math.max(1, Number(durationMonths || 1))),
         targetRole,
       }),
     onSuccess: (result) => {
@@ -121,6 +125,7 @@ export default function PrepArchitectPage() {
         knownTopics,
         targetTopics,
         timePerDay: parseHoursToMinutes(timePerDayHours, 120),
+        durationMonths: Math.min(12, Math.max(1, Number(durationMonths || 1))),
         targetRole,
       }),
     onSuccess: (result) => {
@@ -263,7 +268,7 @@ export default function PrepArchitectPage() {
               Build a learning engine around what you know and what you still need.
             </h2>
             <p className="mt-3 max-w-3xl text-base leading-7 text-foreground/80">
-              Select your current strengths, your target topics, your daily time budget, and the role you are pushing toward. PlacePrep will turn it into a roadmap, a task system, resources, and flashcards you can keep editing.
+              Select your current strengths, your target topics, your daily time budget, the number of months you want the plan to span, and the role you are pushing toward. PlacePrep will turn it into a roadmap, a task system, resources, and flashcards you can keep editing.
             </p>
           </div>
 
@@ -276,7 +281,7 @@ export default function PrepArchitectPage() {
                     {latestPlan.title || `Version ${latestPlan.version}`}
                   </p>
                   <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                    v{latestPlan.version}
+                    v{latestPlan.version} / {latestPlan.durationMonths} month{latestPlan.durationMonths === 1 ? "" : "s"}
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">{latestPlan.targetTopics[0] || "Custom focus"}</p>
                 </div>
@@ -382,6 +387,24 @@ export default function PrepArchitectPage() {
             </div>
 
             <div className="rounded-2xl border border-border/80 bg-card/70 p-5">
+              <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Plan duration</p>
+              <Input
+                type="number"
+                min={1}
+                max={12}
+                step={1}
+                inputMode="numeric"
+                value={durationMonths}
+                onChange={(event) => setDurationMonths(event.target.value)}
+                placeholder="3 months"
+                className="mt-3 h-11 border-border/80 bg-background/70"
+              />
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                Choose how many months the roadmap should cover. PlacePrep will stretch the weekly plan across this full window.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-border/80 bg-card/70 p-5">
               <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Target role</p>
               <Select value={targetRole} onValueChange={setTargetRole}>
                 <SelectTrigger className="mt-3 h-11 border-border/80 bg-background/70">
@@ -429,7 +452,7 @@ export default function PrepArchitectPage() {
                     <div className="min-w-0">
                       <p className="text-sm text-foreground">{plan.title || `Version ${plan.version}`}</p>
                       <p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                        v{plan.version} /{" "}
+                        v{plan.version} / {plan.durationMonths} month{plan.durationMonths === 1 ? "" : "s"} /{" "}
                         {new Date(plan.createdAt).toLocaleDateString("en-IN", {
                           day: "2-digit",
                           month: "short",
@@ -601,7 +624,7 @@ export default function PrepArchitectPage() {
                       )}
                     </div>
                     <p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                      v{plan.version} /{" "}
+                      v{plan.version} / {plan.durationMonths} month{plan.durationMonths === 1 ? "" : "s"} /{" "}
                       {new Date(plan.createdAt).toLocaleString("en-IN", {
                         day: "2-digit",
                         month: "short",

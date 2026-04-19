@@ -22,7 +22,7 @@ export default function PrepPlanView({ plan }: PrepPlanViewProps) {
           {plan.title || `Version ${plan.version}`}
         </p>
         <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-          v{plan.version} / {plan.targetRole || "Custom placement track"}
+          v{plan.version} / {plan.durationMonths} month{plan.durationMonths === 1 ? "" : "s"} / {plan.targetRole || "Custom placement track"}
         </p>
         <p className="mt-6 section-label">Mentor line</p>
         <p className="mt-3 font-heading text-3xl text-foreground md:text-4xl">

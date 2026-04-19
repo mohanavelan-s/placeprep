@@ -11,6 +11,7 @@ const prepPlanColumns = `
   resources,
   flashcards,
   time_per_day AS "timePerDay",
+  duration_months AS "durationMonths",
   target_role AS "targetRole",
   version,
   is_active AS "isActive",
@@ -37,13 +38,14 @@ async function createPlan(payload, db) {
       resources,
       flashcards,
       time_per_day,
+      duration_months,
       target_role,
       version,
       is_active,
       source_plan_id,
       metadata
     ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
     )
     RETURNING ${prepPlanColumns}`,
     [
@@ -56,6 +58,7 @@ async function createPlan(payload, db) {
       JSON.stringify(payload.resources || []),
       JSON.stringify(payload.flashcards || []),
       payload.timePerDay ?? 120,
+      payload.durationMonths ?? 1,
       payload.targetRole || null,
       payload.version ?? 1,
       payload.isActive !== false,

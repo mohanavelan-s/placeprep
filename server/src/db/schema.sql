@@ -348,6 +348,7 @@ CREATE TABLE IF NOT EXISTS prep_plans (
   resources JSONB NOT NULL DEFAULT '[]'::JSONB,
   flashcards JSONB NOT NULL DEFAULT '[]'::JSONB,
   time_per_day INTEGER DEFAULT 120,
+  duration_months INTEGER NOT NULL DEFAULT 1,
   target_role VARCHAR(120),
   version INTEGER NOT NULL DEFAULT 1,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -534,6 +535,7 @@ ALTER TABLE prep_plans ADD COLUMN IF NOT EXISTS tasks JSONB NOT NULL DEFAULT '[]
 ALTER TABLE prep_plans ADD COLUMN IF NOT EXISTS resources JSONB NOT NULL DEFAULT '[]'::JSONB;
 ALTER TABLE prep_plans ADD COLUMN IF NOT EXISTS flashcards JSONB NOT NULL DEFAULT '[]'::JSONB;
 ALTER TABLE prep_plans ADD COLUMN IF NOT EXISTS time_per_day INTEGER DEFAULT 120;
+ALTER TABLE prep_plans ADD COLUMN IF NOT EXISTS duration_months INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE prep_plans ADD COLUMN IF NOT EXISTS target_role VARCHAR(120);
 ALTER TABLE prep_plans ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE prep_plans ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
@@ -576,7 +578,9 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_invites_code ON invites(code);
 CREATE INDEX IF NOT EXISTS idx_invites_created_at ON invites(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_invites_unused_expires_at ON invites(used, expires_at);
+CREATE INDEX IF NOT EXISTS idx_invites_used_by ON invites(used_by, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_prep_plans_user_active ON prep_plans(user_id, is_active, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_prep_plans_user_created_at ON prep_plans(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mentor_messages_user_created_at ON mentor_messages(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_sent_at ON notifications(user_id, sent_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, read, sent_at DESC);
@@ -589,6 +593,58 @@ CREATE INDEX IF NOT EXISTS idx_coach_groups_created_at ON coach_groups(created_a
 CREATE INDEX IF NOT EXISTS idx_coach_group_members_user_id ON coach_group_members(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_coach_groups_name_unique ON coach_groups (LOWER(name));
 CREATE UNIQUE INDEX IF NOT EXISTS idx_coach_group_members_user_unique ON coach_group_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_progress_stats_user_created_at ON progress_stats(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_progress_stats_user_id_created_at ON progress_stats(id, user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_admin_assignment_id ON tasks((metadata->>'assignmentId'), user_id, created_at DESC)
+WHERE metadata->>'shareKind' IN ('admin-practice-link', 'admin-assignment');
+
+CREATE TABLE IF NOT EXISTS assessment_sessions (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plan_id UUID REFERENCES prep_plans(id) ON DELETE SET NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  assessment_type VARCHAR(30) NOT NULL DEFAULT 'mcq',
+  duration_minutes INTEGER NOT NULL DEFAULT 20,
+  weak_spots TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  recommendations JSONB NOT NULL DEFAULT '[]'::JSONB,
+  questions JSONB NOT NULL DEFAULT '[]'::JSONB,
+  submission JSONB NOT NULL DEFAULT '{}'::JSONB,
+  score NUMERIC(5, 2) NOT NULL DEFAULT 0,
+  metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+  started_at TIMESTAMPTZ,
+  submitted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT assessment_sessions_status_check CHECK (status IN ('draft', 'started', 'completed', 'skipped')),
+  CONSTRAINT assessment_sessions_type_check CHECK (assessment_type IN ('mcq', 'fill_blank', 'coding'))
+);
+
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS plan_id UUID REFERENCES prep_plans(id) ON DELETE SET NULL;
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'draft';
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS assessment_type VARCHAR(30) NOT NULL DEFAULT 'mcq';
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS duration_minutes INTEGER NOT NULL DEFAULT 20;
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS weak_spots TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS recommendations JSONB NOT NULL DEFAULT '[]'::JSONB;
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS questions JSONB NOT NULL DEFAULT '[]'::JSONB;
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS submission JSONB NOT NULL DEFAULT '{}'::JSONB;
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS score NUMERIC(5, 2) NOT NULL DEFAULT 0;
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::JSONB;
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ;
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE assessment_sessions DROP CONSTRAINT IF EXISTS assessment_sessions_status_check;
+ALTER TABLE assessment_sessions
+ADD CONSTRAINT assessment_sessions_status_check CHECK (status IN ('draft', 'started', 'completed', 'skipped'));
+
+ALTER TABLE assessment_sessions DROP CONSTRAINT IF EXISTS assessment_sessions_type_check;
+ALTER TABLE assessment_sessions
+ADD CONSTRAINT assessment_sessions_type_check CHECK (assessment_type IN ('mcq', 'fill_blank', 'coding'));
+
+CREATE INDEX IF NOT EXISTS idx_assessment_sessions_user_created_at ON assessment_sessions(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_assessment_sessions_user_status ON assessment_sessions(user_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_assessment_sessions_plan_id ON assessment_sessions(plan_id, created_at DESC);
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -647,5 +703,8 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'apk_versions_set_updated_at') THEN
     CREATE TRIGGER apk_versions_set_updated_at BEFORE UPDATE ON apk_versions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'assessment_sessions_set_updated_at') THEN
+    CREATE TRIGGER assessment_sessions_set_updated_at BEFORE UPDATE ON assessment_sessions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
   END IF;
 END $$;

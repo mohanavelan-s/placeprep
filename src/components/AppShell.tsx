@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ClipboardList,
   ChevronRight,
   BrainCircuit,
   LayoutDashboard,
@@ -39,6 +40,7 @@ import { isPlacePrepAndroidApp } from "@/lib/platform";
 const navItems = [
   { to: "/dashboard", label: "Command Chamber", icon: LayoutDashboard, observerVisible: true },
   { to: "/prep-architect", label: "Prep Architect", icon: BrainCircuit, observerVisible: false },
+  { to: "/assessments", label: "Assessments", icon: ClipboardList, observerVisible: false },
   { to: "/tasks", label: "Tasks", icon: ListTodo, observerVisible: true },
   { to: "/progress", label: "Progress", icon: LineChart, observerVisible: false },
   { to: "/ai-mentor", label: "Nocturne Mentor", icon: MessageSquareText, observerVisible: true },
@@ -60,6 +62,10 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   "/tasks": {
     title: "Mission Control",
     description: "Queue. Strike. Clear.",
+  },
+  "/assessments": {
+    title: "Assessments",
+    description: "Probe. Measure. Adapt.",
   },
   "/progress": {
     title: "Progress Intel",

@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { canAccessAppPath } from "@/lib/access";
 
 const AppShell = lazy(() => import("@/components/AppShell"));
+const AssessmentsPage = lazy(() => import("./pages/AssessmentsPage.tsx"));
 const AiMentorPage = lazy(() => import("./pages/AiMentorPage.tsx"));
 const AuthPage = lazy(() => import("./pages/AuthPage.tsx"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage.tsx"));
@@ -27,6 +28,8 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       refetchOnWindowFocus: false,
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
     },
   },
 });
@@ -58,6 +61,7 @@ function TitleUpdater() {
       "/invite": "Invite Access",
       "/dashboard": "Command Chamber",
       "/prep-architect": "Prep Architect",
+      "/assessments": "Assessments",
       "/tasks": "Mission Control",
       "/progress": "Progress Intel",
       "/profile": "Profile",
@@ -107,6 +111,7 @@ function AppRoutes() {
             <Route path="/dashboard" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/prep-architect" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/tasks" element={<Navigate to="/auth?mode=login" replace />} />
+            <Route path="/assessments" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/progress" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/profile" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/settings" element={<Navigate to="/auth?mode=login" replace />} />
@@ -131,6 +136,7 @@ function AppRoutes() {
           <Route element={<ProtectedWorkspaceLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/prep-architect" element={<PrepArchitectPage />} />
+            <Route path="/assessments" element={<AssessmentsPage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/progress" element={<ProgressPage />} />
             <Route path="/profile" element={<ProfilePage />} />

@@ -238,7 +238,11 @@ function buildTaskItems(topic: string, revisionTopic: string) {
   ];
 }
 
-function buildPlan(input: { knownTopics: string[]; targetTopics: string[]; targetRole?: string; timePerDay?: number }, version = 1, sourcePlanId: string | null = null) {
+function buildPlan(
+  input: { knownTopics: string[]; targetTopics: string[]; targetRole?: string; timePerDay?: number; durationMonths?: number },
+  version = 1,
+  sourcePlanId: string | null = null,
+) {
   const knownTopics = cleanTopics(input.knownTopics, 8);
   const targetTopics = cleanTopics(input.targetTopics, 8);
   const roleBias = getRoleBiasTopics(String(input.targetRole || ""));
@@ -249,11 +253,15 @@ function buildPlan(input: { knownTopics: string[]; targetTopics: string[]; targe
   const primary = orderedTopics[0] || "Operating Systems";
   const secondary = orderedTopics[1] || "DBMS";
   const targetRole = input.targetRole || "Backend Engineer";
+  const durationMonths = clamp(Number(input.durationMonths || 1), 1, 12);
   const now = new Date().toISOString();
 
-  const roadmap = orderedTopics.slice(0, 4).map((topic, index) => ({
+  const roadmapLength = clamp(durationMonths * 4, 4, 16);
+  const roadmap = Array.from({ length: roadmapLength }, (_, index) => {
+    const topic = orderedTopics[index % orderedTopics.length] || primary;
+    return {
     week: index + 1,
-    title: index === 0 ? "Foundation reset" : index === 3 ? "Interview simulation week" : "Focused build week",
+    title: index === 0 ? "Foundation reset" : index === roadmapLength - 1 ? "Interview simulation week" : "Focused build week",
     focusTopics: cleanTopics([topic, orderedTopics[index + 1] || secondary], 2),
     estimatedHours: clamp(Math.round(((input.timePerDay || 180) * 6) / 60), 6, 24),
     goals: [
@@ -261,7 +269,8 @@ function buildPlan(input: { knownTopics: string[]; targetTopics: string[]; targe
       `Solve at least two concrete problems tied to ${topic}.`,
       `Translate ${topic} into spoken interview language for ${targetRole}.`,
     ],
-  }));
+  };
+  });
 
   const tasks = Array.from({ length: 5 }, (_, index) => {
     const topic = orderedTopics[index % orderedTopics.length] || primary;
@@ -290,6 +299,7 @@ function buildPlan(input: { knownTopics: string[]; targetTopics: string[]; targe
       { topic: orderedTopics[3] || "Dynamic Programming", question: `What would you say out loud before solving a problem on ${orderedTopics[3] || "Dynamic Programming"}?`, answer: "State the pattern, the data structure or state you need, and the edge case that could break a rushed solution." },
     ],
     timePerDay: input.timePerDay || 180,
+    durationMonths,
     targetRole,
     version,
     isActive: true,
@@ -300,6 +310,7 @@ function buildPlan(input: { knownTopics: string[]; targetTopics: string[]; targe
       titleSource: "generated",
       coachLine: `Push ${primary} until it becomes automatic, then let ${secondary} carry the next layer of confidence.`,
       usedFallback: true,
+      durationMonths,
     },
     title: `${targetRole}: ${primary} + ${secondary}`,
     autoTitle: `${targetRole}: ${primary} + ${secondary}`,
@@ -416,18 +427,172 @@ function buildProgressHistory(summary: ReturnType<typeof buildProgressSummary>) 
   }));
 }
 
+function getActivePlanFromState(state: Record<string, unknown>) {
+  return ((state.prepPlans as Array<Record<string, unknown>>) || []).find((plan) => plan.isActive) || null;
+}
+
+function buildAssessmentQuestions(
+  plan: ReturnType<typeof buildPlan>,
+  assessmentType: "mcq" | "fill_blank" | "coding",
+  durationMinutes: number,
+) {
+  if (assessmentType === "coding") {
+    return plan.tasks[0].items.slice(0, 3).map((item, index) => ({
+      id: `coding-${index + 1}`,
+      topic: item.title,
+      prompt: `Write a short interview-style solution or pseudocode for ${item.referenceLabel || item.title}. Mention the core approach and time complexity.`,
+      type: "coding",
+      averageTimeMinutes: clamp(Math.round(durationMinutes / 3), 15, 30),
+      referenceLabel: item.referenceLabel,
+      referenceUrl: item.referenceUrl,
+      placeholder: "Use short code or pseudocode. Keep it interview-focused.",
+      taskTitle: item.title,
+      expectedKeywords: cleanTopics([item.type, item.title, item.referenceLabel || "", "time complexity"], 6),
+    }));
+  }
+
+  const flashcards = plan.flashcards.slice(0, assessmentType === "fill_blank" ? 5 : 4);
+
+  if (assessmentType === "fill_blank") {
+    return flashcards.map((card, index) => {
+      const answer = String(card.answer || "").trim();
+      const keyPhrase = answer.split(/\s+/).slice(0, 4).join(" ");
+      return {
+        id: `fill-${index + 1}`,
+        topic: card.topic,
+        prompt: `Fill in the blank: ${answer.replace(keyPhrase, "_____")}`,
+        type: "fill_blank",
+        averageTimeMinutes: clamp(Math.round(durationMinutes / flashcards.length), 3, 8),
+        referenceLabel: card.topic,
+        referenceUrl: findTopicReferenceUrl(plan, card.topic),
+        placeholder: "Type the missing idea",
+        expectedAnswer: keyPhrase,
+      };
+    });
+  }
+
+  return flashcards.map((card, index) => {
+    const correctText = String(card.answer || "").trim();
+    const distractors = [
+      "Skip the edge case and move straight to coding.",
+      "Memorize the term without connecting it to the task.",
+      "Choose the most complex approach by default.",
+    ];
+    const choices = shuffle([
+      { id: `mcq-${index + 1}-a`, label: "A", text: correctText },
+      ...distractors.map((text, distractorIndex) => ({
+        id: `mcq-${index + 1}-${String.fromCharCode(98 + distractorIndex)}`,
+        label: String.fromCharCode(66 + distractorIndex),
+        text,
+      })),
+    ]);
+    const correctChoice = choices.find((choice) => choice.text === correctText) || choices[0];
+    return {
+      id: `mcq-${index + 1}`,
+      topic: card.topic,
+      prompt: card.question,
+      type: "mcq",
+      averageTimeMinutes: clamp(Math.round(durationMinutes / flashcards.length), 3, 8),
+      referenceLabel: card.topic,
+      referenceUrl: findTopicReferenceUrl(plan, card.topic),
+      choices,
+      correctOptionId: correctChoice.id,
+    };
+  });
+}
+
+function findTopicReferenceUrl(plan: ReturnType<typeof buildPlan>, topic: string) {
+  return plan.resources.find((entry) => entry.topic === topic)?.items?.[0]?.url || null;
+}
+
+function buildAssessmentSession(
+  plan: ReturnType<typeof buildPlan>,
+  assessmentType: "mcq" | "fill_blank" | "coding",
+  durationMinutes: number,
+) {
+  return {
+    id: createId("assessment"),
+    userId: "demo-user",
+    planId: plan.id,
+    status: "started",
+    assessmentType,
+    durationMinutes,
+    weakSpots: [],
+    recommendations: [],
+    questions: buildAssessmentQuestions(plan, assessmentType, durationMinutes),
+    submission: { answers: {} },
+    score: 0,
+    metadata: {
+      planTitle: plan.title,
+      targetRole: plan.targetRole,
+      targetTopics: plan.targetTopics,
+    },
+    startedAt: new Date().toISOString(),
+    submittedAt: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function scoreDemoAssessmentQuestion(question: Record<string, unknown>, response: string) {
+  const normalizedResponse = String(response || "").trim().toLowerCase();
+
+  if (question.type === "mcq") {
+    return String(response || "").trim() === String(question.correctOptionId || "") ? 1 : 0;
+  }
+
+  if (question.type === "fill_blank") {
+    return normalizedResponse.includes(String(question.expectedAnswer || "").trim().toLowerCase()) ? 1 : 0;
+  }
+
+  const expectedKeywords = Array.isArray(question.expectedKeywords)
+    ? question.expectedKeywords.map((entry) => String(entry).toLowerCase())
+    : [];
+  if (!expectedKeywords.length) {
+    return normalizedResponse.length >= 80 ? 0.6 : 0;
+  }
+
+  const matches = expectedKeywords.filter((keyword) => normalizedResponse.includes(keyword)).length;
+  const score = matches / expectedKeywords.length;
+  if (/time complexity|o\(/.test(normalizedResponse)) {
+    return clamp(score + 0.15, 0, 1);
+  }
+
+  return score;
+}
+
+function buildDemoAssessmentRecommendations(plan: ReturnType<typeof buildPlan>, weakSpots: string[]) {
+  return weakSpots.map((topic) => {
+    const resource = plan.resources.find((entry) => entry.topic === topic)?.items?.[0];
+    const task = plan.tasks.flatMap((day) => day.items).find((item) => `${item.title} ${item.referenceLabel}`.toLowerCase().includes(topic.toLowerCase()));
+    return {
+      topic,
+      reason: `${topic} needs another round of recall and execution.`,
+      action: task
+        ? `Redo ${task.referenceLabel || task.title}, then explain the approach out loud before checking notes.`
+        : `Run one more focused revision loop on ${topic}.`,
+      resourceLabel: resource?.title || null,
+      resourceUrl: resource?.url || null,
+      problemLabel: task?.referenceLabel || task?.title || null,
+      problemUrl: task?.referenceUrl || null,
+    };
+  });
+}
+
 function buildInitialState() {
   const activePlan = buildPlan({
     knownTopics: ["Arrays", "Strings"],
     targetTopics: ["Operating Systems", "DBMS", "System Design"],
     targetRole: "Backend Engineer Intern",
     timePerDay: 180,
+    durationMonths: 3,
   }, 3);
   const previousPlan = { ...buildPlan({
     knownTopics: ["Arrays", "Strings"],
     targetTopics: ["Dynamic Programming", "Graphs", "Operating Systems"],
     targetRole: "Backend Engineer Intern",
     timePerDay: 150,
+    durationMonths: 2,
   }, 2, activePlan.id), isActive: false, title: "Backend Interview Sprint: DP + Graphs", autoTitle: "Backend Interview Sprint: DP + Graphs" };
   previousPlan.metadata = { ...previousPlan.metadata, title: previousPlan.title, autoTitle: previousPlan.autoTitle };
   const tasks = buildTasksFromPlan(activePlan);
@@ -475,6 +640,7 @@ function buildInitialState() {
       updatedAt: now,
     },
     prepPlans: [activePlan, previousPlan],
+    assessmentSessions: [],
     tasks,
     progressSummary,
     progressHistory: buildProgressHistory(progressSummary),
@@ -583,7 +749,7 @@ function buildMentorReply(message: string) {
 }
 
 function refreshState(state: Record<string, unknown>) {
-  const activePlan = ((state.prepPlans as Array<Record<string, unknown>>) || []).find((plan) => plan.isActive) || null;
+  const activePlan = getActivePlanFromState(state);
   const tasks = (state.tasks as Array<Record<string, unknown>>) || [];
   const progressSummary = buildProgressSummary(tasks, activePlan);
   return {
@@ -640,6 +806,33 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
   if (pathname === "/progress/history" && method === "GET") {
     const days = Number(url.searchParams.get("days") || state.progressHistory.length);
     return state.progressHistory.slice(0, days) as T;
+  }
+  if (pathname === "/assessments/overview" && method === "GET") {
+    const activePlan = getActivePlanFromState(state) as ReturnType<typeof buildPlan> | null;
+    const assessmentSessions = ((state.assessmentSessions as Array<Record<string, unknown>>) || [])
+      .slice()
+      .sort((left, right) => new Date(String(right.createdAt || 0)).getTime() - new Date(String(left.createdAt || 0)).getTime());
+    const currentSession = assessmentSessions.find((session) => session.status !== "completed" && session.status !== "skipped")
+      || assessmentSessions[0]
+      || null;
+
+    return {
+      activePlan: activePlan
+        ? {
+            id: activePlan.id,
+            title: activePlan.title,
+            targetRole: activePlan.targetRole,
+            targetTopics: activePlan.targetTopics,
+            knownTopics: activePlan.knownTopics,
+            timePerDay: activePlan.timePerDay,
+            durationMonths: activePlan.durationMonths,
+            version: activePlan.version,
+            isActive: activePlan.isActive,
+          }
+        : null,
+      currentSession,
+      recentSessions: assessmentSessions,
+    } as T;
   }
   if (pathname === "/notifications" && method === "GET") {
     const unreadOnly = url.searchParams.get("unread") === "true";
@@ -730,14 +923,26 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
   }
 
   if (pathname === "/ai/prep-architect" && method === "POST") {
-    const nextPlan = buildPlan({ knownTopics: cleanTopics((body.knownTopics as string[]) || state.user.strongTopics), targetTopics: cleanTopics((body.targetTopics as string[]) || state.user.weakAreas), targetRole: typeof body.targetRole === "string" ? body.targetRole : state.user.targetRole, timePerDay: Number(body.timePerDay || 180) }, state.prepPlans.length + 1);
+    const nextPlan = buildPlan({
+      knownTopics: cleanTopics((body.knownTopics as string[]) || state.user.strongTopics),
+      targetTopics: cleanTopics((body.targetTopics as string[]) || state.user.weakAreas),
+      targetRole: typeof body.targetRole === "string" ? body.targetRole : state.user.targetRole,
+      timePerDay: Number(body.timePerDay || 180),
+      durationMonths: Number(body.durationMonths || 1),
+    }, state.prepPlans.length + 1);
     const tasks = buildTasksFromPlan(nextPlan);
     return updateState((current) => refreshState({ ...current, prepPlans: [nextPlan, ...(current.prepPlans as Array<Record<string, unknown>>).map((plan) => ({ ...plan, isActive: false }))], tasks })).prepPlans[0] as T;
   }
 
   if (pathname === "/ai/prep-architect/update" && method === "POST") {
     const sourcePlan = state.prepPlans.find((plan: Record<string, unknown>) => plan.id === body.planId) || state.prepPlans[0];
-    const nextPlan = buildPlan({ knownTopics: cleanTopics((body.knownTopics as string[]) || sourcePlan.knownTopics), targetTopics: cleanTopics((body.targetTopics as string[]) || sourcePlan.targetTopics), targetRole: typeof body.targetRole === "string" ? body.targetRole : sourcePlan.targetRole, timePerDay: Number(body.timePerDay || sourcePlan.timePerDay || 180) }, state.prepPlans.length + 1, String(sourcePlan.id));
+    const nextPlan = buildPlan({
+      knownTopics: cleanTopics((body.knownTopics as string[]) || sourcePlan.knownTopics),
+      targetTopics: cleanTopics((body.targetTopics as string[]) || sourcePlan.targetTopics),
+      targetRole: typeof body.targetRole === "string" ? body.targetRole : sourcePlan.targetRole,
+      timePerDay: Number(body.timePerDay || sourcePlan.timePerDay || 180),
+      durationMonths: Number(body.durationMonths || sourcePlan.durationMonths || 1),
+    }, state.prepPlans.length + 1, String(sourcePlan.id));
     return updateState((current) => refreshState({ ...current, prepPlans: [nextPlan, ...(current.prepPlans as Array<Record<string, unknown>>).map((plan) => ({ ...plan, isActive: false }))], tasks: buildTasksFromPlan(nextPlan) })).prepPlans[0] as T;
   }
 
@@ -770,6 +975,140 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
   if (pathname === "/ai/evaluate" && method === "POST") return { productivityScore: 82, weakAreas: ["Revision depth", "Explaining tradeoffs", "Timed medium problems"], tomorrowImprovements: ["Do one timed problem before reading any solution.", "Speak one OS concept aloud before revising DBMS.", "Close the day with one flashcard loop instead of passive scrolling."], verdict: "Steady day. Good execution, but you still need more pressure-tested recall.", profile: refreshState(state).progressSummary.coachProfile, profileLinks: state.profile, usedFallback: true } as T;
   if (pathname === "/ai/generate-tasks" && method === "POST") return { motivationLine: state.prepPlans[0]?.coachLine || "Clear the next weakness before the day ends.", tasks: state.tasks, profile: refreshState(state).progressSummary.coachProfile, profileLinks: state.profile, totalEstimatedMinutes: state.tasks.reduce((sum: number, task: Record<string, unknown>) => sum + Number(task.estimatedMinutes || 0), 0), persisted: false, replacedCount: 0, usedFallback: true } as T;
   if (pathname === "/ai/quick-task" && method === "POST") return { task: { title: "Tight 30-minute OS recall block", category: "Core", estimatedMinutes: Number(body.availableMinutes || 30), difficulty: "Medium", referenceLabel: "freeCodeCamp: Operating Systems interview revision", referenceUrl: buildYouTubeSearchUrl("freeCodeCamp operating systems interview"), reason: "High-value recall before the day drifts." }, suggestionLine: "Use this window to clear one core-systems concept before context-switching again.", profile: refreshState(state).progressSummary.coachProfile, profileLinks: state.profile, usedFallback: true } as T;
+
+  if (pathname === "/assessments/generate" && method === "POST") {
+    const activePlan = getActivePlanFromState(state) as ReturnType<typeof buildPlan> | null;
+    if (!activePlan) {
+      throw new Error("Create a Prep Architect plan first, then start an assessment.");
+    }
+
+    const nextSession = buildAssessmentSession(
+      activePlan,
+      (body.assessmentType as "mcq" | "fill_blank" | "coding") || "mcq",
+      clamp(Number(body.durationMinutes || 20), 10, 90),
+    );
+
+    const nextState = updateState((current) => ({
+      ...current,
+      assessmentSessions: [nextSession, ...((current.assessmentSessions as Array<Record<string, unknown>>) || [])],
+    }));
+
+    return {
+      activePlan: {
+        id: activePlan.id,
+        title: activePlan.title,
+        targetRole: activePlan.targetRole,
+        targetTopics: activePlan.targetTopics,
+        knownTopics: activePlan.knownTopics,
+        timePerDay: activePlan.timePerDay,
+        durationMonths: activePlan.durationMonths,
+        version: activePlan.version,
+        isActive: activePlan.isActive,
+      },
+      session: nextState.assessmentSessions[0],
+    } as T;
+  }
+
+  if (/^\/assessments\/[^/]+\/submit$/.test(pathname) && method === "POST") {
+    const assessmentId = pathname.split("/")[2];
+    const answers = body.answers && typeof body.answers === "object" ? body.answers as Record<string, string> : {};
+    return updateState((current) => {
+      const plan = getActivePlanFromState(current) as ReturnType<typeof buildPlan> | null;
+      const assessmentSessions = ((current.assessmentSessions as Array<Record<string, unknown>>) || []).map((session) => {
+        if (session.id !== assessmentId) {
+          return session;
+        }
+
+        const results = ((session.questions as Array<Record<string, unknown>>) || []).map((question) => {
+          const score = scoreDemoAssessmentQuestion(question, String(answers[String(question.id)] || ""));
+          return {
+            questionId: question.id,
+            topic: question.topic,
+            score,
+            correct: score >= 0.75,
+            feedback: score >= 0.75
+              ? "Solid recall. Keep the explanation pressure-tested."
+              : `Revisit ${question.topic} once more before assuming the idea is locked in.`,
+          };
+        });
+        const averageScore = results.length
+          ? (results.reduce((sum, item) => sum + Number(item.score || 0), 0) / results.length) * 100
+          : 0;
+        const weakSpots = cleanTopics(results.filter((item) => Number(item.score || 0) < 0.75).map((item) => String(item.topic || "")), 5);
+        return {
+          ...session,
+          status: "completed",
+          weakSpots,
+          recommendations: plan ? buildDemoAssessmentRecommendations(plan, weakSpots) : [],
+          score: Number(averageScore.toFixed(2)),
+          submission: {
+            answers,
+            questionResults: results,
+            submittedAt: new Date().toISOString(),
+          },
+          submittedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      return {
+        ...current,
+        assessmentSessions,
+      };
+    }).assessmentSessions.find((session: Record<string, unknown>) => session.id === assessmentId) as T;
+  }
+
+  if (/^\/assessments\/[^/]+\/apply-plan-update$/.test(pathname) && method === "POST") {
+    const assessmentId = pathname.split("/")[2];
+    const nextState = updateState((current) => {
+      const targetSession = ((current.assessmentSessions as Array<Record<string, unknown>>) || []).find((session) => session.id === assessmentId) || null;
+      const activePlan = getActivePlanFromState(current) as ReturnType<typeof buildPlan> | null;
+      if (!targetSession || !activePlan) {
+        return current;
+      }
+
+      const nextTargetTopics = cleanTopics([
+        ...((targetSession.weakSpots as string[]) || []),
+        ...(activePlan.targetTopics || []),
+      ], 8);
+      const nextPlan = buildPlan({
+        knownTopics: activePlan.knownTopics,
+        targetTopics: nextTargetTopics,
+        targetRole: activePlan.targetRole,
+        timePerDay: activePlan.timePerDay,
+        durationMonths: activePlan.durationMonths,
+      }, Number((current.prepPlans as Array<Record<string, unknown>>).length || 0) + 1, String(activePlan.id));
+
+      const updatedSessions = ((current.assessmentSessions as Array<Record<string, unknown>>) || []).map((session) =>
+        session.id === assessmentId
+          ? {
+              ...session,
+              metadata: {
+                ...((session.metadata as Record<string, unknown>) || {}),
+                appliedPlanId: nextPlan.id,
+                appliedPlanVersion: nextPlan.version,
+                appliedPlanUpdateAt: new Date().toISOString(),
+              },
+            }
+          : session
+      );
+
+      return refreshState({
+        ...current,
+        prepPlans: [nextPlan, ...(current.prepPlans as Array<Record<string, unknown>>).map((plan) => ({ ...plan, isActive: false }))],
+        tasks: buildTasksFromPlan(nextPlan),
+        assessmentSessions: updatedSessions,
+      });
+    });
+
+    const updatedPlan = getActivePlanFromState(nextState);
+    const session = ((nextState.assessmentSessions as Array<Record<string, unknown>>) || []).find((entry) => entry.id === assessmentId) || null;
+
+    return {
+      session,
+      updatedPlan,
+    } as T;
+  }
 
   if (pathname === "/power-pocket/start" && method === "POST") {
     return updateState((current) => ({ ...current, powerPocketSession: { id: createId("pocket"), userId: "demo-user", taskId: typeof body.taskId === "string" ? body.taskId : null, title: typeof body.title === "string" ? body.title : "Focused sprint", notes: typeof body.notes === "string" ? body.notes : null, status: "active", source: body.source || "manual", startedAt: new Date().toISOString(), endedAt: null, durationMinutes: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } })).powerPocketSession as T;
@@ -842,8 +1181,16 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
   }
 
   if (pathname === "/progress/history" && method === "DELETE") {
-    const deleted = state.progressHistory.length;
-    updateState((current) => ({ ...current, progressHistory: [] }));
+    const entryIds = Array.isArray(body.entryIds) ? body.entryIds.map((entry) => String(entry)) : [];
+    const deleted = entryIds.length
+      ? state.progressHistory.filter((entry: Record<string, unknown>) => entryIds.includes(String(entry.id))).length
+      : state.progressHistory.length;
+    updateState((current) => ({
+      ...current,
+      progressHistory: entryIds.length
+        ? (current.progressHistory as Array<Record<string, unknown>>).filter((entry) => !entryIds.includes(String(entry.id)))
+        : [],
+    }));
     return { deleted, clearedAt: new Date().toISOString() } as T;
   }
   if (pathname === "/notifications/history" && method === "DELETE") {

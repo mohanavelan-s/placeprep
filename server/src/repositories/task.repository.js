@@ -318,6 +318,24 @@ async function listRecentAdminPracticeTasksByUsers(userIds = [], limitPerUser = 
   return result.rows;
 }
 
+async function deleteAdminAssignmentsByAssignmentIds(userIds = [], assignmentIds = [], client = null) {
+  if (!userIds.length || !assignmentIds.length) {
+    return 0;
+  }
+
+  const execute = getExecutor(client);
+  const result = await execute(
+    `DELETE FROM tasks
+     WHERE user_id = ANY($1::uuid[])
+       AND metadata->>'shareKind' IN ('admin-practice-link', 'admin-assignment')
+       AND COALESCE(metadata->>'assignmentId', '') = ANY($2::text[])
+     RETURNING id`,
+    [userIds, assignmentIds]
+  );
+
+  return result.rowCount || 0;
+}
+
 module.exports = {
   createTask,
   findById,
@@ -330,5 +348,6 @@ module.exports = {
   deletePrepArchitectTasksByPlanIds,
   listSummaryByUsers,
   listRecentAdminPracticeTasksByUsers,
+  deleteAdminAssignmentsByAssignmentIds,
   taskColumns,
 };

@@ -601,8 +601,13 @@ async function getHistory(user, days = 14) {
   return progressRepository.listHistory(user.id, days);
 }
 
-async function clearHistory(user) {
-  const deleted = await progressRepository.deleteHistory(user.id);
+async function clearHistory(user, payload = {}) {
+  const entryIds = Array.isArray(payload.entryIds)
+    ? Array.from(new Set(payload.entryIds.map((entryId) => String(entryId || '').trim()).filter(Boolean)))
+    : [];
+  const deleted = entryIds.length
+    ? await progressRepository.deleteHistoryByIds([user.id], entryIds)
+    : await progressRepository.deleteHistory(user.id);
   return {
     deleted,
     clearedAt: new Date().toISOString(),

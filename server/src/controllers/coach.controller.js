@@ -44,6 +44,16 @@ async function clearStudentProofHistory(req, res) {
   res.json({ success: true, data: result });
 }
 
+async function clearProgressHistory(req, res) {
+  const result = await coachService.clearProgressHistory(req.user, req.body || {});
+  res.json({ success: true, data: result });
+}
+
+async function clearPracticeCapsuleHistory(req, res) {
+  const result = await coachService.clearPracticeCapsuleHistory(req.user, req.body || {});
+  res.json({ success: true, data: result });
+}
+
 module.exports = {
   listStudents,
   listGroups,
@@ -53,4 +63,6 @@ module.exports = {
   removeGroupMember,
   createPracticeCapsule,
   clearStudentProofHistory,
+  clearProgressHistory,
+  clearPracticeCapsuleHistory,
 };
