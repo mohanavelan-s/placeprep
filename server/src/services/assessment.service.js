@@ -57,6 +57,159 @@ function uniqueStrings(values = [], limit = 12) {
   ).slice(0, limit);
 }
 
+function toArray(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // Fall through to lightweight string parsing.
+    }
+
+    return trimmed.includes(',')
+      ? trimmed.split(',').map((entry) => entry.trim()).filter(Boolean)
+      : [trimmed];
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.values(value);
+  }
+
+  return [];
+}
+
+function normalizeStringList(value, limit = 8) {
+  return uniqueStrings(toArray(value), limit);
+}
+
+function normalizeRecord(value) {
+  if (!value) {
+    return {};
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function normalizePlanShape(plan) {
+  if (!plan) {
+    return null;
+  }
+
+  return {
+    ...plan,
+    knownTopics: normalizeStringList(plan.knownTopics, 8),
+    targetTopics: normalizeStringList(plan.targetTopics, 8),
+    roadmap: toArray(plan.roadmap).map((week, index) => ({
+      week: Number(week?.week || index + 1),
+      title: String(week?.title || `Week ${index + 1}`).trim(),
+      focusTopics: normalizeStringList(week?.focusTopics || week?.topics, 3),
+      estimatedHours: Number(week?.estimatedHours || 0),
+      goals: normalizeStringList(week?.goals, 4),
+    })),
+    tasks: toArray(plan.tasks).map((day, index) => ({
+      day: String(day?.day || `Day ${index + 1}`),
+      theme: String(day?.theme || 'Focused prep').trim(),
+      totalEstimatedMinutes: Number(day?.totalEstimatedMinutes || 0),
+      items: toArray(day?.items).map((item) => ({
+        ...item,
+        title: String(item?.title || '').trim(),
+        type: String(item?.type || '').trim(),
+        referenceLabel: item?.referenceLabel ? String(item.referenceLabel).trim() : null,
+        referenceUrl: item?.referenceUrl ? String(item.referenceUrl).trim() : null,
+      })),
+    })),
+    resources: toArray(plan.resources).map((group) => ({
+      topic: String(group?.topic || '').trim(),
+      items: toArray(group?.items).map((item) => ({
+        ...item,
+        title: String(item?.title || '').trim(),
+        type: String(item?.type || '').trim(),
+        url: String(item?.url || '').trim(),
+      })).filter((item) => item.title || item.url),
+    })).filter((group) => group.topic),
+    flashcards: toArray(plan.flashcards).map((card) => ({
+      topic: String(card?.topic || '').trim(),
+      question: String(card?.question || '').trim(),
+      answer: String(card?.answer || '').trim(),
+    })).filter((card) => card.topic && card.question && card.answer),
+  };
+}
+
+function normalizeSessionShape(session) {
+  if (!session) {
+    return null;
+  }
+
+  const normalizedSubmission = normalizeRecord(session.submission);
+  const normalizedAnswers = normalizeRecord(normalizedSubmission.answers);
+
+  return {
+    ...session,
+    weakSpots: normalizeStringList(session.weakSpots, 8),
+    recommendations: toArray(session.recommendations).map((recommendation) => ({
+      topic: String(recommendation?.topic || '').trim(),
+      reason: String(recommendation?.reason || '').trim(),
+      action: String(recommendation?.action || '').trim(),
+      resourceLabel: recommendation?.resourceLabel ? String(recommendation.resourceLabel).trim() : null,
+      resourceUrl: recommendation?.resourceUrl ? String(recommendation.resourceUrl).trim() : null,
+      problemLabel: recommendation?.problemLabel ? String(recommendation.problemLabel).trim() : null,
+      problemUrl: recommendation?.problemUrl ? String(recommendation.problemUrl).trim() : null,
+    })).filter((recommendation) => recommendation.topic && recommendation.action),
+    questions: toArray(session.questions).map((question) => ({
+      ...question,
+      id: String(question?.id || '').trim(),
+      topic: String(question?.topic || '').trim(),
+      prompt: String(question?.prompt || '').trim(),
+      type: String(question?.type || 'mcq').trim(),
+      averageTimeMinutes: Number(question?.averageTimeMinutes || 0),
+      referenceLabel: question?.referenceLabel ? String(question.referenceLabel).trim() : null,
+      referenceUrl: question?.referenceUrl ? String(question.referenceUrl).trim() : null,
+      choices: toArray(question?.choices).map((choice, index) => ({
+        id: String(choice?.id || `${question?.id || 'choice'}-${index + 1}`).trim(),
+        label: String(choice?.label || String.fromCharCode(65 + index)).trim(),
+        text: String(choice?.text || '').trim(),
+      })).filter((choice) => choice.text),
+      placeholder: question?.placeholder ? String(question.placeholder).trim() : null,
+      taskTitle: question?.taskTitle ? String(question.taskTitle).trim() : null,
+    })).filter((question) => question.id && question.prompt),
+    submission: {
+      ...normalizedSubmission,
+      answers: Object.fromEntries(
+        Object.entries(normalizedAnswers).map(([key, value]) => [key, String(value || '')])
+      ),
+      questionResults: toArray(normalizedSubmission.questionResults).map((result) => ({
+        questionId: String(result?.questionId || '').trim(),
+        topic: String(result?.topic || '').trim(),
+        score: Number(result?.score || 0),
+        correct: Boolean(result?.correct),
+        feedback: String(result?.feedback || '').trim(),
+      })).filter((result) => result.questionId),
+      submittedAt: normalizedSubmission.submittedAt || session.submittedAt || null,
+    },
+    metadata: normalizeRecord(session.metadata),
+  };
+}
+
 function normalizeText(value) {
   return String(value || '')
     .toLowerCase()
@@ -165,16 +318,20 @@ function sanitizePlanSummary(plan) {
     return null;
   }
 
+  const normalizedPlan = normalizePlanShape(plan);
+
   return {
-    id: plan.id,
-    title: typeof plan.metadata?.title === 'string' ? plan.metadata.title : null,
-    targetRole: plan.targetRole || null,
-    targetTopics: plan.targetTopics || [],
-    knownTopics: plan.knownTopics || [],
-    timePerDay: plan.timePerDay || 120,
-    durationMonths: plan.durationMonths || Number(plan.metadata?.durationMonths || 1) || 1,
-    version: Number(plan.version || 1),
-    isActive: Boolean(plan.isActive),
+    id: normalizedPlan.id,
+    title: typeof normalizedPlan.metadata?.title === 'string'
+      ? normalizedPlan.metadata.title
+      : (typeof normalizedPlan.title === 'string' ? normalizedPlan.title : null),
+    targetRole: normalizedPlan.targetRole || null,
+    targetTopics: normalizedPlan.targetTopics || [],
+    knownTopics: normalizedPlan.knownTopics || [],
+    timePerDay: normalizedPlan.timePerDay || 120,
+    durationMonths: normalizedPlan.durationMonths || Number(normalizedPlan.metadata?.durationMonths || 1) || 1,
+    version: Number(normalizedPlan.version || 1),
+    isActive: Boolean(normalizedPlan.isActive),
   };
 }
 
@@ -202,9 +359,11 @@ function sanitizeSession(session, includeQuestions = false) {
     return null;
   }
 
+  const normalizedSession = normalizeSessionShape(session);
+
   return {
-    ...session,
-    questions: includeQuestions ? (session.questions || []).map(sanitizeQuestion).filter(Boolean) : [],
+    ...normalizedSession,
+    questions: includeQuestions ? normalizedSession.questions.map(sanitizeQuestion).filter(Boolean) : [],
   };
 }
 
@@ -483,7 +642,8 @@ function buildRecommendations(plan, weakSpots = [], assessmentType) {
 }
 
 async function resolveActivePlan(userId) {
-  return prepPlanRepository.findLatestActiveByUser(userId);
+  const plan = await prepPlanRepository.findLatestActiveByUser(userId);
+  return normalizePlanShape(plan);
 }
 
 async function getOverview(user) {
@@ -555,7 +715,7 @@ async function submitAssessment(user, assessmentId, payload = {}) {
     ? payload.answers
     : {};
   const plan = session.planId
-    ? await prepPlanRepository.findById(session.planId, user.id)
+    ? normalizePlanShape(await prepPlanRepository.findById(session.planId, user.id))
     : await resolveActivePlan(user.id);
 
   if (!plan) {
@@ -609,7 +769,7 @@ async function applyPlanUpdate(user, assessmentId) {
   }
 
   const plan = session.planId
-    ? await prepPlanRepository.findById(session.planId, user.id)
+    ? normalizePlanShape(await prepPlanRepository.findById(session.planId, user.id))
     : await resolveActivePlan(user.id);
   if (!plan) {
     throw new AppError('The linked Prep Architect plan could not be found.', 404);

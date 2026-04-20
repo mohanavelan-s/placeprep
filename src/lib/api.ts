@@ -952,6 +952,228 @@ function normalizeResumeRecord(record: ResumeAnalysisRecord): ResumeAnalysisReco
   };
 }
 
+function toArray<T = unknown>(value: unknown): T[] {
+  if (Array.isArray(value)) {
+    return value as T[];
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      return Array.isArray(parsed) ? (parsed as T[]) : [];
+    } catch {
+      return trimmed.includes(",")
+        ? (trimmed.split(",").map((entry) => entry.trim()).filter(Boolean) as T[])
+        : ([trimmed] as T[]);
+    }
+  }
+
+  if (value && typeof value === "object") {
+    return Object.values(value as Record<string, T>);
+  }
+
+  return [];
+}
+
+function normalizeRecord(value: unknown): Record<string, unknown> {
+  if (!value) {
+    return {};
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function normalizeStringList(value: unknown, limit = 8) {
+  return Array.from(
+    new Set(
+      toArray<string>(value)
+        .map((entry) => String(entry || "").trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, limit);
+}
+
+function normalizePrepPlan(plan: PrepPlan | null): PrepPlan | null {
+  if (!plan) {
+    return null;
+  }
+
+  const metadata = normalizeRecord(plan.metadata);
+  const targetTopics = normalizeStringList(plan.targetTopics, 8);
+  const knownTopics = normalizeStringList(plan.knownTopics, 8);
+
+  return {
+    ...plan,
+    knownTopics,
+    targetTopics,
+    roadmap: toArray<Record<string, unknown>>(plan.roadmap).map((week, index) => ({
+      week: Number(week?.week || index + 1),
+      title: String(week?.title || `Week ${index + 1}`).trim(),
+      focusTopics: normalizeStringList(week?.focusTopics || week?.topics, 4),
+      estimatedHours: Number(week?.estimatedHours || 0),
+      goals: normalizeStringList(week?.goals, 4),
+    })),
+    tasks: toArray<Record<string, unknown>>(plan.tasks).map((day, index) => ({
+      day: String(day?.day || `Day ${index + 1}`).trim(),
+      theme: String(day?.theme || "Focused prep").trim(),
+      totalEstimatedMinutes: Number(day?.totalEstimatedMinutes || 0),
+      items: toArray<Record<string, unknown>>(day?.items).map((item) => ({
+        title: String(item?.title || "").trim(),
+        type: String(item?.type || "DSA").trim(),
+        estimatedMinutes: Number(item?.estimatedMinutes || 0),
+        difficulty: String(item?.difficulty || "Medium").trim(),
+        referenceLabel: item?.referenceLabel ? String(item.referenceLabel).trim() : null,
+        referenceUrl: item?.referenceUrl ? String(item.referenceUrl).trim() : null,
+      })).filter((item) => item.title),
+    })),
+    resources: toArray<Record<string, unknown>>(plan.resources).map((group) => ({
+      topic: String(group?.topic || "").trim(),
+      items: toArray<Record<string, unknown>>(group?.items).map((item) => ({
+        title: String(item?.title || "").trim(),
+        type: String(item?.type || "article").trim(),
+        url: String(item?.url || "").trim(),
+      })).filter((item) => item.title && item.url),
+    })).filter((group) => group.topic),
+    flashcards: toArray<Record<string, unknown>>(plan.flashcards).map((card) => ({
+      topic: String(card?.topic || "").trim(),
+      question: String(card?.question || "").trim(),
+      answer: String(card?.answer || "").trim(),
+    })).filter((card) => card.topic && card.question && card.answer),
+    durationMonths: Number(plan.durationMonths || metadata.durationMonths || 1),
+    title: typeof plan.title === "string"
+      ? plan.title
+      : typeof metadata.title === "string"
+        ? metadata.title
+        : undefined,
+    autoTitle: typeof plan.autoTitle === "string"
+      ? plan.autoTitle
+      : typeof metadata.autoTitle === "string"
+        ? metadata.autoTitle
+        : undefined,
+    titleSource: plan.titleSource === "custom" ? "custom" : "generated",
+    coachLine: typeof plan.coachLine === "string"
+      ? plan.coachLine
+      : typeof metadata.coachLine === "string"
+        ? metadata.coachLine
+        : undefined,
+    metadata,
+  };
+}
+
+function normalizeAssessmentQuestion(question: AssessmentQuestion): AssessmentQuestion {
+  return {
+    ...question,
+    id: String(question?.id || "").trim(),
+    topic: String(question?.topic || "").trim(),
+    prompt: String(question?.prompt || "").trim(),
+    type: (String(question?.type || "mcq").trim() as AssessmentType),
+    averageTimeMinutes: Number(question?.averageTimeMinutes || 0),
+    referenceLabel: question?.referenceLabel ? String(question.referenceLabel).trim() : null,
+    referenceUrl: question?.referenceUrl ? String(question.referenceUrl).trim() : null,
+    choices: toArray<AssessmentQuestionChoice>(question?.choices).map((choice, index) => ({
+      id: String(choice?.id || `${question?.id || "choice"}-${index + 1}`).trim(),
+      label: String(choice?.label || String.fromCharCode(65 + index)).trim(),
+      text: String(choice?.text || "").trim(),
+    })).filter((choice) => choice.text),
+    placeholder: question?.placeholder ? String(question.placeholder).trim() : null,
+    taskTitle: question?.taskTitle ? String(question.taskTitle).trim() : null,
+  };
+}
+
+function normalizeAssessmentRecommendation(recommendation: AssessmentRecommendation): AssessmentRecommendation {
+  return {
+    ...recommendation,
+    topic: String(recommendation?.topic || "").trim(),
+    reason: String(recommendation?.reason || "").trim(),
+    action: String(recommendation?.action || "").trim(),
+    resourceLabel: recommendation?.resourceLabel ? String(recommendation.resourceLabel).trim() : null,
+    resourceUrl: recommendation?.resourceUrl ? String(recommendation.resourceUrl).trim() : null,
+    problemLabel: recommendation?.problemLabel ? String(recommendation.problemLabel).trim() : null,
+    problemUrl: recommendation?.problemUrl ? String(recommendation.problemUrl).trim() : null,
+  };
+}
+
+function normalizeAssessmentPlanSummary(plan: AssessmentPlanSummary | null): AssessmentPlanSummary | null {
+  if (!plan) {
+    return null;
+  }
+
+  return {
+    ...plan,
+    title: plan.title ? String(plan.title).trim() : null,
+    targetRole: plan.targetRole ? String(plan.targetRole).trim() : null,
+    targetTopics: normalizeStringList(plan.targetTopics, 8),
+    knownTopics: normalizeStringList(plan.knownTopics, 8),
+    timePerDay: Number(plan.timePerDay || 120),
+    durationMonths: Number(plan.durationMonths || 1),
+    version: Number(plan.version || 1),
+    isActive: Boolean(plan.isActive),
+  };
+}
+
+function normalizeAssessmentSession(session: AssessmentSession | null): AssessmentSession | null {
+  if (!session) {
+    return null;
+  }
+
+  const submission = normalizeRecord(session.submission);
+  const answers = normalizeRecord(submission.answers);
+
+  return {
+    ...session,
+    weakSpots: normalizeStringList(session.weakSpots, 8),
+    recommendations: toArray<AssessmentRecommendation>(session.recommendations)
+      .map(normalizeAssessmentRecommendation)
+      .filter((recommendation) => recommendation.topic && recommendation.action),
+    questions: toArray<AssessmentQuestion>(session.questions)
+      .map(normalizeAssessmentQuestion)
+      .filter((question) => question.id && question.prompt),
+    submission: {
+      answers: Object.fromEntries(
+        Object.entries(answers).map(([key, value]) => [key, String(value || "")]),
+      ),
+      questionResults: toArray<AssessmentQuestionResult>(submission.questionResults).map((result) => ({
+        questionId: String(result?.questionId || "").trim(),
+        topic: String(result?.topic || "").trim(),
+        score: Number(result?.score || 0),
+        correct: Boolean(result?.correct),
+        feedback: String(result?.feedback || "").trim(),
+      })).filter((result) => result.questionId),
+      submittedAt: submission.submittedAt ? String(submission.submittedAt) : (session.submittedAt || null),
+    },
+    score: Number(session.score || 0),
+    metadata: normalizeRecord(session.metadata),
+  };
+}
+
+function normalizeAssessmentOverview(overview: AssessmentOverview): AssessmentOverview {
+  return {
+    activePlan: normalizeAssessmentPlanSummary(overview?.activePlan || null),
+    currentSession: normalizeAssessmentSession(overview?.currentSession || null),
+    recentSessions: toArray<AssessmentSession>(overview?.recentSessions).map((session) =>
+      normalizeAssessmentSession(session),
+    ).filter((session): session is AssessmentSession => Boolean(session)),
+  };
+}
+
 export async function uploadImage(
   file: File,
   payload: {
@@ -1379,11 +1601,12 @@ export async function fetchAiStatus() {
 }
 
 export async function fetchLatestPrepPlan() {
-  return request<PrepPlan | null>("/ai/prep-architect/latest");
+  return normalizePrepPlan(await request<PrepPlan | null>("/ai/prep-architect/latest"));
 }
 
 export async function fetchPrepPlanHistory(limit = 10) {
-  return request<PrepPlan[]>(`/ai/prep-architect/history?limit=${limit}`);
+  const plans = await request<PrepPlan[]>(`/ai/prep-architect/history?limit=${limit}`);
+  return plans.map((plan) => normalizePrepPlan(plan)).filter((plan): plan is PrepPlan => Boolean(plan));
 }
 
 export async function clearPrepPlanHistory(planIds?: string[]) {
@@ -1394,20 +1617,20 @@ export async function clearPrepPlanHistory(planIds?: string[]) {
 }
 
 export async function activatePrepPlan(planId: string) {
-  return request<PrepPlan>("/ai/prep-architect/activate", {
+  return normalizePrepPlan(await request<PrepPlan>("/ai/prep-architect/activate", {
     method: "POST",
     body: JSON.stringify({ planId }),
-  });
+  })) as PrepPlan;
 }
 
 export async function renamePrepPlan(payload: {
   planId: string;
   title: string;
 }) {
-  return request<PrepPlan>("/ai/prep-architect/rename", {
+  return normalizePrepPlan(await request<PrepPlan>("/ai/prep-architect/rename", {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  })) as PrepPlan;
 }
 
 export async function generatePrepPlan(payload: {
@@ -1417,10 +1640,10 @@ export async function generatePrepPlan(payload: {
   durationMonths?: number;
   targetRole?: string;
 }) {
-  return request<PrepPlan>("/ai/prep-architect", {
+  return normalizePrepPlan(await request<PrepPlan>("/ai/prep-architect", {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  })) as PrepPlan;
 }
 
 export async function updatePrepPlan(payload: {
@@ -1431,10 +1654,10 @@ export async function updatePrepPlan(payload: {
   durationMonths?: number;
   targetRole?: string;
 }) {
-  return request<PrepPlan>("/ai/prep-architect/update", {
+  return normalizePrepPlan(await request<PrepPlan>("/ai/prep-architect/update", {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  })) as PrepPlan;
 }
 
 export async function fetchMentorHistory() {
@@ -1490,32 +1713,42 @@ export async function clearUploadedProofHistory() {
 }
 
 export async function fetchAssessmentOverview() {
-  return request<AssessmentOverview>("/assessments/overview");
+  return normalizeAssessmentOverview(await request<AssessmentOverview>("/assessments/overview"));
 }
 
 export async function generateAssessment(payload: {
   assessmentType: AssessmentType;
   durationMinutes?: number;
 }) {
-  return request<AssessmentGenerationResult>("/assessments/generate", {
+  const result = await request<AssessmentGenerationResult>("/assessments/generate", {
     method: "POST",
     body: JSON.stringify(payload),
   });
+
+  return {
+    activePlan: normalizeAssessmentPlanSummary(result.activePlan) as AssessmentPlanSummary,
+    session: normalizeAssessmentSession(result.session) as AssessmentSession,
+  };
 }
 
 export async function submitAssessment(
   assessmentId: string,
   payload: { answers: Record<string, string> },
 ) {
-  return request<AssessmentSession>(`/assessments/${assessmentId}/submit`, {
+  return normalizeAssessmentSession(await request<AssessmentSession>(`/assessments/${assessmentId}/submit`, {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  })) as AssessmentSession;
 }
 
 export async function applyAssessmentPlanUpdate(assessmentId: string) {
-  return request<AssessmentPlanUpdateResult>(`/assessments/${assessmentId}/apply-plan-update`, {
+  const result = await request<AssessmentPlanUpdateResult>(`/assessments/${assessmentId}/apply-plan-update`, {
     method: "POST",
     body: JSON.stringify({}),
   });
+
+  return {
+    session: normalizeAssessmentSession(result.session) as AssessmentSession,
+    updatedPlan: normalizePrepPlan(result.updatedPlan) as PrepPlan,
+  };
 }

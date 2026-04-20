@@ -537,10 +537,42 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Number(value || min)));
 }
 
+function toArray(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // Fall through to simple comma-separated parsing.
+    }
+
+    return trimmed.includes(',')
+      ? trimmed.split(',').map((entry) => entry.trim()).filter(Boolean)
+      : [trimmed];
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.values(value);
+  }
+
+  return [];
+}
+
 function cleanTopics(topics, limit = 8) {
   return Array.from(
     new Set(
-      (topics || [])
+      toArray(topics)
         .map((topic) => String(topic || '').trim())
         .filter(Boolean)
     )
@@ -639,6 +671,71 @@ function safeJsonParse(content) {
 
 function buildSearchUrl(query) {
   return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+}
+
+function titleCaseSlug(value) {
+  return String(value || '')
+    .split('-')
+    .filter(Boolean)
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(' ')
+    .trim();
+}
+
+function extractReferenceLabelFromUrl(url, fallbackLabel = 'Reference') {
+  const normalizedUrl = String(url || '').trim().replace(/\/$/, '');
+  if (!normalizedUrl) {
+    return normalizePlanTitle(fallbackLabel, 'Reference');
+  }
+
+  for (const profile of TOPIC_REFERENCE_BANK) {
+    const directMatch = [
+      ...profile.problems.map((problem) => ({ label: problem.label, url: problem.url })),
+      { label: profile.article.title, url: profile.article.url },
+      { label: profile.newsletter.title, url: profile.newsletter.url },
+      ...profile.videos.map((video) => ({ label: video.title, url: video.url })),
+    ].find((entry) => String(entry.url || '').replace(/\/$/, '') === normalizedUrl);
+
+    if (directMatch) {
+      return directMatch.label;
+    }
+  }
+
+  try {
+    const parsed = new URL(normalizedUrl);
+    const host = parsed.hostname.toLowerCase();
+    const segments = parsed.pathname.split('/').filter(Boolean);
+
+    if (host.includes('leetcode.com')) {
+      const problemIndex = segments.indexOf('problems');
+      if (problemIndex >= 0 && segments[problemIndex + 1]) {
+        return `LeetCode: ${titleCaseSlug(segments[problemIndex + 1])}`;
+      }
+    }
+
+    if (host.includes('hackerrank.com')) {
+      const challengeIndex = segments.indexOf('challenges');
+      if (challengeIndex >= 0 && segments[challengeIndex + 1]) {
+        return `HackerRank: ${titleCaseSlug(segments[challengeIndex + 1])}`;
+      }
+    }
+
+    if (host.includes('codechef.com') && segments[1]) {
+      return `CodeChef: ${segments[1].toUpperCase()}`;
+    }
+
+    if (host.includes('geeksforgeeks.org') && segments[0]) {
+      return `GeeksforGeeks: ${titleCaseSlug(segments[0])}`;
+    }
+
+    if (host.includes('youtube.com') && parsed.searchParams.get('search_query')) {
+      return `YouTube: ${parsed.searchParams.get('search_query')}`;
+    }
+  } catch {
+    // Fall back to provided label.
+  }
+
+  return normalizePlanTitle(fallbackLabel, 'Reference');
 }
 
 function getRolePrepProfile(targetRole) {
@@ -889,7 +986,7 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole,
       totalEstimatedMinutes: chunks.reduce((sum, minutes) => sum + minutes, 0),
       items: [
         {
-          title: practiceType === 'Practice' ? `${primaryTopic} focused drill` : `${primaryTopic} platform warm-up`,
+          title: primaryProblem.label,
           type: practiceType,
           estimatedMinutes: chunks[0],
           difficulty: primaryProblem.difficulty,
@@ -897,7 +994,7 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole,
           referenceUrl: primaryProblem.url,
         },
         {
-          title: practiceType === 'Practice' ? `${secondaryTopic} applied checkpoint` : `${secondaryTopic} medium checkpoint`,
+          title: secondaryProblem.label,
           type: practiceType,
           estimatedMinutes: chunks[1],
           difficulty: secondaryProblem.difficulty,
@@ -1043,26 +1140,185 @@ function resolveTaskReferencePair(item = {}, fallbackItem = {}) {
 
   if (itemUrl) {
     return {
-      referenceLabel: rawItemLabel || rawFallbackLabel || 'Reference',
+      referenceLabel: extractReferenceLabelFromUrl(itemUrl, rawItemLabel || rawFallbackLabel || 'Reference'),
       referenceUrl: itemUrl,
     };
   }
 
   return {
-    referenceLabel: rawFallbackLabel || rawItemLabel || 'Reference',
+    referenceLabel: extractReferenceLabelFromUrl(fallbackUrl, rawFallbackLabel || rawItemLabel || 'Reference'),
     referenceUrl: fallbackUrl || null,
   };
 }
 
+function buildTaskDisplayTitle(item = {}, fallbackItem = {}, reference = { referenceLabel: null }) {
+  const normalizedType = String(item.type || fallbackItem.type || '').trim().toLowerCase();
+  const fallbackTitle = String(fallbackItem.title || '').trim();
+  const itemTitle = String(item.title || '').trim();
+  const referenceLabel = String(reference.referenceLabel || '').trim();
+
+  if ((normalizedType === 'dsa' || normalizedType === 'practice') && referenceLabel) {
+    return referenceLabel;
+  }
+
+  if (normalizedType === 'revision' && referenceLabel) {
+    return `Revision: ${referenceLabel}`;
+  }
+
+  if (normalizedType === 'project' && referenceLabel && !itemTitle) {
+    return `Project task: ${referenceLabel}`;
+  }
+
+  return itemTitle || fallbackTitle || referenceLabel || 'Focused task';
+}
+
+function normalizeLabelForComparison(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/^(leetcode|hackerrank|codechef|geeksforgeeks|youtube)\s*:\s*/i, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\b(problem|task|practice|revision|project)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function labelsLookRelated(left, right) {
+  const normalizedLeft = normalizeLabelForComparison(left);
+  const normalizedRight = normalizeLabelForComparison(right);
+
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+
+  if (
+    normalizedLeft === normalizedRight
+    || normalizedLeft.includes(normalizedRight)
+    || normalizedRight.includes(normalizedLeft)
+  ) {
+    return true;
+  }
+
+  const leftTokens = Array.from(new Set(normalizedLeft.split(' ').filter((token) => token.length > 2)));
+  const rightTokens = Array.from(new Set(normalizedRight.split(' ').filter((token) => token.length > 2)));
+
+  if (!leftTokens.length || !rightTokens.length) {
+    return false;
+  }
+
+  const overlap = rightTokens.filter((token) => leftTokens.includes(token)).length;
+  return overlap >= Math.min(2, Math.min(leftTokens.length, rightTokens.length));
+}
+
+function isDirectPracticeUrl(url) {
+  if (!hasValidReferenceUrl(url)) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(String(url).trim());
+    const host = parsed.hostname.toLowerCase();
+    const segments = parsed.pathname.split('/').filter(Boolean);
+
+    if (host.includes('leetcode.com')) {
+      const problemIndex = segments.indexOf('problems');
+      return problemIndex >= 0 && Boolean(segments[problemIndex + 1]);
+    }
+
+    if (host.includes('hackerrank.com')) {
+      const challengeIndex = segments.indexOf('challenges');
+      return challengeIndex >= 0 && Boolean(segments[challengeIndex + 1]);
+    }
+
+    if (host.includes('codechef.com')) {
+      const problemsIndex = segments.indexOf('problems');
+      return problemsIndex >= 0 && Boolean(segments[problemsIndex + 1]);
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
+function resolveBestTaskReferencePair(item = {}, fallbackItem = {}) {
+  const normalizedType = String(item.type || fallbackItem.type || '').trim().toLowerCase();
+  const itemReference = resolveTaskReferencePair(item, fallbackItem);
+  const fallbackReference = resolveTaskReferencePair(fallbackItem, fallbackItem);
+
+  if (normalizedType === 'dsa' || normalizedType === 'practice') {
+    const itemSignal = String(item.referenceLabel || item.title || '').trim();
+    const itemLooksRelated = labelsLookRelated(itemSignal, itemReference.referenceLabel);
+
+    if (isDirectPracticeUrl(itemReference.referenceUrl) && itemLooksRelated) {
+      return itemReference;
+    }
+
+    return fallbackReference.referenceUrl ? fallbackReference : itemReference;
+  }
+
+  return itemReference.referenceUrl ? itemReference : fallbackReference;
+}
+
+function normalizeStoredPlanShape(plan) {
+  if (!plan) {
+    return null;
+  }
+
+  return {
+    ...plan,
+    knownTopics: cleanTopics(plan.knownTopics, 8),
+    targetTopics: cleanTopics(plan.targetTopics, 8),
+    roadmap: toArray(plan.roadmap).map((week, index) => ({
+      week: Number(week?.week || index + 1),
+      title: String(week?.title || `Week ${index + 1}`).trim(),
+      focusTopics: cleanTopics(week?.focusTopics || week?.topics || [], 3),
+      estimatedHours: clamp(week?.estimatedHours || 12, 4, 30),
+      goals: cleanTopics(week?.goals || [], 4),
+    })),
+    tasks: toArray(plan.tasks).map((dayPlan, dayIndex) => ({
+      day: String(dayPlan?.day || `Day ${dayIndex + 1}`).trim(),
+      theme: String(dayPlan?.theme || 'Focused prep').trim(),
+      totalEstimatedMinutes: clamp(dayPlan?.totalEstimatedMinutes || 120, 60, 480),
+      items: toArray(dayPlan?.items).map((item, itemIndex) => {
+        const reference = resolveBestTaskReferencePair(item, item);
+        return {
+          title: buildTaskDisplayTitle(item, item, reference) || `Task ${itemIndex + 1}`,
+          type: String(item?.type || 'DSA').trim(),
+          estimatedMinutes: clamp(item?.estimatedMinutes || 30, 10, 240),
+          difficulty: String(item?.difficulty || 'Medium').trim(),
+          referenceLabel: reference.referenceLabel,
+          referenceUrl: reference.referenceUrl,
+        };
+      }),
+    })),
+    resources: toArray(plan.resources).map((group) => ({
+      topic: String(group?.topic || '').trim(),
+      items: toArray(group?.items).map((item) => ({
+        title: String(item?.title || '').trim(),
+        type: String(item?.type || 'article').trim(),
+        url: String(item?.url || '').trim(),
+      })).filter((item) => item.title && hasValidReferenceUrl(item.url)),
+    })).filter((group) => group.topic),
+    flashcards: toArray(plan.flashcards).map((card) => ({
+      topic: String(card?.topic || '').trim(),
+      question: String(card?.question || '').trim(),
+      answer: String(card?.answer || '').trim(),
+    })).filter((card) => card.topic && card.question && card.answer),
+  };
+}
+
 function normalizePlanResult(rawPlan, fallbackPlan) {
+  const rawRoadmap = toArray(rawPlan?.roadmap);
+  const rawTaskDays = toArray(rawPlan?.tasks);
+  const rawFlashcards = toArray(rawPlan?.flashcards);
   const relevantTopics = cleanTopics([
     ...fallbackPlan.targetTopics,
     ...getRoleBiasTopics(fallbackPlan.targetRole),
     ...fallbackPlan.knownTopics,
   ], 12);
 
-  const roadmap = Array.isArray(rawPlan.roadmap) && rawPlan.roadmap.length
-    ? rawPlan.roadmap.slice(0, fallbackPlan.roadmap.length).map((week, index) => ({
+  const roadmap = rawRoadmap.length
+    ? rawRoadmap.slice(0, fallbackPlan.roadmap.length).map((week, index) => ({
       week: Number(week.week || index + 1),
       title: String(week.title || fallbackPlan.roadmap[index]?.title || `Week ${index + 1}`).trim(),
       focusTopics: (() => {
@@ -1077,11 +1333,12 @@ function normalizePlanResult(rawPlan, fallbackPlan) {
     }))
     : fallbackPlan.roadmap;
 
-  const tasks = Array.isArray(rawPlan.tasks) && rawPlan.tasks.length
-    ? rawPlan.tasks.slice(0, 5).map((dayPlan, index) => {
+  const tasks = rawTaskDays.length
+    ? rawTaskDays.slice(0, 5).map((dayPlan, index) => {
       const rawTheme = String(dayPlan.theme || '');
       const hasRelevantTheme = matchesRelevantTopic(rawTheme, relevantTopics);
-      const hasRelevantItems = Array.isArray(dayPlan.items) && dayPlan.items.some((item) => (
+      const dayItems = toArray(dayPlan.items);
+      const hasRelevantItems = dayItems.length && dayItems.some((item) => (
         matchesRelevantTopic(`${item?.title || ''} ${item?.referenceLabel || ''}`, relevantTopics)
       ));
 
@@ -1094,20 +1351,21 @@ function normalizePlanResult(rawPlan, fallbackPlan) {
         theme: rawTheme || fallbackPlan.tasks[index]?.theme || 'Focused prep',
         totalEstimatedMinutes: clamp(
           dayPlan.totalEstimatedMinutes
-            || dayPlan.items?.reduce((sum, item) => sum + Number(item.estimatedMinutes || 0), 0)
+            || dayItems.reduce((sum, item) => sum + Number(item?.estimatedMinutes || 0), 0)
             || fallbackPlan.tasks[index]?.totalEstimatedMinutes
             || 120,
           60,
           480
         ),
-        items: Array.isArray(dayPlan.items) && dayPlan.items.length
-          ? dayPlan.items.slice(0, 4).map((item, itemIndex) => {
+        items: dayItems.length
+          ? dayItems.slice(0, 4).map((item, itemIndex) => {
             const fallbackItem = fallbackPlan.tasks[index]?.items[itemIndex] || {};
-            const reference = resolveTaskReferencePair(item, fallbackItem);
+            const reference = resolveBestTaskReferencePair(item, fallbackItem);
+            const normalizedType = String(item.type || fallbackItem.type || 'DSA').trim();
 
             return {
-              title: String(item.title || fallbackItem.title || 'Focused task').trim(),
-              type: String(item.type || fallbackItem.type || 'DSA').trim(),
+              title: buildTaskDisplayTitle(item, fallbackItem, reference),
+              type: normalizedType,
               estimatedMinutes: clamp(item.estimatedMinutes || fallbackItem.estimatedMinutes || 30, 10, 240),
               difficulty: String(item.difficulty || fallbackItem.difficulty || 'Medium').trim(),
               referenceLabel: reference.referenceLabel,
@@ -1121,8 +1379,8 @@ function normalizePlanResult(rawPlan, fallbackPlan) {
 
   const resources = fallbackPlan.resources;
 
-  const flashcards = Array.isArray(rawPlan.flashcards) && rawPlan.flashcards.length
-    ? rawPlan.flashcards.slice(0, 10).map((card, index) => {
+  const flashcards = rawFlashcards.length
+    ? rawFlashcards.slice(0, 10).map((card, index) => {
       const topic = String(card.topic || fallbackPlan.flashcards[index]?.topic || 'Prep').trim();
       if (!matchesRelevantTopic(topic, relevantTopics)) {
         return fallbackPlan.flashcards[index] || fallbackPlan.flashcards[0];
@@ -1206,21 +1464,22 @@ function hydrateStoredPlan(plan) {
     return null;
   }
 
+  const normalizedPlan = normalizeStoredPlanShape(plan);
   const titles = resolvePlanTitles({
-    targetRole: plan.targetRole,
-    targetTopics: plan.targetTopics,
-    roadmap: plan.roadmap,
-    tasks: plan.tasks,
-  }, typeof plan.metadata?.title === 'string' ? plan.metadata.title : '', plan.metadata?.titleSource === 'custom' ? 'custom' : 'generated');
+    targetRole: normalizedPlan.targetRole,
+    targetTopics: normalizedPlan.targetTopics,
+    roadmap: normalizedPlan.roadmap,
+    tasks: normalizedPlan.tasks,
+  }, typeof normalizedPlan.metadata?.title === 'string' ? normalizedPlan.metadata.title : '', normalizedPlan.metadata?.titleSource === 'custom' ? 'custom' : 'generated');
 
   return {
-    ...plan,
-    durationMonths: normalizeDurationMonths(plan.durationMonths || plan.metadata?.durationMonths || 1, 1),
+    ...normalizedPlan,
+    durationMonths: normalizeDurationMonths(normalizedPlan.durationMonths || normalizedPlan.metadata?.durationMonths || 1, 1),
     title: titles.title,
     autoTitle: titles.autoTitle,
     titleSource: titles.titleSource,
-    coachLine: typeof plan.metadata?.coachLine === 'string' ? plan.metadata.coachLine : null,
-    usedFallback: Boolean(plan.metadata?.usedFallback),
+    coachLine: typeof normalizedPlan.metadata?.coachLine === 'string' ? normalizedPlan.metadata.coachLine : null,
+    usedFallback: Boolean(normalizedPlan.metadata?.usedFallback),
   };
 }
 
