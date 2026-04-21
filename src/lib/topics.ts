@@ -41,3 +41,9 @@ export const TARGET_ROLES = [
   "Data Engineer",
   "Data Scientist",
 ];
+
+export const PREP_LANGUAGES = [
+  { value: "english", label: "English" },
+  { value: "tamil", label: "Tamil" },
+  { value: "hindi", label: "Hindi" },
+] as const;

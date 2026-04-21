@@ -17,6 +17,7 @@ router.post(
   [
     body('assessmentType').optional().isIn(['mcq', 'fill_blank', 'coding']),
     body('durationMinutes').optional().isInt({ min: 10, max: 90 }),
+    body('assessmentScope').optional().isIn(['daily', 'weekly']),
   ],
   validate,
   asyncHandler(controller.generateAssessment)

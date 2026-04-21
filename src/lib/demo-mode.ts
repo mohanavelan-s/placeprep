@@ -172,6 +172,37 @@ function getRoleBiasTopics(targetRole: string) {
   return ["Dynamic Programming", "Graphs"];
 }
 
+const languageProfiles = {
+  english: {
+    label: "English",
+    translationCode: "en",
+    creators: ["freeCodeCamp", "Bro Code", "CodeWithMosh"],
+  },
+  tamil: {
+    label: "Tamil",
+    translationCode: "ta",
+    creators: ["Error Makes Clever", "GUVI Tamil", "Tamil Tech Programming"],
+  },
+  hindi: {
+    label: "Hindi",
+    translationCode: "hi",
+    creators: ["Apna College", "CodeHelp", "CodeWithHarry"],
+  },
+} as const;
+
+function normalizePrepLanguage(value: unknown) {
+  const normalized = String(value || "english").trim().toLowerCase();
+  return normalized in languageProfiles ? normalized as keyof typeof languageProfiles : "english";
+}
+
+function buildTranslatedExternalUrl(url: string, preferredLanguage: keyof typeof languageProfiles) {
+  if (!url || preferredLanguage === "english") {
+    return url;
+  }
+
+  return `https://translate.google.com/translate?sl=auto&tl=${languageProfiles[preferredLanguage].translationCode}&u=${encodeURIComponent(url)}`;
+}
+
 function getTopicRecipe(topic: string) {
   return topicBank.find((entry) => entry.pattern.test(topic)) || {
     article: ["GeeksforGeeks: Binary Search", "https://www.geeksforgeeks.org/binary-search/"],
@@ -184,40 +215,51 @@ function getTopicRecipe(topic: string) {
   };
 }
 
-function buildStudyStack(topic: string) {
+function buildStudyStack(topic: string, preferredLanguage: keyof typeof languageProfiles) {
   const recipe = getTopicRecipe(topic);
+  const creators = languageProfiles[preferredLanguage].creators;
   return {
     topic,
     items: [
-      { title: recipe.videos[0][0], type: "youtube", url: recipe.videos[0][1] },
-      { title: recipe.videos[1][0], type: "youtube", url: recipe.videos[1][1] },
-      { title: recipe.article[0], type: "article", url: recipe.article[1] },
-      { title: recipe.newsletter[0], type: "newsletter", url: recipe.newsletter[1] },
+      { title: `${creators[0]}: ${topic}`, type: "youtube", url: buildYouTubeSearchUrl(`${creators[0]} ${topic}`) },
+      { title: `${creators[1]}: ${topic}`, type: "youtube", url: buildYouTubeSearchUrl(`${creators[1]} ${topic}`) },
+      {
+        title: preferredLanguage === "english" ? recipe.article[0] : `${recipe.article[0]} (${languageProfiles[preferredLanguage].label} translation)`,
+        type: "article",
+        url: buildTranslatedExternalUrl(recipe.article[1], preferredLanguage),
+      },
+      {
+        title: preferredLanguage === "english" ? recipe.newsletter[0] : `${recipe.newsletter[0]} (${languageProfiles[preferredLanguage].label} translation)`,
+        type: "newsletter",
+        url: buildTranslatedExternalUrl(recipe.newsletter[1], preferredLanguage),
+      },
     ],
   };
 }
 
-function buildTaskItems(topic: string, revisionTopic: string) {
+function buildTaskItems(topic: string, revisionTopic: string, targetRole: string, preferredLanguage: keyof typeof languageProfiles) {
   const recipe = getTopicRecipe(topic);
   const revisionRecipe = getTopicRecipe(revisionTopic);
   const [firstProblem, secondProblem = firstProblem] = recipe.problems;
 
   return [
     {
-      title: `${firstProblem[0].startsWith("LeetCode") ? "LeetCode" : firstProblem[0].startsWith("HackerRank") ? "HackerRank" : "CodeChef"} warm-up`,
+      title: firstProblem[0],
       type: "DSA",
       estimatedMinutes: 35,
       difficulty: firstProblem[1],
       referenceLabel: firstProblem[0],
       referenceUrl: firstProblem[2],
+      summary: `Solve ${firstProblem[0]} to rehearse ${topic}. Focus on the core pattern, the data structure choice, and the time complexity you would say out loud for ${targetRole}.`,
     },
     {
-      title: `${secondProblem[0].startsWith("LeetCode") ? "LeetCode" : secondProblem[0].startsWith("HackerRank") ? "HackerRank" : "CodeChef"} checkpoint`,
+      title: secondProblem[0],
       type: "DSA",
       estimatedMinutes: 45,
       difficulty: secondProblem[1],
       referenceLabel: secondProblem[0],
       referenceUrl: secondProblem[2],
+      summary: `Use ${secondProblem[0]} as the deeper checkpoint for ${topic}. Finish by explaining one edge case and one tradeoff clearly.`,
     },
     {
       title: `Revision block: ${revisionTopic}`,
@@ -225,21 +267,23 @@ function buildTaskItems(topic: string, revisionTopic: string) {
       estimatedMinutes: 25,
       difficulty: "Medium",
       referenceLabel: revisionRecipe.article[0],
-      referenceUrl: revisionRecipe.article[1],
+      referenceUrl: buildTranslatedExternalUrl(revisionRecipe.article[1], preferredLanguage),
+      summary: `Review ${revisionTopic}, then explain it back in one minute and connect it to ${targetRole}.`,
     },
     {
       title: `Structured execution: apply ${topic}`,
       type: "Project",
       estimatedMinutes: 35,
       difficulty: "Medium",
-      referenceLabel: recipe.videos[0][0],
-      referenceUrl: recipe.videos[0][1],
+      referenceLabel: `${languageProfiles[preferredLanguage].creators[0]}: ${topic}`,
+      referenceUrl: buildYouTubeSearchUrl(`${languageProfiles[preferredLanguage].creators[0]} ${topic}`),
+      summary: `Turn ${topic} into a small executable artifact or explanation note. Capture one concrete output you can mention in interviews.`,
     },
   ];
 }
 
 function buildPlan(
-  input: { knownTopics: string[]; targetTopics: string[]; targetRole?: string; timePerDay?: number; durationMonths?: number },
+  input: { knownTopics: string[]; targetTopics: string[]; targetRole?: string; timePerDay?: number; durationMonths?: number; preferredLanguage?: string },
   version = 1,
   sourcePlanId: string | null = null,
 ) {
@@ -253,6 +297,7 @@ function buildPlan(
   const primary = orderedTopics[0] || "Operating Systems";
   const secondary = orderedTopics[1] || "DBMS";
   const targetRole = input.targetRole || "Backend Engineer";
+  const preferredLanguage = normalizePrepLanguage(input.preferredLanguage);
   const durationMonths = clamp(Number(input.durationMonths || 1), 1, 12);
   const now = new Date().toISOString();
 
@@ -275,7 +320,7 @@ function buildPlan(
   const tasks = Array.from({ length: 5 }, (_, index) => {
     const topic = orderedTopics[index % orderedTopics.length] || primary;
     const revisionTopic = orderedTopics[(index + 1) % orderedTopics.length] || secondary;
-    const items = buildTaskItems(topic, revisionTopic);
+    const items = buildTaskItems(topic, revisionTopic, targetRole, preferredLanguage);
     return {
       day: `Day ${index + 1}`,
       theme: `${topic} into ${revisionTopic}`,
@@ -291,7 +336,7 @@ function buildPlan(
     targetTopics,
     roadmap,
     tasks,
-    resources: orderedTopics.slice(0, 4).map(buildStudyStack),
+    resources: orderedTopics.slice(0, 4).map((topic) => buildStudyStack(topic, preferredLanguage)),
     flashcards: [
       { topic: primary, question: `What is the clean mental model for ${primary} in a ${targetRole} interview?`, answer: `Define ${primary} in one sentence, name one tradeoff, then tie it directly to the first task in the plan.` },
       { topic: secondary, question: `How do you explain ${secondary} without sounding memorized?`, answer: `Use one concrete example, one common mistake, and one performance tradeoff that would matter for ${targetRole}.` },
@@ -301,6 +346,7 @@ function buildPlan(
     timePerDay: input.timePerDay || 180,
     durationMonths,
     targetRole,
+    preferredLanguage,
     version,
     isActive: true,
     sourcePlanId,
@@ -311,6 +357,7 @@ function buildPlan(
       coachLine: `Push ${primary} until it becomes automatic, then let ${secondary} carry the next layer of confidence.`,
       usedFallback: true,
       durationMonths,
+      preferredLanguage,
     },
     title: `${targetRole}: ${primary} + ${secondary}`,
     autoTitle: `${targetRole}: ${primary} + ${secondary}`,
@@ -328,7 +375,7 @@ function buildTasksFromPlan(plan: ReturnType<typeof buildPlan>) {
     id: createId("task"),
     userId: "demo-user",
     title: item.title,
-    description: `${plan.tasks[0].day}: ${plan.tasks[0].theme}`,
+    description: item.summary || `${plan.tasks[0].day}: ${plan.tasks[0].theme}`,
     category: item.type === "Revision" ? "Core" : item.type === "Project" ? "Project" : "DSA",
     subcategory: plan.tasks[0].theme,
     status: index === 0 ? "completed" : index === 1 ? "in_progress" : "pending",
@@ -344,7 +391,7 @@ function buildTasksFromPlan(plan: ReturnType<typeof buildPlan>) {
     difficulty: /easy/i.test(item.difficulty) ? 2 : /hard/i.test(item.difficulty) ? 4 : 3,
     weakArea: plan.tasks[0].theme,
     aiGenerated: true,
-    metadata: { source: "demo-mode", planId: plan.id, itemIndex: index },
+    metadata: { source: "demo-mode", planId: plan.id, itemIndex: index, summary: item.summary || null },
     completedAt: index === 0 ? new Date().toISOString() : null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -431,47 +478,110 @@ function getActivePlanFromState(state: Record<string, unknown>) {
   return ((state.prepPlans as Array<Record<string, unknown>>) || []).find((plan) => plan.isActive) || null;
 }
 
+function buildDemoAssessmentSources(
+  plan: ReturnType<typeof buildPlan>,
+  assessmentScope: "daily" | "weekly",
+) {
+  const taskPool = assessmentScope === "weekly"
+    ? plan.tasks.flatMap((day) => day.items)
+    : plan.tasks[0]?.items || [];
+  const topicPool = cleanTopics([
+    ...plan.knownTopics,
+    ...plan.targetTopics,
+    ...plan.roadmap.flatMap((week) => week.focusTopics || []),
+  ], assessmentScope === "weekly" ? 8 : 6);
+
+  const taskSources = taskPool.map((item) => ({
+    kind: "task",
+    topic: item.referenceLabel || item.title,
+    promptTopic: item.title,
+    referenceLabel: item.referenceLabel || item.title,
+    referenceUrl: item.referenceUrl || null,
+    taskTitle: item.title,
+    summary: item.summary || null,
+    type: item.type,
+  }));
+
+  const topicSources = topicPool.map((topic) => ({
+    kind: "topic",
+    topic,
+    promptTopic: topic,
+    referenceLabel: plan.resources.find((entry) => entry.topic === topic)?.items?.[0]?.title || topic,
+    referenceUrl: plan.resources.find((entry) => entry.topic === topic)?.items?.[0]?.url || null,
+    taskTitle: null,
+    summary: null,
+    type: "Revision",
+  }));
+
+  const interleaved: Array<(typeof taskSources)[number] | (typeof topicSources)[number]> = [];
+  const taskQueue = [...taskSources];
+  const topicQueue = [...topicSources];
+  while (taskQueue.length || topicQueue.length) {
+    if (taskQueue.length) {
+      interleaved.push(taskQueue.shift()!);
+    }
+    if (topicQueue.length) {
+      interleaved.push(topicQueue.shift()!);
+    }
+  }
+
+  return interleaved;
+}
+
 function buildAssessmentQuestions(
   plan: ReturnType<typeof buildPlan>,
   assessmentType: "mcq" | "fill_blank" | "coding",
   durationMinutes: number,
+  assessmentScope: "daily" | "weekly",
 ) {
+  const sources = buildDemoAssessmentSources(plan, assessmentScope);
+
   if (assessmentType === "coding") {
-    return plan.tasks[0].items.slice(0, 3).map((item, index) => ({
+    return sources.filter((source) => source.kind === "task").slice(0, 3).map((source, index) => ({
       id: `coding-${index + 1}`,
-      topic: item.title,
-      prompt: `Write a short interview-style solution or pseudocode for ${item.referenceLabel || item.title}. Mention the core approach and time complexity.`,
+      topic: source.promptTopic,
+      prompt: `Write a short interview-style solution or pseudocode for ${source.referenceLabel || source.promptTopic}. Mention the core approach and time complexity.`,
       type: "coding",
       averageTimeMinutes: clamp(Math.round(durationMinutes / 3), 15, 30),
-      referenceLabel: item.referenceLabel,
-      referenceUrl: item.referenceUrl,
+      referenceLabel: source.referenceLabel,
+      referenceUrl: source.referenceUrl,
       placeholder: "Use short code or pseudocode. Keep it interview-focused.",
-      taskTitle: item.title,
-      expectedKeywords: cleanTopics([item.type, item.title, item.referenceLabel || "", "time complexity"], 6),
+      taskTitle: source.taskTitle,
+      expectedKeywords: cleanTopics([source.type, source.promptTopic, source.referenceLabel || "", "time complexity"], 6),
     }));
   }
 
-  const flashcards = plan.flashcards.slice(0, assessmentType === "fill_blank" ? 5 : 4);
+  const questionCount = assessmentType === "fill_blank"
+    ? (assessmentScope === "weekly" ? 6 : 4)
+    : (assessmentScope === "weekly" ? 5 : 4);
+  const relevantCards = sources.slice(0, questionCount).map((source) => {
+    const card = plan.flashcards.find((entry) => entry.topic === source.promptTopic || entry.topic === source.topic)
+      || plan.flashcards.find((entry) => source.promptTopic.toLowerCase().includes(entry.topic.toLowerCase()))
+      || plan.flashcards.find((entry) => entry.topic.toLowerCase().includes(source.promptTopic.toLowerCase()))
+      || plan.flashcards[0];
+
+    return { source, card };
+  });
 
   if (assessmentType === "fill_blank") {
-    return flashcards.map((card, index) => {
+    return relevantCards.map(({ source, card }, index) => {
       const answer = String(card.answer || "").trim();
       const keyPhrase = answer.split(/\s+/).slice(0, 4).join(" ");
       return {
         id: `fill-${index + 1}`,
-        topic: card.topic,
-        prompt: `Fill in the blank: ${answer.replace(keyPhrase, "_____")}`,
+        topic: source.promptTopic,
+        prompt: `Fill in the blank for ${assessmentScope === "weekly" ? "this weekly focus" : "today's focus"} ${source.referenceLabel || source.promptTopic}: ${answer.replace(keyPhrase, "_____")}`,
         type: "fill_blank",
-        averageTimeMinutes: clamp(Math.round(durationMinutes / flashcards.length), 3, 8),
-        referenceLabel: card.topic,
-        referenceUrl: findTopicReferenceUrl(plan, card.topic),
+        averageTimeMinutes: clamp(Math.round(durationMinutes / Math.max(relevantCards.length, 1)), 3, 8),
+        referenceLabel: source.referenceLabel,
+        referenceUrl: source.referenceUrl,
         placeholder: "Type the missing idea",
         expectedAnswer: keyPhrase,
       };
     });
   }
 
-  return flashcards.map((card, index) => {
+  return relevantCards.map(({ source, card }, index) => {
     const correctText = String(card.answer || "").trim();
     const distractors = [
       "Skip the edge case and move straight to coding.",
@@ -489,26 +599,23 @@ function buildAssessmentQuestions(
     const correctChoice = choices.find((choice) => choice.text === correctText) || choices[0];
     return {
       id: `mcq-${index + 1}`,
-      topic: card.topic,
+      topic: source.promptTopic,
       prompt: card.question,
       type: "mcq",
-      averageTimeMinutes: clamp(Math.round(durationMinutes / flashcards.length), 3, 8),
-      referenceLabel: card.topic,
-      referenceUrl: findTopicReferenceUrl(plan, card.topic),
+      averageTimeMinutes: clamp(Math.round(durationMinutes / Math.max(relevantCards.length, 1)), 3, 8),
+      referenceLabel: source.referenceLabel,
+      referenceUrl: source.referenceUrl,
       choices,
       correctOptionId: correctChoice.id,
     };
   });
 }
 
-function findTopicReferenceUrl(plan: ReturnType<typeof buildPlan>, topic: string) {
-  return plan.resources.find((entry) => entry.topic === topic)?.items?.[0]?.url || null;
-}
-
 function buildAssessmentSession(
   plan: ReturnType<typeof buildPlan>,
   assessmentType: "mcq" | "fill_blank" | "coding",
   durationMinutes: number,
+  assessmentScope: "daily" | "weekly",
 ) {
   return {
     id: createId("assessment"),
@@ -516,16 +623,18 @@ function buildAssessmentSession(
     planId: plan.id,
     status: "started",
     assessmentType,
+    assessmentScope,
     durationMinutes,
     weakSpots: [],
     recommendations: [],
-    questions: buildAssessmentQuestions(plan, assessmentType, durationMinutes),
+    questions: buildAssessmentQuestions(plan, assessmentType, durationMinutes, assessmentScope),
     submission: { answers: {} },
     score: 0,
     metadata: {
       planTitle: plan.title,
       targetRole: plan.targetRole,
       targetTopics: plan.targetTopics,
+      scope: assessmentScope,
     },
     startedAt: new Date().toISOString(),
     submittedAt: null,
@@ -841,6 +950,36 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
   }
   if (pathname === "/resume/latest" && method === "GET") return (state.resumeHistory[0] || null) as T;
   if (pathname === "/resume" && method === "GET") return state.resumeHistory as T;
+  if (pathname === "/resume/match" && method === "POST") {
+    const activeRole = typeof body.targetRole === "string" ? body.targetRole : state.user.targetRole;
+    const jdText = String(body.jobDescription || "");
+    const matchedKeywords = cleanTopics(
+      jdText
+        .toLowerCase()
+        .split(/[^a-z0-9+#.]+/)
+        .filter((token) => token.length > 3)
+        .filter((token) => String((state.resumeHistory[0] as Record<string, unknown>)?.extractedText || "").toLowerCase().includes(token)),
+      8,
+    );
+    return {
+      targetRole: activeRole,
+      atsScore: 84,
+      jobMatchScore: clamp(58 + matchedKeywords.length * 5, 0, 100),
+      matchedKeywords,
+      missingKeywords: cleanTopics(["metrics", "ownership", "testing", "performance"].filter((token) => !matchedKeywords.includes(token)), 6),
+      benchmarkHighlights: [
+        `${activeRole} resumes read best when they show measurable impact, not just tool names.`,
+        "Projects should state the problem, stack, action, and result in one tight bullet flow.",
+        "Mirror the JD language naturally in relevant bullets instead of stuffing a keyword list.",
+      ],
+      tailoredSuggestions: [
+        "Add one more quantified project bullet with a clear outcome.",
+        "Bring the missing JD terms into experience or projects where they are genuinely true.",
+        "Tighten the summary so the first three lines already match the role direction.",
+      ],
+      summary: "Demo job-specific ATS score generated from the active resume snapshot and the pasted JD.",
+    } as T;
+  }
   if (pathname === "/uploads/images" && method === "GET") return state.uploads as T;
   if (pathname === "/apk/latest" && method === "GET") return (state.apkVersions[0] || null) as T;
   if (pathname === "/apk/versions" && method === "GET") return state.apkVersions as T;
@@ -929,6 +1068,7 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
       targetRole: typeof body.targetRole === "string" ? body.targetRole : state.user.targetRole,
       timePerDay: Number(body.timePerDay || 180),
       durationMonths: Number(body.durationMonths || 1),
+      preferredLanguage: typeof body.preferredLanguage === "string" ? body.preferredLanguage : "english",
     }, state.prepPlans.length + 1);
     const tasks = buildTasksFromPlan(nextPlan);
     return updateState((current) => refreshState({ ...current, prepPlans: [nextPlan, ...(current.prepPlans as Array<Record<string, unknown>>).map((plan) => ({ ...plan, isActive: false }))], tasks })).prepPlans[0] as T;
@@ -942,6 +1082,7 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
       targetRole: typeof body.targetRole === "string" ? body.targetRole : sourcePlan.targetRole,
       timePerDay: Number(body.timePerDay || sourcePlan.timePerDay || 180),
       durationMonths: Number(body.durationMonths || sourcePlan.durationMonths || 1),
+      preferredLanguage: typeof body.preferredLanguage === "string" ? body.preferredLanguage : sourcePlan.preferredLanguage,
     }, state.prepPlans.length + 1, String(sourcePlan.id));
     return updateState((current) => refreshState({ ...current, prepPlans: [nextPlan, ...(current.prepPlans as Array<Record<string, unknown>>).map((plan) => ({ ...plan, isActive: false }))], tasks: buildTasksFromPlan(nextPlan) })).prepPlans[0] as T;
   }
@@ -986,6 +1127,7 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
       activePlan,
       (body.assessmentType as "mcq" | "fill_blank" | "coding") || "mcq",
       clamp(Number(body.durationMinutes || 20), 10, 90),
+      body.assessmentScope === "weekly" ? "weekly" : "daily",
     );
 
     const nextState = updateState((current) => ({

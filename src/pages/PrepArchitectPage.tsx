@@ -50,7 +50,7 @@ import {
 } from "@/lib/api";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import { hoursStringFromMinutes, parseHoursToMinutes } from "@/lib/time";
-import { PREP_TOPICS, TARGET_ROLES } from "@/lib/topics";
+import { PREP_LANGUAGES, PREP_TOPICS, TARGET_ROLES } from "@/lib/topics";
 
 export default function PrepArchitectPage() {
   const queryClient = useQueryClient();
@@ -72,6 +72,7 @@ export default function PrepArchitectPage() {
   const [timePerDayHours, setTimePerDayHours] = useState("2");
   const [durationMonths, setDurationMonths] = useState("1");
   const [targetRole, setTargetRole] = useState(user?.targetRole || "Backend Engineer");
+  const [preferredLanguage, setPreferredLanguage] = useState("english");
   const [isEditing, setIsEditing] = useState(false);
   const [manageVersionsOpen, setManageVersionsOpen] = useState(false);
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
@@ -86,6 +87,7 @@ export default function PrepArchitectPage() {
       setTargetRole(user?.targetRole || "Backend Engineer");
       setTimePerDayHours("2");
       setDurationMonths("1");
+      setPreferredLanguage("english");
       return;
     }
 
@@ -94,6 +96,7 @@ export default function PrepArchitectPage() {
     setTimePerDayHours(hoursStringFromMinutes(latestPlanQuery.data.timePerDay || 120));
     setDurationMonths(String(latestPlanQuery.data.durationMonths || 1));
     setTargetRole(latestPlanQuery.data.targetRole || user?.targetRole || "Backend Engineer");
+    setPreferredLanguage(latestPlanQuery.data.preferredLanguage || "english");
   }, [latestPlanQuery.data, user?.strongTopics, user?.targetRole, user?.weakAreas]);
 
   const generateMutation = useMutation({
@@ -104,6 +107,7 @@ export default function PrepArchitectPage() {
         timePerDay: parseHoursToMinutes(timePerDayHours, 120),
         durationMonths: Math.min(12, Math.max(1, Number(durationMonths || 1))),
         targetRole,
+        preferredLanguage,
       }),
     onSuccess: (result) => {
       queryClient.setQueryData(["prep-plan", "latest"], result);
@@ -127,6 +131,7 @@ export default function PrepArchitectPage() {
         timePerDay: parseHoursToMinutes(timePerDayHours, 120),
         durationMonths: Math.min(12, Math.max(1, Number(durationMonths || 1))),
         targetRole,
+        preferredLanguage,
       }),
     onSuccess: (result) => {
       queryClient.setQueryData(["prep-plan", "latest"], result);
@@ -283,7 +288,9 @@ export default function PrepArchitectPage() {
                   <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
                     v{latestPlan.version} / {latestPlan.durationMonths} month{latestPlan.durationMonths === 1 ? "" : "s"}
                   </p>
-                  <p className="mt-1 text-sm text-muted-foreground">{latestPlan.targetTopics[0] || "Custom focus"}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {latestPlan.targetTopics[0] || "Custom focus"} / {latestPlan.preferredLanguage || "english"}
+                  </p>
                 </div>
 
                 <Button
@@ -420,6 +427,25 @@ export default function PrepArchitectPage() {
               </Select>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">
                 {roleStrategyCopy}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-border/80 bg-card/70 p-5">
+              <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Plan language</p>
+              <Select value={preferredLanguage} onValueChange={setPreferredLanguage}>
+                <SelectTrigger className="mt-3 h-11 border-border/80 bg-background/70">
+                  <SelectValue placeholder="Choose a language" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PREP_LANGUAGES.map((language) => (
+                    <SelectItem key={language.value} value={language.value}>
+                      {language.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                Video resources lean into this language. Tamil plans prefer channels like Error Makes Clever, Hindi plans prefer Hindi-first explainers, and readable links open through translation when needed.
               </p>
             </div>
 

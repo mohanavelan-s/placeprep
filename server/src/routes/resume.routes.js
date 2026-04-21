@@ -23,6 +23,17 @@ router.post(
   asyncHandler(controller.uploadResume)
 );
 
+router.post(
+  '/match',
+  [
+    body('jobDescription').trim().isLength({ min: 20, max: 12000 }),
+    body('targetRole').optional().isString(),
+    body('resumeText').optional().isString(),
+  ],
+  validate,
+  asyncHandler(controller.scoreAgainstJobDescription)
+);
+
 router.get('/latest', asyncHandler(controller.getLatestResume));
 router.get('/', asyncHandler(controller.listResumes));
 router.delete('/history', asyncHandler(controller.clearHistory));

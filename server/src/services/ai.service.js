@@ -12,6 +12,114 @@ const progressService = require('./progress.service');
 const logService = require('./log.service');
 const { getTodayInTimezone } = require('../utils/date');
 
+const AI_REQUEST_TIMEOUT_MS = 12000;
+
+const RESUME_ACTION_VERBS = [
+  'built',
+  'designed',
+  'delivered',
+  'improved',
+  'optimized',
+  'launched',
+  'reduced',
+  'increased',
+  'automated',
+  'implemented',
+  'analyzed',
+  'deployed',
+  'streamlined',
+  'scaled',
+];
+
+const RESUME_KEYWORD_STOP_WORDS = new Set([
+  'about',
+  'able',
+  'across',
+  'after',
+  'also',
+  'been',
+  'both',
+  'could',
+  'each',
+  'from',
+  'have',
+  'into',
+  'more',
+  'need',
+  'role',
+  'team',
+  'using',
+  'with',
+  'work',
+  'years',
+]);
+
+const RESUME_ROLE_BENCHMARKS = {
+  backend_engineer: {
+    label: 'Backend Engineer',
+    keywords: ['node.js', 'express', 'rest api', 'postgresql', 'sql', 'redis', 'docker', 'testing', 'microservices', 'system design'],
+    highlights: [
+      'Backend resumes score better when they show API ownership, database work, and measurable reliability or latency wins.',
+      'Projects and experience should mention schema design, auth, caching, queues, or deployment where relevant.',
+      'Testing and observability signals help ATS and recruiters read the resume as production-ready instead of classroom-only.',
+    ],
+  },
+  frontend_engineer: {
+    label: 'Frontend Engineer',
+    keywords: ['react', 'typescript', 'javascript', 'html', 'css', 'responsive', 'accessibility', 'performance', 'state management', 'testing'],
+    highlights: [
+      'Frontend resumes score better when they show shipped interfaces, responsiveness, accessibility, and user-facing outcomes.',
+      'Projects should mention component systems, state management, API integration, and measurable performance or UX gains.',
+      'Strong frontend ATS signals usually include React plus one or two quality indicators such as testing, Lighthouse, or accessibility work.',
+    ],
+  },
+  full_stack_engineer: {
+    label: 'Full Stack Engineer',
+    keywords: ['react', 'node.js', 'sql', 'api', 'database', 'authentication', 'deployment', 'testing', 'typescript', 'full stack'],
+    highlights: [
+      'Full-stack resumes score better when they prove end-to-end ownership across UI, API, data, and deployment.',
+      'Recruiters look for complete project delivery, not a disconnected list of frontend and backend tools.',
+      'Quantified outcomes and one concise architecture line help ATS and humans understand the scope quickly.',
+    ],
+  },
+  software_engineer: {
+    label: 'Software Engineer',
+    keywords: ['data structures', 'algorithms', 'system design', 'java', 'python', 'c++', 'sql', 'testing', 'apis', 'projects'],
+    highlights: [
+      'Software engineering resumes score better when they balance strong projects, core CS signals, and implementation impact.',
+      'The best ATS-friendly versions keep technical depth visible while still quantifying outcomes and ownership.',
+      'Experience, projects, and skills should reinforce the same role narrative instead of reading like unrelated tools.',
+    ],
+  },
+  data_analyst: {
+    label: 'Data Analyst',
+    keywords: ['sql', 'excel', 'power bi', 'tableau', 'python', 'pandas', 'dashboard', 'kpi', 'analysis', 'statistics'],
+    highlights: [
+      'Data analyst resumes score better when they show SQL, dashboards, metrics, and stakeholder-ready insight delivery.',
+      'Strong bullets connect the analysis to a business decision, KPI movement, or reporting improvement.',
+      'Portfolio work should look like analysis execution, not just tool usage without a decision or outcome.',
+    ],
+  },
+  data_engineer: {
+    label: 'Data Engineer',
+    keywords: ['sql', 'etl', 'elt', 'data warehouse', 'spark', 'airflow', 'python', 'pipelines', 'data modeling', 'orchestration'],
+    highlights: [
+      'Data engineer resumes score better when they show pipeline ownership, warehousing, data modeling, and reliability signals.',
+      'ATS-friendly versions usually mention throughput, latency, freshness, or failure-recovery improvements.',
+      'Project bullets should make the source, transformation, destination, and orchestration story obvious.',
+    ],
+  },
+  data_scientist: {
+    label: 'Data Scientist',
+    keywords: ['python', 'machine learning', 'statistics', 'pandas', 'numpy', 'model', 'classification', 'regression', 'experiment', 'evaluation'],
+    highlights: [
+      'Data scientist resumes score better when they show model work, evaluation metrics, experimentation, and practical business framing.',
+      'The strongest versions connect features, model choices, and metrics to a decision or product outcome.',
+      'ATS-friendly data science bullets usually mention the dataset, the method, and the measured result together.',
+    ],
+  },
+};
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Number(value || min)));
 }
@@ -46,6 +154,15 @@ function safeJsonParse(content) {
   }
 }
 
+function withTimeout(promise, timeoutMs) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]);
+}
+
 async function requestJson(systemPrompt, userPrompt, fallbackFactory) {
   const currentStatus = getAIStatus();
   if (currentStatus.fallbackMode && ['quota_exceeded', 'no_key'].includes(currentStatus.reason)) {
@@ -64,15 +181,18 @@ async function requestJson(systemPrompt, userPrompt, fallbackFactory) {
   }
 
   try {
-    const response = await client.chat.completions.create({
-      model: env.aiModel,
-      temperature: 0.45,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-    });
+    const response = await withTimeout(
+      client.chat.completions.create({
+        model: env.aiModel,
+        temperature: 0.45,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+      AI_REQUEST_TIMEOUT_MS,
+    );
 
     markAIWorking();
 
@@ -829,8 +949,83 @@ function extractKeywords(text) {
   );
 }
 
-async function analyzeResumeText(payload) {
-  const resumeText = (payload.resumeText || '').trim();
+function normalizeResumeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9+#.\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function uniqueStrings(values = [], limit = 12) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    )
+  ).slice(0, limit);
+}
+
+function normalizeRoleBenchmarkKey(targetRole = '') {
+  const normalized = String(targetRole || '').toLowerCase();
+
+  if (/data analyst/.test(normalized)) {
+    return 'data_analyst';
+  }
+  if (/data engineer/.test(normalized)) {
+    return 'data_engineer';
+  }
+  if (/data scientist/.test(normalized)) {
+    return 'data_scientist';
+  }
+  if (/front/.test(normalized)) {
+    return 'frontend_engineer';
+  }
+  if (/full.?stack/.test(normalized)) {
+    return 'full_stack_engineer';
+  }
+  if (/back/.test(normalized)) {
+    return 'backend_engineer';
+  }
+
+  return 'software_engineer';
+}
+
+function getResumeBenchmark(targetRole = '') {
+  return RESUME_ROLE_BENCHMARKS[normalizeRoleBenchmarkKey(targetRole)] || RESUME_ROLE_BENCHMARKS.software_engineer;
+}
+
+function includesNormalizedKeyword(text, keyword) {
+  const normalizedText = normalizeResumeText(text);
+  const normalizedKeyword = normalizeResumeText(keyword);
+  return Boolean(normalizedText && normalizedKeyword && normalizedText.includes(normalizedKeyword));
+}
+
+function extractResumeKeywords(text, limit = 16) {
+  return uniqueStrings(
+    extractKeywords(text).filter((keyword) => (
+      keyword.length >= 3
+      && !RESUME_KEYWORD_STOP_WORDS.has(keyword)
+      && !/^\d+$/.test(keyword)
+    )),
+    limit,
+  );
+}
+
+function countMetricSignals(text) {
+  const matches = String(text || '').match(/(\d+%|\d+\+|₹\s?\d+|\$\s?\d+|\d+\s?(ms|sec|hrs|hours|days|users|records|rows|pipelines|dashboards|apis|services|models))/gi);
+  return matches ? matches.length : 0;
+}
+
+function countActionVerbSignals(text) {
+  const normalized = normalizeResumeText(text);
+  return RESUME_ACTION_VERBS.filter((verb) => normalized.includes(verb)).length;
+}
+
+function buildResumeHeuristicAnalysis(payload = {}) {
+  const resumeText = String(payload.resumeText || '').trim();
+  const normalizedResumeText = normalizeResumeText(resumeText);
   const sections = {
     summary: /summary|profile|objective/i.test(resumeText),
     education: /education/i.test(resumeText),
@@ -839,48 +1034,133 @@ async function analyzeResumeText(payload) {
     skills: /skills|technologies|tools/i.test(resumeText),
     achievements: /achievement|award|certification/i.test(resumeText),
   };
-
-  const roleKeywords = extractKeywords(`${payload.targetRole || ''} ${payload.jobDescription || ''}`);
-  const matchedKeywords = roleKeywords.filter((keyword) => resumeText.toLowerCase().includes(keyword)).slice(0, 15);
+  const benchmark = getResumeBenchmark(payload.targetRole);
+  const benchmarkMatches = benchmark.keywords.filter((keyword) => includesNormalizedKeyword(normalizedResumeText, keyword));
+  const jdKeywords = extractResumeKeywords(payload.jobDescription, 18);
+  const jdMatches = jdKeywords.filter((keyword) => includesNormalizedKeyword(normalizedResumeText, keyword));
+  const missingKeywords = jdKeywords.filter((keyword) => !includesNormalizedKeyword(normalizedResumeText, keyword));
   const coveredSections = Object.values(sections).filter(Boolean).length;
-  const lengthScore = Math.min(20, Math.round(resumeText.length / 250));
-  const score = Math.min(100, Math.round((coveredSections / 6) * 60 + matchedKeywords.length * 2 + lengthScore));
+  const metricSignals = countMetricSignals(resumeText);
+  const actionVerbSignals = countActionVerbSignals(resumeText);
+  const sectionScore = (coveredSections / 6) * 28;
+  const benchmarkScore = (benchmarkMatches.length / Math.max(benchmark.keywords.length, 1)) * 27;
+  const jdScore = jdKeywords.length
+    ? (jdMatches.length / Math.max(jdKeywords.length, 1)) * 25
+    : benchmarkScore * 0.55;
+  const impactScore = Math.min(12, metricSignals * 2.5);
+  const writingScore = Math.min(8, actionVerbSignals * 1.2);
+  const atsScore = clamp(Math.round(sectionScore + benchmarkScore + jdScore + impactScore + writingScore), 0, 100);
+  const jobMatchScore = clamp(Math.round(
+    jdKeywords.length
+      ? ((jdMatches.length / Math.max(jdKeywords.length, 1)) * 100)
+      : ((benchmarkMatches.length / Math.max(benchmark.keywords.length, 1)) * 100)
+  ), 0, 100);
 
-  const fallback = {
-    summary: resumeText
-      ? 'Resume analyzed successfully with structural and keyword checks.'
-      : 'Resume uploaded, but text extraction is limited. Provide resume text for deeper analysis.',
-    score,
-    strengths: [
-      sections.projects ? 'Projects section is present.' : null,
-      sections.skills ? 'Skills section is present.' : null,
-      matchedKeywords.length >= 5 ? 'Resume already aligns with several target-role keywords.' : null,
-    ].filter(Boolean),
-    improvements: [
-      !sections.summary ? 'Add a short summary or objective tailored to the role.' : null,
-      !sections.projects ? 'Add a projects section with outcome-focused bullet points.' : null,
-      matchedKeywords.length < 5 ? 'Mirror more target-role keywords naturally in skills and experience bullets.' : null,
-    ].filter(Boolean),
-    keywords: matchedKeywords,
-    sections,
-  };
+  const strengths = uniqueStrings([
+    sections.projects ? 'Projects section is present and can carry proof of execution.' : '',
+    sections.experience ? 'Experience section gives ATS and recruiters a clear chronology.' : '',
+    sections.skills ? 'Skills section is present, which helps keyword scanning.' : '',
+    benchmarkMatches.length >= 5 ? `Role fit is visible through matched ${benchmark.label.toLowerCase()} keywords.` : '',
+    metricSignals >= 2 ? 'Several bullets already show quantified impact instead of generic responsibilities.' : '',
+  ], 6);
 
-  const { data, usedFallback } = await requestJson(
-    'You analyze resumes for placement preparation. Return JSON with keys: summary, score, strengths, improvements, keywords, sections.',
-    JSON.stringify(payload),
-    () => fallback
-  );
+  const improvements = uniqueStrings([
+    !sections.summary ? `Add a 2-3 line summary tailored to ${benchmark.label} roles.` : '',
+    !sections.projects ? 'Add a projects section with measurable outcomes, not just tool lists.' : '',
+    !sections.skills ? 'Add a clean skills section grouped by languages, tools, and platforms.' : '',
+    metricSignals < 2 ? 'Quantify more bullets with percentages, counts, latency, throughput, or business outcomes.' : '',
+    missingKeywords.slice(0, 2).length ? `Mirror missing job keywords naturally in relevant bullets: ${missingKeywords.slice(0, 2).join(', ')}.` : '',
+  ], 6);
 
-  const normalizedScore = clamp(toSafeInteger(data.score, fallback.score), 0, 100);
+  const summary = resumeText
+    ? `${benchmark.label} ATS review complete. The resume scores best when it shows ${benchmark.highlights[0].replace(/\.$/, '').toLowerCase()}, and the current version ${metricSignals >= 2 ? 'already has some quantified impact' : 'still needs stronger quantified impact'}.`
+    : 'Resume uploaded, but text extraction is limited. Provide resume text for deeper ATS analysis.';
 
   return {
-    summary: data.summary || fallback.summary,
+    summary,
+    score: atsScore,
+    jobMatchScore,
+    strengths,
+    improvements,
+    keywords: uniqueStrings([...jdMatches, ...benchmarkMatches], 20),
+    sections,
+    matchedKeywords: uniqueStrings([...jdMatches, ...benchmarkMatches], 12),
+    missingKeywords: uniqueStrings(missingKeywords, 12),
+    benchmarkHighlights: benchmark.highlights,
+  };
+}
+
+async function analyzeResumeText(payload) {
+  const resumeText = (payload.resumeText || '').trim();
+  const heuristic = buildResumeHeuristicAnalysis(payload);
+
+  const { data, usedFallback } = await requestJson(
+    'You analyze resumes for placement preparation. Return JSON with keys: summary, score, strengths, improvements, keywords, sections. Keep feedback crisp, human, and role-specific.',
+    JSON.stringify({
+      ...payload,
+      benchmark: getResumeBenchmark(payload.targetRole),
+      heuristic,
+    }),
+    () => heuristic
+  );
+
+  const normalizedScore = clamp(toSafeInteger(data.score, heuristic.score), 0, 100);
+
+  return {
+    summary: data.summary || heuristic.summary,
     score: normalizedScore,
-    strengths: Array.isArray(data.strengths) && data.strengths.length ? data.strengths.slice(0, 6) : fallback.strengths,
-    improvements: Array.isArray(data.improvements) && data.improvements.length ? data.improvements.slice(0, 6) : fallback.improvements,
-    keywords: Array.isArray(data.keywords) && data.keywords.length ? data.keywords.slice(0, 20) : fallback.keywords,
-    sections: data.sections && typeof data.sections === 'object' ? data.sections : fallback.sections,
+    strengths: uniqueStrings([
+      ...(Array.isArray(data.strengths) ? data.strengths : []),
+      ...heuristic.strengths,
+    ], 6),
+    improvements: uniqueStrings([
+      ...(Array.isArray(data.improvements) ? data.improvements : []),
+      ...heuristic.improvements,
+    ], 6),
+    keywords: uniqueStrings([
+      ...(Array.isArray(data.keywords) ? data.keywords : []),
+      ...heuristic.keywords,
+    ], 20),
+    sections: data.sections && typeof data.sections === 'object' ? data.sections : heuristic.sections,
+    jobMatchScore: heuristic.jobMatchScore,
+    missingKeywords: heuristic.missingKeywords,
+    benchmarkHighlights: heuristic.benchmarkHighlights,
     usedFallback,
+  };
+}
+
+async function scoreResumeAgainstJobDescription(payload) {
+  const jobDescription = String(payload.jobDescription || '').trim();
+  if (!jobDescription) {
+    return {
+      targetRole: payload.targetRole || null,
+      atsScore: 0,
+      jobMatchScore: 0,
+      matchedKeywords: [],
+      missingKeywords: [],
+      benchmarkHighlights: [],
+      tailoredSuggestions: ['Paste a job description first so the resume can be scored against that exact role.'],
+      summary: 'No job description was provided.',
+    };
+  }
+
+  const heuristic = buildResumeHeuristicAnalysis(payload);
+
+  return {
+    targetRole: payload.targetRole || getResumeBenchmark(payload.targetRole).label,
+    atsScore: heuristic.score,
+    jobMatchScore: heuristic.jobMatchScore,
+    matchedKeywords: heuristic.matchedKeywords,
+    missingKeywords: heuristic.missingKeywords,
+    benchmarkHighlights: heuristic.benchmarkHighlights,
+    tailoredSuggestions: uniqueStrings([
+      ...heuristic.improvements,
+      heuristic.missingKeywords.length
+        ? `Mirror the missing job language naturally in projects or experience: ${heuristic.missingKeywords.slice(0, 3).join(', ')}.`
+        : '',
+      'Keep every strong bullet outcome-focused: action, scope, stack, result.',
+    ], 6),
+    summary: heuristic.summary,
   };
 }
 
@@ -891,4 +1171,5 @@ module.exports = {
   generateQuickTask,
   getStatus,
   analyzeResumeText,
+  scoreResumeAgainstJobDescription,
 };

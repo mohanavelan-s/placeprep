@@ -82,6 +82,15 @@
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-heading);
   }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
 }
 
 @layer utilities {

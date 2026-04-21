@@ -78,6 +78,7 @@ router.post(
     body('timePerDay').optional().isInt({ min: 60, max: 480 }),
     body('durationMonths').optional().isInt({ min: 1, max: 12 }),
     body('targetRole').optional().isString(),
+    body('preferredLanguage').optional().isIn(['english', 'tamil', 'hindi']),
   ],
   validate,
   asyncHandler(controller.generatePrepArchitectPlan)
@@ -92,6 +93,7 @@ router.post(
     body('timePerDay').optional().isInt({ min: 60, max: 480 }),
     body('durationMonths').optional().isInt({ min: 1, max: 12 }),
     body('targetRole').optional().isString(),
+    body('preferredLanguage').optional().isIn(['english', 'tamil', 'hindi']),
   ],
   validate,
   asyncHandler(controller.updatePrepArchitectPlan)

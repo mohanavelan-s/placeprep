@@ -484,6 +484,8 @@ export interface PrepRoadmapWeek {
   goals: string[];
 }
 
+export type PrepLanguage = "english" | "tamil" | "hindi";
+
 export interface PrepPlanTaskItem {
   title: string;
   type: string;
@@ -491,6 +493,7 @@ export interface PrepPlanTaskItem {
   difficulty: string;
   referenceLabel?: string | null;
   referenceUrl?: string | null;
+  summary?: string | null;
 }
 
 export interface PrepPlanDay {
@@ -529,6 +532,7 @@ export interface PrepPlan {
   timePerDay: number;
   durationMonths: number;
   targetRole?: string | null;
+  preferredLanguage?: PrepLanguage;
   version: number;
   isActive: boolean;
   sourcePlanId?: string | null;
@@ -543,6 +547,7 @@ export interface PrepPlan {
 }
 
 export type AssessmentType = "mcq" | "fill_blank" | "coding";
+export type AssessmentScope = "daily" | "weekly";
 
 export interface AssessmentQuestionChoice {
   id: string;
@@ -605,6 +610,7 @@ export interface AssessmentSession {
   planId?: string | null;
   status: "draft" | "started" | "completed" | "skipped";
   assessmentType: AssessmentType;
+  assessmentScope?: AssessmentScope;
   durationMinutes: number;
   weakSpots: string[];
   recommendations: AssessmentRecommendation[];
@@ -632,6 +638,17 @@ export interface AssessmentGenerationResult {
 export interface AssessmentPlanUpdateResult {
   session: AssessmentSession;
   updatedPlan: PrepPlan;
+}
+
+export interface ResumeJobMatchResult {
+  targetRole?: string | null;
+  atsScore: number;
+  jobMatchScore: number;
+  matchedKeywords: string[];
+  missingKeywords: string[];
+  benchmarkHighlights: string[];
+  tailoredSuggestions: string[];
+  summary: string;
 }
 
 export interface MentorMessage {
@@ -1022,6 +1039,11 @@ function normalizePrepPlan(plan: PrepPlan | null): PrepPlan | null {
 
   return {
     ...plan,
+    preferredLanguage: String(
+      (plan as PrepPlan & { preferredLanguage?: string | null }).preferredLanguage
+      || metadata.preferredLanguage
+      || "english",
+    ).trim().toLowerCase() as PrepLanguage,
     knownTopics,
     targetTopics,
     roadmap: toArray<Record<string, unknown>>(plan.roadmap).map((week, index) => ({
@@ -1042,6 +1064,7 @@ function normalizePrepPlan(plan: PrepPlan | null): PrepPlan | null {
         difficulty: String(item?.difficulty || "Medium").trim(),
         referenceLabel: item?.referenceLabel ? String(item.referenceLabel).trim() : null,
         referenceUrl: item?.referenceUrl ? String(item.referenceUrl).trim() : null,
+        summary: item?.summary ? String(item.summary).trim() : null,
       })).filter((item) => item.title),
     })),
     resources: toArray<Record<string, unknown>>(plan.resources).map((group) => ({
@@ -1139,6 +1162,7 @@ function normalizeAssessmentSession(session: AssessmentSession | null): Assessme
 
   return {
     ...session,
+    assessmentScope: String(session.assessmentScope || session.metadata?.scope || "daily").trim().toLowerCase() as AssessmentScope,
     weakSpots: normalizeStringList(session.weakSpots, 8),
     recommendations: toArray<AssessmentRecommendation>(session.recommendations)
       .map(normalizeAssessmentRecommendation)
@@ -1639,6 +1663,7 @@ export async function generatePrepPlan(payload: {
   timePerDay?: number;
   durationMonths?: number;
   targetRole?: string;
+  preferredLanguage?: PrepLanguage;
 }) {
   return normalizePrepPlan(await request<PrepPlan>("/ai/prep-architect", {
     method: "POST",
@@ -1653,6 +1678,7 @@ export async function updatePrepPlan(payload: {
   timePerDay?: number;
   durationMonths?: number;
   targetRole?: string;
+  preferredLanguage?: PrepLanguage;
 }) {
   return normalizePrepPlan(await request<PrepPlan>("/ai/prep-architect/update", {
     method: "POST",
@@ -1719,6 +1745,7 @@ export async function fetchAssessmentOverview() {
 export async function generateAssessment(payload: {
   assessmentType: AssessmentType;
   durationMinutes?: number;
+  assessmentScope?: AssessmentScope;
 }) {
   const result = await request<AssessmentGenerationResult>("/assessments/generate", {
     method: "POST",
@@ -1751,4 +1778,15 @@ export async function applyAssessmentPlanUpdate(assessmentId: string) {
     session: normalizeAssessmentSession(result.session) as AssessmentSession,
     updatedPlan: normalizePrepPlan(result.updatedPlan) as PrepPlan,
   };
+}
+
+export async function scoreResumeAgainstJobDescription(payload: {
+  jobDescription: string;
+  targetRole?: string;
+  resumeText?: string;
+}) {
+  return request<ResumeJobMatchResult>("/resume/match", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }

@@ -15,6 +15,11 @@ async function listResumes(req, res) {
   res.json({ success: true, data: resumes });
 }
 
+async function scoreAgainstJobDescription(req, res) {
+  const result = await resumeService.scoreAgainstJobDescription(req.user, req.body);
+  res.json({ success: true, data: result });
+}
+
 async function clearHistory(req, res) {
   const result = await resumeService.clearHistory(req.user);
   res.json({ success: true, data: result });
@@ -24,5 +29,6 @@ module.exports = {
   uploadResume,
   getLatestResume,
   listResumes,
+  scoreAgainstJobDescription,
   clearHistory,
 };

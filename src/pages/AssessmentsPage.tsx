@@ -38,6 +38,7 @@ import {
   generateAssessment,
   submitAssessment,
   type AssessmentQuestion,
+  type AssessmentScope,
   type AssessmentSession,
   type AssessmentType,
 } from "@/lib/api";
@@ -65,6 +66,23 @@ const ASSESSMENT_OPTIONS: Array<{
     title: "Short programming",
     description: "Timed implementation or pseudocode under an interview-style average time budget.",
     icon: Code2,
+  },
+];
+
+const ASSESSMENT_SCOPES: Array<{
+  value: AssessmentScope;
+  title: string;
+  description: string;
+}> = [
+  {
+    value: "daily",
+    title: "Daily focus",
+    description: "Pull questions from today’s assigned tasks, your known topics, and the current plan lane.",
+  },
+  {
+    value: "weekly",
+    title: "Weekly sweep",
+    description: "Widen the spread across this week’s roadmap themes, active task lane, and your known base.",
   },
 ];
 
@@ -187,6 +205,7 @@ export default function AssessmentsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedType, setSelectedType] = useState<AssessmentType>("mcq");
+  const [assessmentScope, setAssessmentScope] = useState<AssessmentScope>("daily");
   const [durationMinutes, setDurationMinutes] = useState("20");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [missingPlanDialogOpen, setMissingPlanDialogOpen] = useState(false);
@@ -227,6 +246,7 @@ export default function AssessmentsPage() {
     mutationFn: () =>
       generateAssessment({
         assessmentType: selectedType,
+        assessmentScope,
         durationMinutes: Math.min(90, Math.max(10, Number(durationMinutes || 20))),
       }),
     onSuccess: async () => {
@@ -390,6 +410,27 @@ export default function AssessmentsPage() {
             </p>
           </div>
 
+          <div className="mt-6 rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Assessment scope</p>
+            <div className="mt-4 grid gap-3">
+              {ASSESSMENT_SCOPES.map((scope) => (
+                <button
+                  key={scope.value}
+                  type="button"
+                  onClick={() => setAssessmentScope(scope.value)}
+                  className={`rounded-[1rem] border px-4 py-4 text-left transition ${
+                    assessmentScope === scope.value
+                      ? "border-primary/35 bg-primary/10"
+                      : "border-border/80 bg-card/50 hover:border-border hover:bg-background/60"
+                  }`}
+                >
+                  <p className="text-sm text-foreground">{scope.title}</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{scope.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <Button
             type="button"
             className="mt-6 h-11 gap-2"
@@ -423,7 +464,7 @@ export default function AssessmentsPage() {
                         : "Short programming"}
                   </h3>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Started {formatDateTime(currentSession.startedAt)} / {currentSession.durationMinutes} total minutes
+                    Started {formatDateTime(currentSession.startedAt)} / {currentSession.durationMinutes} total minutes / {currentSession.assessmentScope || "daily"} scope
                   </p>
                 </div>
 
@@ -487,6 +528,26 @@ export default function AssessmentsPage() {
               </div>
 
               <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Coverage</p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-[1rem] border border-border/70 bg-card/60 px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Questions</p>
+                      <p className="mt-2 font-heading text-3xl text-foreground">{currentSession.questions.length}</p>
+                    </div>
+                    <div className="rounded-[1rem] border border-border/70 bg-card/60 px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Scope</p>
+                      <p className="mt-2 font-heading text-2xl text-foreground capitalize">{currentSession.assessmentScope || "daily"}</p>
+                    </div>
+                    <div className="rounded-[1rem] border border-border/70 bg-card/60 px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Strong answers</p>
+                      <p className="mt-2 font-heading text-3xl text-foreground">
+                        {currentSession.submission?.questionResults?.filter((result) => Number(result.score || 0) >= 0.75).length || 0}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Weak spots</p>
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -601,7 +662,7 @@ export default function AssessmentsPage() {
                 <p className="text-lg">No assessment started yet.</p>
               </div>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Start with the assessment type that fits your energy and preference today. MCQs are the quickest, fill-in-the-blanks force retrieval, and short programming mirrors actual execution under time pressure.
+                Start with the assessment type that fits your energy and preference today. Daily scope leans on today’s assigned work, while weekly scope gives you a broader sweep across the current roadmap.
               </p>
             </div>
           )}
@@ -622,6 +683,9 @@ export default function AssessmentsPage() {
                     {session.assessmentType.replace("_", " ")}
                   </p>
                   <p className="mt-2 text-base text-foreground">{formatDateTime(session.createdAt)}</p>
+                  <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                    {session.assessmentScope || "daily"} scope
+                  </p>
                 </div>
                 <div className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.16em] ${scoreTone(session.score)}`}>
                   {session.status === "completed" ? `${Math.round(session.score)}%` : session.status}

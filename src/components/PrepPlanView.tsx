@@ -22,7 +22,7 @@ export default function PrepPlanView({ plan }: PrepPlanViewProps) {
           {plan.title || `Version ${plan.version}`}
         </p>
         <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-          v{plan.version} / {plan.durationMonths} month{plan.durationMonths === 1 ? "" : "s"} / {plan.targetRole || "Custom placement track"}
+          v{plan.version} / {plan.durationMonths} month{plan.durationMonths === 1 ? "" : "s"} / {plan.targetRole || "Custom placement track"} / {plan.preferredLanguage || "english"}
         </p>
         <p className="mt-6 section-label">Mentor line</p>
         <p className="mt-3 font-heading text-3xl text-foreground md:text-4xl">
@@ -101,17 +101,24 @@ export default function PrepPlanView({ plan }: PrepPlanViewProps) {
 
               <div className="mt-4 space-y-3">
                 {dayPlan.items.map((item) => (
-                  <div
+                  <details
                     key={`${dayPlan.day}-${item.title}`}
                     className="task-row-lift rounded-xl border border-border/70 bg-background/40 px-4 py-3"
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
                       <div>
                         <p className="text-base font-medium text-foreground">{item.title}</p>
                         <p className="mt-2 text-sm text-muted-foreground">
                           {item.type} / {formatHoursFromMinutes(item.estimatedMinutes)} / {item.difficulty}
                         </p>
                       </div>
+                      <span className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Expand</span>
+                    </summary>
+
+                    <div className="mt-4 space-y-3 border-t border-border/70 pt-4">
+                      <p className="text-sm leading-6 text-foreground/80">
+                        {item.summary || "Use this task to build recall, execution, and a clearer interview explanation."}
+                      </p>
                       {item.referenceUrl && (
                         <a
                           href={item.referenceUrl}
@@ -119,12 +126,12 @@ export default function PrepPlanView({ plan }: PrepPlanViewProps) {
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 text-sm text-primary transition hover:text-primary/80"
                         >
-                          Open
+                          {item.referenceLabel || item.title}
                           <ArrowUpRight className="h-4 w-4" />
                         </a>
                       )}
                     </div>
-                  </div>
+                  </details>
                 ))}
               </div>
             </div>

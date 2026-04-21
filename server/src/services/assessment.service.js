@@ -2,6 +2,7 @@ const assessmentRepository = require('../repositories/assessment.repository');
 const prepPlanRepository = require('../repositories/prepPlan.repository');
 const taskRepository = require('../repositories/task.repository');
 const prepArchitectService = require('./prepArchitect.service');
+const { getTodayInTimezone } = require('../utils/date');
 const AppError = require('../utils/appError');
 
 const STOP_WORDS = new Set([
@@ -42,6 +43,20 @@ const GENERIC_DISTRACTORS = [
   'Prefer broad theory over one clear practical example.',
   'Assume every problem needs recursion and dynamic programming.',
 ];
+
+const GENERIC_TOPIC_TOKENS = new Set([
+  'daily',
+  'weekly',
+  'dsa',
+  'core',
+  'project',
+  'practice',
+  'revision',
+  'task',
+  'prep',
+  'focus',
+  'lane',
+]);
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -363,40 +378,285 @@ function sanitizeSession(session, includeQuestions = false) {
 
   return {
     ...normalizedSession,
+    assessmentScope: normalizedSession.assessmentScope || normalizedSession.metadata?.scope || 'daily',
     questions: includeQuestions ? normalizedSession.questions.map(sanitizeQuestion).filter(Boolean) : [],
   };
 }
 
-function buildAssessmentReference(plan, topic) {
-  const resourceGroup = findResourceForTopic(plan, topic);
-  const resourceItem = resourceGroup?.items?.[0] || null;
+function topicMatchesText(topic, value) {
+  const normalizedTopic = normalizeText(topic);
+  const normalizedValue = normalizeText(value);
 
+  return Boolean(
+    normalizedTopic
+    && normalizedValue
+    && (
+      normalizedValue.includes(normalizedTopic)
+      || normalizedTopic.includes(normalizedValue)
+    )
+  );
+}
+
+function looksGenericTopic(value) {
+  const normalized = normalizeText(value);
+  return !normalized || GENERIC_TOPIC_TOKENS.has(normalized);
+}
+
+function normalizeReferenceCore(value) {
+  return String(value || '')
+    .replace(/^(leetcode|hackerrank|codechef|geeksforgeeks|youtube|freecodecamp|bro code|codewithmosh)\s*:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function inferTaskTopic(task, plan) {
+  const focusTopics = uniqueStrings([
+    ...(plan.targetTopics || []),
+    ...(plan.knownTopics || []),
+    ...(plan.roadmap || []).flatMap((week) => week.focusTopics || []),
+    ...(plan.resources || []).map((group) => group.topic),
+    ...(plan.flashcards || []).map((card) => card.topic),
+  ], 20);
+  const combinedText = [
+    task.theme,
+    task.weakArea,
+    task.subcategory,
+    task.title,
+    task.referenceLabel,
+  ].join(' ');
+  const matchedFocusTopic = focusTopics.find((topic) => topicMatchesText(topic, combinedText));
+
+  if (matchedFocusTopic) {
+    return matchedFocusTopic;
+  }
+
+  const themeCandidate = String(task.theme || task.subcategory || task.weakArea || '')
+    .split(/\s+into\s+/i)
+    .map((part) => String(part || '').trim())
+    .find((part) => part && !looksGenericTopic(part));
+
+  if (themeCandidate) {
+    return themeCandidate;
+  }
+
+  const referenceCandidate = normalizeReferenceCore(task.referenceLabel || task.title || '');
+  if (referenceCandidate && !looksGenericTopic(referenceCandidate)) {
+    return referenceCandidate;
+  }
+
+  return (plan.targetTopics || [])[0]
+    || (plan.knownTopics || [])[0]
+    || plan.targetRole
+    || 'Prep';
+}
+
+function findTaskForTopic(taskPool = [], topic) {
+  return taskPool.find((task) => {
+    const combinedText = [
+      task.topic,
+      task.theme,
+      task.weakArea,
+      task.subcategory,
+      task.title,
+      task.referenceLabel,
+    ].join(' ');
+    return topicMatchesText(topic, combinedText);
+  }) || null;
+}
+
+function buildAssessmentReference(plan, topic, taskPool = []) {
+  const relatedTask = findTaskForTopic(taskPool, topic) || findTaskForTopic(flattenPlanItems(plan), topic);
+  if (relatedTask?.referenceUrl) {
+    return {
+      referenceLabel: relatedTask.referenceLabel || relatedTask.title || topic,
+      referenceUrl: relatedTask.referenceUrl,
+      taskTitle: relatedTask.title || null,
+    };
+  }
+
+  const resourceGroup = findResourceForTopic(plan, topic);
+  const resourceItem = resourceGroup?.items?.find((item) => item?.url) || null;
   return {
     referenceLabel: resourceItem?.title || null,
     referenceUrl: resourceItem?.url || null,
+    taskTitle: relatedTask?.title || null,
   };
 }
 
-function buildMcqQuestions(plan, durationMinutes) {
-  const flashcards = Array.isArray(plan.flashcards) && plan.flashcards.length
-    ? plan.flashcards
-    : [{
-      topic: (plan.targetTopics || [plan.targetRole || 'prep'])[0] || 'prep',
-      question: `What should you focus on first for ${plan.targetRole || 'this role'}?`,
-      answer: `Start with ${(plan.targetTopics || [plan.knownTopics?.[0] || 'the main target topic'])[0]} and connect it to one direct task before you widen the plan.`,
-    }];
-  const questionCount = clamp(Math.round(durationMinutes / 5), 4, 6);
+function buildTaskSource(task, plan, sourceKind = 'daily-task') {
+  const topic = inferTaskTopic(task, plan);
+  const reference = buildAssessmentReference(plan, topic, [task]);
 
-  return flashcards.slice(0, questionCount).map((card, index) => {
-    const questionId = `mcq-${index + 1}-${slugify(card.topic || `topic-${index + 1}`)}`;
-    const correctText = String(card.answer || '').trim();
+  return {
+    kind: 'task',
+    sourceKind,
+    topic,
+    taskType: String(task.type || task.category || 'Practice').trim(),
+    taskTitle: task.title || reference.taskTitle || null,
+    referenceLabel: task.referenceLabel || task.title || reference.referenceLabel || topic,
+    referenceUrl: task.referenceUrl || reference.referenceUrl || null,
+    theme: task.theme || task.subcategory || task.weakArea || null,
+  };
+}
+
+function buildTopicSource(topic, plan, sourceKind = 'known-topic', taskPool = []) {
+  const reference = buildAssessmentReference(plan, topic, taskPool);
+  return {
+    kind: 'topic',
+    sourceKind,
+    topic: String(topic || '').trim(),
+    taskType: 'Revision',
+    taskTitle: reference.taskTitle || null,
+    referenceLabel: reference.referenceLabel || String(topic || '').trim(),
+    referenceUrl: reference.referenceUrl || null,
+    theme: null,
+  };
+}
+
+function dedupeSources(sources = []) {
+  const seen = new Set();
+  return sources.filter((source) => {
+    const fingerprint = [
+      source.kind,
+      source.sourceKind,
+      normalizeText(source.topic),
+      normalizeText(source.referenceLabel),
+      String(source.referenceUrl || ''),
+    ].join('::');
+
+    if (seen.has(fingerprint)) {
+      return false;
+    }
+
+    seen.add(fingerprint);
+    return true;
+  });
+}
+
+function interleaveSourceBuckets(buckets = [], limit = 6) {
+  const queues = buckets.map((bucket) => [...bucket].filter(Boolean));
+  const ordered = [];
+
+  while (ordered.length < limit && queues.some((bucket) => bucket.length)) {
+    queues.forEach((bucket) => {
+      if (bucket.length && ordered.length < limit) {
+        ordered.push(bucket.shift());
+      }
+    });
+  }
+
+  return ordered;
+}
+
+function getQuestionCount(assessmentType, durationMinutes, assessmentScope) {
+  if (assessmentType === 'coding') {
+    return clamp(Math.round(durationMinutes / (assessmentScope === 'weekly' ? 16 : 18)), assessmentScope === 'weekly' ? 3 : 2, 4);
+  }
+
+  return clamp(Math.round(durationMinutes / 5), 4, assessmentScope === 'weekly' ? 8 : 6);
+}
+
+function buildAssessmentSources(plan, taskPool = [], assessmentType, durationMinutes, assessmentScope = 'daily') {
+  const questionCount = getQuestionCount(assessmentType, durationMinutes, assessmentScope);
+  const weeklyPlanTasks = flattenPlanItems(plan).filter((item) => item.type !== 'Revision');
+  const dailyTasks = (taskPool || []).length ? taskPool : weeklyPlanTasks.slice(0, 4);
+
+  const dailyTaskSources = dedupeSources(dailyTasks.map((task) => buildTaskSource(task, plan, 'daily-task')));
+  const weeklyTaskSources = dedupeSources((weeklyPlanTasks.length ? weeklyPlanTasks : dailyTasks).map((task) => buildTaskSource(task, plan, 'weekly-task')));
+  const knownTopicSources = dedupeSources((plan.knownTopics || []).map((topic) =>
+    buildTopicSource(topic, plan, 'known-topic', assessmentScope === 'weekly' ? weeklyPlanTasks : dailyTasks)
+  ));
+  const targetTopicSources = dedupeSources((plan.targetTopics || []).map((topic) =>
+    buildTopicSource(topic, plan, 'target-topic', assessmentScope === 'weekly' ? weeklyPlanTasks : dailyTasks)
+  ));
+  const weeklyFocusSources = dedupeSources((plan.roadmap || [])
+    .slice(0, 2)
+    .flatMap((week) => week.focusTopics || [])
+    .map((topic) => buildTopicSource(topic, plan, 'weekly-focus', weeklyPlanTasks)));
+
+  const orderedSources = assessmentScope === 'weekly'
+    ? interleaveSourceBuckets([weeklyTaskSources, knownTopicSources, targetTopicSources, weeklyFocusSources], questionCount)
+    : interleaveSourceBuckets([dailyTaskSources, knownTopicSources, targetTopicSources], questionCount);
+
+  return orderedSources.length
+    ? orderedSources.slice(0, questionCount)
+    : [...dailyTaskSources, ...knownTopicSources, ...targetTopicSources, ...weeklyFocusSources].slice(0, questionCount);
+}
+
+function findFlashcardForSource(plan, source) {
+  const sourceSignal = [
+    source.topic,
+    source.referenceLabel,
+    source.taskTitle,
+    source.theme,
+  ].join(' ');
+
+  return (plan.flashcards || []).find((card) => (
+    topicMatchesText(card.topic, sourceSignal)
+    || topicMatchesText(source.topic, `${card.question} ${card.answer}`)
+  )) || null;
+}
+
+function buildContextualAnswer(source, flashcard) {
+  if (flashcard?.answer) {
+    return String(flashcard.answer).trim();
+  }
+
+  if (source.kind === 'task') {
+    const normalizedTaskType = normalizeText(source.taskType);
+    if (normalizedTaskType.includes('project')) {
+      return `For ${source.referenceLabel || source.taskTitle || source.topic}, tie the work to one implementation step, one measurable outcome, and one clear takeaway.`;
+    }
+
+    if (normalizedTaskType.includes('revision') || normalizedTaskType.includes('core')) {
+      return `${source.topic} becomes interview-ready when you define it clearly, explain one tradeoff, and connect it to one practical use case.`;
+    }
+
+    return `For ${source.referenceLabel || source.taskTitle || source.topic}, identify the core pattern, the main data structure, and the time complexity before coding.`;
+  }
+
+  return `${source.topic} becomes solid when you can explain the core idea, the main tradeoff, and one example without looking at notes.`;
+}
+
+function buildBlankPromptLabel(source, assessmentScope) {
+  if (source.kind === 'task') {
+    return assessmentScope === 'weekly'
+      ? `this week's task ${source.referenceLabel || source.taskTitle || source.topic}`
+      : `today's task ${source.referenceLabel || source.taskTitle || source.topic}`;
+  }
+
+  return source.topic || (assessmentScope === 'weekly' ? 'this weekly focus' : 'your current focus');
+}
+
+function chooseBlankPhrase(answer, source) {
+  if (source.topic && !looksGenericTopic(source.topic) && topicMatchesText(source.topic, answer)) {
+    return source.topic;
+  }
+
+  const referenceCore = normalizeReferenceCore(source.referenceLabel || source.taskTitle || '');
+  if (referenceCore && referenceCore.split(/\s+/).length <= 4 && topicMatchesText(referenceCore, answer)) {
+    return referenceCore;
+  }
+
+  return extractKeyPhrase(answer) || source.topic || 'core idea';
+}
+
+function buildMcqQuestions(plan, sources, durationMinutes) {
+  const fallbackSources = sources.length ? sources : buildAssessmentSources(plan, [], 'mcq', durationMinutes, 'daily');
+  const answersBySource = fallbackSources.map((source) => ({
+    source,
+    flashcard: findFlashcardForSource(plan, source),
+  }));
+
+  return answersBySource.map(({ source, flashcard }, index) => {
+    const questionId = `mcq-${index + 1}-${slugify(source.referenceLabel || source.topic || `topic-${index + 1}`)}`;
+    const correctText = buildContextualAnswer(source, flashcard);
     const distractors = uniqueStrings([
-      ...flashcards
-        .map((entry) => String(entry.answer || '').trim())
+      ...answersBySource
+        .map((entry) => buildContextualAnswer(entry.source, entry.flashcard))
         .filter((entry) => entry && normalizeText(entry) !== normalizeText(correctText)),
       ...GENERIC_DISTRACTORS,
-    ], 8);
-
+    ], 10);
     const optionTexts = shuffle([correctText, ...distractors.slice(0, 3)]).slice(0, 4);
     const options = optionTexts.map((text, optionIndex) => ({
       id: `${questionId}-option-${optionIndex + 1}`,
@@ -404,16 +664,20 @@ function buildMcqQuestions(plan, durationMinutes) {
       text,
     }));
     const correctOption = options.find((option) => normalizeText(option.text) === normalizeText(correctText)) || options[0];
-    const reference = buildAssessmentReference(plan, card.topic);
 
     return {
       id: questionId,
       type: 'mcq',
-      topic: String(card.topic || `Topic ${index + 1}`),
-      prompt: String(card.question || `Choose the strongest explanation for ${card.topic || 'this topic'}.`),
-      averageTimeMinutes: clamp(Math.floor(durationMinutes / questionCount), 3, 8),
-      referenceLabel: reference.referenceLabel,
-      referenceUrl: reference.referenceUrl,
+      topic: source.topic,
+      prompt: flashcard?.question
+        ? String(flashcard.question).trim()
+        : source.kind === 'task'
+          ? `Which explanation best matches ${source.referenceLabel || source.taskTitle || source.topic}?`
+          : `Which explanation best matches ${source.topic} in your current prep plan?`,
+      averageTimeMinutes: clamp(Math.floor(durationMinutes / Math.max(fallbackSources.length, 1)), 3, 8),
+      referenceLabel: source.referenceLabel || null,
+      referenceUrl: source.referenceUrl || null,
+      taskTitle: source.taskTitle || null,
       choices: options,
       correctOptionId: correctOption.id,
       expectedAnswer: correctText,
@@ -422,32 +686,26 @@ function buildMcqQuestions(plan, durationMinutes) {
   });
 }
 
-function buildFillBlankQuestions(plan, durationMinutes) {
-  const flashcards = Array.isArray(plan.flashcards) && plan.flashcards.length
-    ? plan.flashcards
-    : [{
-      topic: (plan.targetTopics || [plan.targetRole || 'prep'])[0] || 'prep',
-      question: `What should you focus on first for ${plan.targetRole || 'this role'}?`,
-      answer: `Start with ${(plan.targetTopics || [plan.knownTopics?.[0] || 'the main target topic'])[0]} and connect it to one direct task before you widen the plan.`,
-    }];
-  const questionCount = clamp(Math.round(durationMinutes / 6), 4, 6);
+function buildFillBlankQuestions(plan, sources, durationMinutes, assessmentScope = 'daily') {
+  const fallbackSources = sources.length ? sources : buildAssessmentSources(plan, [], 'fill_blank', durationMinutes, assessmentScope);
 
-  return flashcards.slice(0, questionCount).map((card, index) => {
-    const answer = String(card.answer || '').trim();
-    const keyPhrase = extractKeyPhrase(answer) || String(card.topic || 'the core idea');
+  return fallbackSources.map((source, index) => {
+    const flashcard = findFlashcardForSource(plan, source);
+    const answer = buildContextualAnswer(source, flashcard);
+    const keyPhrase = chooseBlankPhrase(answer, source);
     const blankedAnswer = answer.includes(keyPhrase)
       ? answer.replace(keyPhrase, '_____')
       : `_____ ${answer}`.trim();
-    const reference = buildAssessmentReference(plan, card.topic);
 
     return {
-      id: `fill-${index + 1}-${slugify(card.topic || `topic-${index + 1}`)}`,
+      id: `fill-${index + 1}-${slugify(source.referenceLabel || source.topic || `topic-${index + 1}`)}`,
       type: 'fill_blank',
-      topic: String(card.topic || `Topic ${index + 1}`),
-      prompt: `Fill in the blank for ${card.topic || 'this topic'}: ${blankedAnswer}`,
-      averageTimeMinutes: clamp(Math.floor(durationMinutes / questionCount), 3, 8),
-      referenceLabel: reference.referenceLabel,
-      referenceUrl: reference.referenceUrl,
+      topic: source.topic,
+      prompt: `Fill in the blank for ${buildBlankPromptLabel(source, assessmentScope)}: ${blankedAnswer}`,
+      averageTimeMinutes: clamp(Math.floor(durationMinutes / Math.max(fallbackSources.length, 1)), 3, 8),
+      referenceLabel: source.referenceLabel || null,
+      referenceUrl: source.referenceUrl || null,
+      taskTitle: source.taskTitle || null,
       placeholder: 'Type the missing idea in one short phrase',
       expectedAnswer: keyPhrase,
       expectedKeywords: extractKeywords(answer, extractKeywords(keyPhrase)),
@@ -456,54 +714,14 @@ function buildFillBlankQuestions(plan, durationMinutes) {
   });
 }
 
-function buildFallbackCodingItems(plan, questionCount) {
-  const topics = uniqueStrings([
-    ...(plan.targetTopics || []),
-    ...(plan.knownTopics || []),
-    ...(plan.roadmap || []).flatMap((week) => week.focusTopics || []),
-  ], questionCount);
+function buildCodingQuestions(plan, sources, durationMinutes, assessmentScope = 'daily') {
+  const taskSources = sources.filter((source) => source.kind === 'task');
+  const baseSources = (taskSources.length ? taskSources : sources).slice(0, getQuestionCount('coding', durationMinutes, assessmentScope));
 
-  return topics.map((topic, index) => {
-    const reference = buildAssessmentReference(plan, topic);
-
-    return {
-      title: `Timed implementation: ${topic}`,
-      referenceLabel: reference.referenceLabel || `Implement a short ${topic} drill`,
-      referenceUrl: reference.referenceUrl,
-      estimatedMinutes: 30,
-      type: 'Project',
-      theme: topic,
-    };
-  });
-}
-
-function buildCodingQuestions(plan, recentTasks = [], durationMinutes) {
-  const currentPlanItems = flattenPlanItems(plan).filter((item) => item.type !== 'Revision');
-  const liveTaskItems = (recentTasks || []).map((task) => ({
-    title: task.title,
-    referenceLabel: task.referenceLabel || task.title,
-    referenceUrl: task.referenceUrl || null,
-    estimatedMinutes: task.estimatedMinutes || 30,
-    type: task.category === 'Project' ? 'Project' : 'DSA',
-    theme: task.weakArea || task.subcategory || task.category,
-  }));
-  const combined = uniqueStrings(
-    [...liveTaskItems, ...currentPlanItems].map((item) => `${item.referenceLabel || item.title}::${item.referenceUrl || ''}`),
-    12,
-  ).map((fingerprint) => {
-    const [label, url] = fingerprint.split('::');
-    return liveTaskItems.find((item) => (item.referenceLabel || item.title) === label && (item.referenceUrl || '') === url)
-      || currentPlanItems.find((item) => (item.referenceLabel || item.title) === label && (item.referenceUrl || '') === url);
-  }).filter(Boolean);
-
-  const questionCount = clamp(Math.round(durationMinutes / 18), 2, 4);
-  const baseItems = combined.length ? combined.slice(0, questionCount) : buildFallbackCodingItems(plan, questionCount);
-
-  return baseItems.map((item, index) => {
-    const topic = String(item.theme || item.title || (plan.targetTopics || [plan.targetRole || 'coding'])[0] || 'coding');
-    const referenceLabel = item.referenceLabel || item.title || `Timed ${topic} prompt`;
+  return baseSources.map((source, index) => {
+    const referenceLabel = source.referenceLabel || source.taskTitle || source.topic || `Timed prompt ${index + 1}`;
     const expectedKeywords = uniqueStrings([
-      ...buildTopicKeywordHints(topic),
+      ...buildTopicKeywordHints(source.topic || referenceLabel),
       ...extractKeywords(referenceLabel),
       'time',
       'complexity',
@@ -512,29 +730,31 @@ function buildCodingQuestions(plan, recentTasks = [], durationMinutes) {
     return {
       id: `code-${index + 1}-${slugify(referenceLabel)}`,
       type: 'coding',
-      topic,
-      prompt: `Write a short programming solution or pseudocode for ${referenceLabel}. Keep it within interview length, mention the core approach, any main data structure, and the expected time complexity.`,
-      averageTimeMinutes: clamp(Number(item.estimatedMinutes || Math.floor(durationMinutes / questionCount)), 15, 45),
+      topic: source.topic || referenceLabel,
+      prompt: `Write a short programming solution or pseudocode for ${referenceLabel}. Keep it interview-length, mention the main approach, the key data structure, and the expected time complexity.`,
+      averageTimeMinutes: clamp(Math.floor(durationMinutes / Math.max(baseSources.length, 1)), 15, 45),
       referenceLabel,
-      referenceUrl: item.referenceUrl || null,
-      taskTitle: item.title || referenceLabel,
+      referenceUrl: source.referenceUrl || null,
+      taskTitle: source.taskTitle || referenceLabel,
       placeholder: 'Use a compact solution sketch. Code or structured pseudocode both work here.',
       expectedKeywords,
-      explanation: `A strong answer should clearly state the approach for ${referenceLabel}, mention one relevant data structure, and include time complexity.`,
+      explanation: `A strong answer should clearly state the approach for ${referenceLabel}, name one relevant data structure, and include time complexity.`,
     };
   });
 }
 
-function buildQuestions(plan, recentTasks, assessmentType, durationMinutes) {
+function buildQuestions(plan, taskPool, assessmentType, durationMinutes, assessmentScope = 'daily') {
+  const sources = buildAssessmentSources(plan, taskPool, assessmentType, durationMinutes, assessmentScope);
+
   if (assessmentType === 'coding') {
-    return buildCodingQuestions(plan, recentTasks, durationMinutes);
+    return buildCodingQuestions(plan, sources, durationMinutes, assessmentScope);
   }
 
   if (assessmentType === 'fill_blank') {
-    return buildFillBlankQuestions(plan, durationMinutes);
+    return buildFillBlankQuestions(plan, sources, durationMinutes, assessmentScope);
   }
 
-  return buildMcqQuestions(plan, durationMinutes);
+  return buildMcqQuestions(plan, sources, durationMinutes);
 }
 
 function scoreTextAgainstKeywords(response, expectedKeywords = []) {
@@ -670,9 +890,11 @@ async function generateAssessment(user, payload = {}) {
   const assessmentType = ['mcq', 'fill_blank', 'coding'].includes(payload.assessmentType)
     ? payload.assessmentType
     : 'mcq';
+  const assessmentScope = payload.assessmentScope === 'weekly' ? 'weekly' : 'daily';
   const durationMinutes = clamp(Number(payload.durationMinutes || 20), 10, 90);
-  const recentTasks = await taskRepository.listRecentPrepArchitectTasksByPlan(user.id, activePlan.id, 12);
-  const questions = buildQuestions(activePlan, recentTasks, assessmentType, durationMinutes);
+  const today = getTodayInTimezone(user.timezone);
+  const todaysTasks = await taskRepository.listByUser(user.id, { date: today });
+  const questions = buildQuestions(activePlan, todaysTasks, assessmentType, durationMinutes, assessmentScope);
 
   if (!questions.length) {
     throw new AppError('Unable to build an assessment from the current plan.', 400);
@@ -690,6 +912,9 @@ async function generateAssessment(user, payload = {}) {
       planVersion: activePlan.version || 1,
       targetRole: activePlan.targetRole || null,
       targetTopics: activePlan.targetTopics || [],
+      scope: assessmentScope,
+      sourceTaskCount: todaysTasks.length,
+      sourceKnownTopicCount: (activePlan.knownTopics || []).length,
       questionCount: questions.length,
     },
     startedAt: new Date().toISOString(),

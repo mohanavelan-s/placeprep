@@ -20,8 +20,10 @@ import {
   clearResumeAnalysisHistory,
   fetchLatestResumeAnalysis,
   fetchResumeAnalysisHistory,
+  scoreResumeAgainstJobDescription,
   uploadResumeForAnalysis,
   type ResumeAnalysisRecord,
+  type ResumeJobMatchResult,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -208,7 +210,9 @@ export default function ResumeAnalysisPanel({
   const [file, setFile] = useState<File | null>(null);
   const [resumeText, setResumeText] = useState("");
   const [targetRole, setTargetRole] = useState(defaultTargetRole);
-  const [jobDescription, setJobDescription] = useState("");
+  const [uploadJobDescription, setUploadJobDescription] = useState("");
+  const [matchJobDescription, setMatchJobDescription] = useState("");
+  const [jobMatchResult, setJobMatchResult] = useState<ResumeJobMatchResult | null>(null);
 
   const latestQuery = useQuery({
     queryKey: ["resume-analysis", "latest"],
@@ -232,13 +236,13 @@ export default function ResumeAnalysisPanel({
         file,
         resumeText: resumeText.trim() || undefined,
         targetRole: targetRole.trim() || undefined,
-        jobDescription: jobDescription.trim() || undefined,
+        jobDescription: uploadJobDescription.trim() || undefined,
       });
     },
     onSuccess: async () => {
       setFile(null);
       setResumeText("");
-      setJobDescription("");
+      setJobMatchResult(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["resume-analysis", "latest"] }),
         queryClient.invalidateQueries({ queryKey: ["resume-analysis", "history"] }),
@@ -247,6 +251,22 @@ export default function ResumeAnalysisPanel({
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to analyze resume.");
+    },
+  });
+
+  const scoreJobMatchMutation = useMutation({
+    mutationFn: () =>
+      scoreResumeAgainstJobDescription({
+        jobDescription: matchJobDescription.trim(),
+        targetRole: targetRole.trim() || undefined,
+        resumeText: resumeText.trim() || undefined,
+      }),
+    onSuccess: (result) => {
+      setJobMatchResult(result);
+      toast.success("Job-specific ATS score is ready.");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to score the resume against this job description.");
     },
   });
 
@@ -342,8 +362,8 @@ export default function ResumeAnalysisPanel({
                 className="h-11 border-border/80 bg-background/70"
               />
               <Input
-                value={jobDescription}
-                onChange={(event) => setJobDescription(event.target.value)}
+                value={uploadJobDescription}
+                onChange={(event) => setUploadJobDescription(event.target.value)}
                 placeholder="Optional job description focus"
                 className="h-11 border-border/80 bg-background/70"
               />
@@ -379,7 +399,7 @@ export default function ResumeAnalysisPanel({
                 onClick={() => {
                   setFile(null);
                   setResumeText("");
-                  setJobDescription("");
+                  setUploadJobDescription("");
                   setTargetRole(defaultTargetRole);
                 }}
                 disabled={uploadMutation.isPending}
@@ -412,6 +432,109 @@ export default function ResumeAnalysisPanel({
           )}
 
           {!latestQuery.isPending && !latestQuery.isError && <ResumeInsightCard resume={latestQuery.data ?? null} />}
+
+          <div className="rounded-[1.35rem] border border-border/80 bg-card/65 p-5">
+            <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Job-specific ATS check</p>
+            <h4 className="mt-3 font-heading text-3xl text-foreground">Score this resume against one job description.</h4>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Paste a job description to see how well the current resume aligns with that exact role, which keywords are already covered, and which ones are still missing.
+            </p>
+
+            <Textarea
+              value={matchJobDescription}
+              onChange={(event) => setMatchJobDescription(event.target.value)}
+              placeholder="Paste the job description here to get a job-specific ATS score."
+              className="mt-4 min-h-[180px] border-border/80 bg-background/70"
+            />
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Button
+                type="button"
+                className="h-11 gap-2"
+                onClick={() => scoreJobMatchMutation.mutate()}
+                disabled={scoreJobMatchMutation.isPending || !matchJobDescription.trim() || (!latestQuery.data && !resumeText.trim())}
+              >
+                {scoreJobMatchMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Target className="h-4 w-4" />}
+                {scoreJobMatchMutation.isPending ? "Scoring..." : "Score current resume"}
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 border-border/80 bg-background/70"
+                onClick={() => {
+                  setMatchJobDescription("");
+                  setJobMatchResult(null);
+                }}
+                disabled={scoreJobMatchMutation.isPending}
+              >
+                Clear
+              </Button>
+            </div>
+
+            {jobMatchResult && (
+              <div className="mt-5 grid gap-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className={`rounded-[1.1rem] border px-4 py-4 ${scoreTone(jobMatchResult.atsScore)}`}>
+                    <p className="text-xs uppercase tracking-[0.16em]">ATS score</p>
+                    <p className="mt-2 font-heading text-4xl">{jobMatchResult.atsScore}</p>
+                  </div>
+                  <div className={`rounded-[1.1rem] border px-4 py-4 ${scoreTone(jobMatchResult.jobMatchScore)}`}>
+                    <p className="text-xs uppercase tracking-[0.16em]">JD match</p>
+                    <p className="mt-2 font-heading text-4xl">{jobMatchResult.jobMatchScore}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-[1.1rem] border border-border/80 bg-background/45 p-4">
+                  <p className="text-sm leading-6 text-foreground/85">{jobMatchResult.summary}</p>
+                </div>
+
+                <div className="rounded-[1.1rem] border border-border/80 bg-background/45 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Matched keywords</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(jobMatchResult.matchedKeywords.length ? jobMatchResult.matchedKeywords : ["No strong overlap yet."]).map((keyword) => (
+                      <span key={keyword} className="coach-chip border-emerald-400/20 bg-emerald-500/10 text-emerald-100">
+                        {keyword}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-[1.1rem] border border-border/80 bg-background/45 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Missing keywords</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(jobMatchResult.missingKeywords.length ? jobMatchResult.missingKeywords : ["No obvious JD keyword gaps."]).map((keyword) => (
+                      <span key={keyword} className="coach-chip border-primary/20 bg-primary/8 text-foreground/85">
+                        {keyword}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-[1.1rem] border border-border/80 bg-background/45 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Role benchmark</p>
+                  <div className="mt-3 grid gap-2">
+                    {jobMatchResult.benchmarkHighlights.map((item) => (
+                      <div key={item} className="rounded-xl border border-border/80 bg-card/60 px-3 py-3 text-sm leading-6 text-foreground/85">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-[1.1rem] border border-border/80 bg-background/45 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Tailored suggestions</p>
+                  <div className="mt-3 grid gap-2">
+                    {jobMatchResult.tailoredSuggestions.map((item) => (
+                      <div key={item} className="rounded-xl border border-border/80 bg-card/60 px-3 py-3 text-sm leading-6 text-foreground/85">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

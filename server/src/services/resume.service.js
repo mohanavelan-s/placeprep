@@ -83,6 +83,27 @@ async function listResumes(user) {
   return resumeRepository.listResumes(user.id);
 }
 
+async function scoreAgainstJobDescription(user, payload = {}) {
+  const latestResume = await resumeRepository.getLatestResume(user.id);
+  const resumeText = String(payload.resumeText || latestResume?.extractedText || '').trim();
+
+  if (!resumeText) {
+    throw new AppError('Upload a resume or paste resume text before scoring it against a job description.', 400);
+  }
+
+  if (!String(payload.jobDescription || '').trim()) {
+    throw new AppError('Job description text is required.', 400);
+  }
+
+  const analysis = await aiService.scoreResumeAgainstJobDescription({
+    resumeText,
+    targetRole: payload.targetRole || user.targetRole,
+    jobDescription: payload.jobDescription,
+  });
+
+  return analysis;
+}
+
 async function clearHistory(user) {
   const deletedResumes = await resumeRepository.deleteByUser(user.id);
 
@@ -108,5 +129,6 @@ module.exports = {
   uploadResume,
   getLatestResume,
   listResumes,
+  scoreAgainstJobDescription,
   clearHistory,
 };

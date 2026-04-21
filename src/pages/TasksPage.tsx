@@ -57,6 +57,7 @@ export default function TasksPage() {
   const { user } = useAuth();
   const [status, setStatus] = useState<(typeof statuses)[number]>("all");
   const [category, setCategory] = useState<(typeof categories)[number]>("all");
+  const [expandedTaskIds, setExpandedTaskIds] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [newCategory, setNewCategory] = useState("DSA");
   const [estimatedHours, setEstimatedHours] = useState("0.5");
@@ -132,6 +133,14 @@ export default function TasksPage() {
     [tasks]
   );
   const shouldShowStudentPanels = user?.role === "user" && !isObserverUser(user);
+
+  function toggleExpandedTask(taskId: string) {
+    setExpandedTaskIds((current) =>
+      current.includes(taskId)
+        ? current.filter((id) => id !== taskId)
+        : [...current, taskId],
+    );
+  }
 
   if (tasksQuery.isPending && !tasks.length) {
     return <TasksSkeleton />;
@@ -260,38 +269,70 @@ export default function TasksPage() {
           )}
 
           {tasks.map((task: Task) => (
-            <div key={task.id} className="mission-row flex items-center gap-4 border-b border-border/60 px-6 py-4">
-              <div className="min-w-0 flex-1">
-                <p className="text-base font-medium text-foreground">{task.title}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {task.category} / {formatHoursFromMinutes(task.estimatedMinutes)} / {task.referenceLabel || task.weakArea || "Focus"}
-                  {task.dueAt ? ` / Due ${formatTaskDueLabel(task.dueAt)}` : ""}
-                </p>
-                {getTaskVerificationHint(task) && (
-                  <p className="mt-2 text-xs uppercase tracking-[0.14em] text-muted-foreground/80">
-                    {getTaskVerificationHint(task)}
+            <div key={task.id} className="mission-row border-b border-border/60 px-6 py-4">
+              <div className="flex items-center gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-base font-medium text-foreground">{task.title}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {task.category} / {formatHoursFromMinutes(task.estimatedMinutes)} / {task.referenceLabel || task.weakArea || "Focus"}
+                    {task.dueAt ? ` / Due ${formatTaskDueLabel(task.dueAt)}` : ""}
                   </p>
-                )}
+                  {getTaskVerificationHint(task) && (
+                    <p className="mt-2 text-xs uppercase tracking-[0.14em] text-muted-foreground/80">
+                      {getTaskVerificationHint(task)}
+                    </p>
+                  )}
+                </div>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2 text-muted-foreground"
+                  onClick={() => toggleExpandedTask(task.id)}
+                >
+                  {expandedTaskIds.includes(task.id) ? "Hide details" : "Details"}
+                </Button>
+
+                <TaskStatusControl
+                  status={task.status}
+                  disabled={updateMutation.isPending && updateMutation.variables?.taskId === task.id}
+                  compact
+                  allowCompletedSelection={allowsManualCompletion(task)}
+                  onChange={(status) => updateMutation.mutate({ taskId: task.id, status })}
+                />
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2 text-muted-foreground hover:text-destructive"
+                  onClick={() => deleteMutation.mutate(task.id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </Button>
               </div>
 
-              <TaskStatusControl
-                status={task.status}
-                disabled={updateMutation.isPending && updateMutation.variables?.taskId === task.id}
-                compact
-                allowCompletedSelection={allowsManualCompletion(task)}
-                onChange={(status) => updateMutation.mutate({ taskId: task.id, status })}
-              />
+              {expandedTaskIds.includes(task.id) && (
+                <div className="mt-4 rounded-[1rem] border border-border/70 bg-background/45 px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Task brief</p>
+                  <p className="mt-3 text-sm leading-6 text-foreground/82">
+                    {task.description || String(task.metadata?.summary || "").trim() || "Use this task to build one concrete skill and explain the approach clearly before moving on."}
+                  </p>
 
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="gap-2 text-muted-foreground hover:text-destructive"
-                onClick={() => deleteMutation.mutate(task.id)}
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete
-              </Button>
+                  {task.referenceUrl && (
+                    <a
+                      href={task.referenceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-4 inline-flex items-center gap-2 text-sm text-primary transition hover:text-foreground"
+                    >
+                      {task.referenceLabel || task.title}
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           ))}
 

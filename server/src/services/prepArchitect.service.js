@@ -533,6 +533,29 @@ const DEFAULT_ROLE_PREP_PROFILE = {
   outcomeLabel: 'interview signal',
 };
 
+const PREP_LANGUAGE_PROFILES = {
+  english: {
+    label: 'English',
+    translationCode: 'en',
+    creators: ['freeCodeCamp', 'Bro Code', 'CodeWithMosh'],
+    promptLine: 'Prefer English creator resources such as freeCodeCamp, Bro Code, and CodeWithMosh when they fit the topic.',
+  },
+  tamil: {
+    label: 'Tamil',
+    translationCode: 'ta',
+    creators: ['Error Makes Clever', 'GUVI Tamil', 'Tamil Tech Programming'],
+    promptLine: 'Prefer Tamil creator resources such as Error Makes Clever, GUVI Tamil, and other Tamil-first explainers when they fit the topic.',
+  },
+  hindi: {
+    label: 'Hindi',
+    translationCode: 'hi',
+    creators: ['Apna College', 'CodeHelp', 'CodeWithHarry'],
+    promptLine: 'Prefer Hindi creator resources such as Apna College, CodeHelp, and CodeWithHarry when they fit the topic.',
+  },
+};
+
+const PLAN_REQUEST_TIMEOUT_MS = 12000;
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Number(value || min)));
 }
@@ -589,6 +612,27 @@ function normalizePlanTitle(title, fallback = '') {
   }
 
   return normalized.slice(0, 80).trim();
+}
+
+function normalizePreferredLanguage(value, fallback = 'english') {
+  const normalized = String(value || fallback)
+    .trim()
+    .toLowerCase();
+
+  return PREP_LANGUAGE_PROFILES[normalized] ? normalized : fallback;
+}
+
+function getPreferredLanguageProfile(value) {
+  return PREP_LANGUAGE_PROFILES[normalizePreferredLanguage(value)];
+}
+
+function withTimeout(promise, timeoutMs) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]);
 }
 
 function splitThemeTopics(theme) {
@@ -671,6 +715,50 @@ function safeJsonParse(content) {
 
 function buildSearchUrl(query) {
   return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+}
+
+function buildTranslatedExternalUrl(url, preferredLanguage) {
+  const normalizedUrl = String(url || '').trim();
+  if (!normalizedUrl) {
+    return normalizedUrl;
+  }
+
+  const language = normalizePreferredLanguage(preferredLanguage);
+  if (language === 'english') {
+    return normalizedUrl;
+  }
+
+  const profile = getPreferredLanguageProfile(language);
+  return `https://translate.google.com/translate?sl=auto&tl=${profile.translationCode}&u=${encodeURIComponent(normalizedUrl)}`;
+}
+
+function translateReadableResource(item, preferredLanguage) {
+  if (!item?.url) {
+    return item;
+  }
+
+  const language = normalizePreferredLanguage(preferredLanguage);
+  if (language === 'english') {
+    return item;
+  }
+
+  const profile = getPreferredLanguageProfile(language);
+  return {
+    ...item,
+    title: `${item.title} (${profile.label} translation)`,
+    url: buildTranslatedExternalUrl(item.url, language),
+  };
+}
+
+function buildLocalizedCreatorItems(topic, targetRole, preferredLanguage) {
+  const profile = getPreferredLanguageProfile(preferredLanguage);
+  const roleHint = String(targetRole || '').trim();
+
+  return profile.creators.slice(0, 2).map((creator) => ({
+    title: `${creator}: ${topic}${roleHint ? ` for ${roleHint}` : ''}`,
+    type: 'youtube',
+    url: buildSearchUrl(`${creator} ${topic} ${roleHint}`.trim()),
+  }));
 }
 
 function titleCaseSlug(value) {
@@ -831,42 +919,47 @@ function getTopicReferenceProfile(topic, targetRole = '') {
     || TOPIC_REFERENCE_BANK[0];
 }
 
-function buildArticleUrl(topic, targetRole) {
-  return getTopicReferenceProfile(topic, targetRole).article.url;
+function buildArticleUrl(topic, targetRole, preferredLanguage = 'english') {
+  const article = getTopicReferenceProfile(topic, targetRole).article;
+  return buildTranslatedExternalUrl(article.url, preferredLanguage);
 }
 
 function buildProblemSet(topic, targetRole) {
   return getTopicReferenceProfile(topic, targetRole).problems;
 }
 
-function buildCuratedResourceItems(topic, targetRole) {
+function buildCuratedResourceItems(topic, targetRole, preferredLanguage = 'english') {
   const profile = getTopicReferenceProfile(topic, targetRole);
+  const localizedVideos = buildLocalizedCreatorItems(topic, targetRole, preferredLanguage);
   return [
     {
-      title: profile.videos[0].title,
+      title: localizedVideos[0]?.title || profile.videos[0].title,
       type: 'youtube',
-      url: profile.videos[0].url,
+      url: localizedVideos[0]?.url || profile.videos[0].url,
     },
-    {
+    translateReadableResource({
       title: profile.article.title,
       type: 'article',
       url: profile.article.url,
-    },
-    {
+    }, preferredLanguage),
+    translateReadableResource({
       title: profile.newsletter.title,
       type: 'newsletter',
       url: profile.newsletter.url,
-    },
+    }, preferredLanguage),
     {
-      title: profile.videos[1].title,
+      title: localizedVideos[1]?.title || profile.videos[1].title,
       type: 'youtube',
-      url: profile.videos[1].url,
+      url: localizedVideos[1]?.url || profile.videos[1].url,
     },
   ].filter((item) => item.url);
 }
 
-function buildProjectReference(targetRole) {
-  return getRolePrepProfile(targetRole).projectReference || DEFAULT_ROLE_PREP_PROFILE.projectReference;
+function buildProjectReference(targetRole, preferredLanguage = 'english') {
+  return translateReadableResource(
+    getRolePrepProfile(targetRole).projectReference || DEFAULT_ROLE_PREP_PROFILE.projectReference,
+    preferredLanguage,
+  );
 }
 
 function getRoleBiasTopics(targetRole) {
@@ -884,6 +977,28 @@ function buildCoachLine(knownTopics, prioritizedTopics, targetRole) {
   }
 
   return `You already know ${foundation}. Now build disciplined pressure on ${primaryFocus} for ${roleProfile.outcomeLabel}.`;
+}
+
+function buildTaskSummary({
+  topic,
+  revisionTopic,
+  taskType,
+  referenceLabel,
+  targetRole,
+  preferredLanguage = 'english',
+}) {
+  const languageLabel = getPreferredLanguageProfile(preferredLanguage).label;
+  const normalizedTaskType = String(taskType || '').toLowerCase();
+
+  if (normalizedTaskType.includes('project')) {
+    return `Use ${referenceLabel || 'the linked resource'} to build one small artifact around ${topic}. Define the input, the output, and one measurable improvement you can explain for ${targetRole || 'your target role'}. ${preferredLanguage === 'english' ? '' : `${languageLabel} reading links will open in translation where possible.`}`.trim();
+  }
+
+  if (normalizedTaskType.includes('revision')) {
+    return `Review ${topic} with the linked reading, then explain the concept in one minute and connect it to ${revisionTopic || targetRole || 'the interview context'}. ${preferredLanguage === 'english' ? '' : `${languageLabel} reading links will open in translation where possible.`}`.trim();
+  }
+
+  return `Solve ${referenceLabel || topic} to rehearse ${topic}. Focus on naming the pattern early, choosing the right data structure, and explaining the time-space tradeoff out loud for ${targetRole || 'your interviews'}.`;
 }
 
 function normalizeDurationMonths(value, fallback = 1) {
@@ -939,7 +1054,7 @@ function buildRoadmap(prioritizedTopics, timePerDay, targetRole, durationMonths 
   });
 }
 
-function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole, targetTopics = []) {
+function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole, targetTopics = [], preferredLanguage = 'english') {
   const roleProfile = getRolePrepProfile(targetRole);
   const practiceTopics = cleanTopics([
     ...prioritizedTopics.filter((topic) => !isRevisionTopic(topic)),
@@ -955,7 +1070,7 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole,
     || roleProfile.projectFocus
     || targetRole
     || 'Placement project';
-  const projectReference = buildProjectReference(targetRole);
+  const projectReference = buildProjectReference(targetRole, preferredLanguage);
   const days = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'];
   const totalMinutes = clamp(timePerDay || 120, 60, 480);
   const practiceType = /data analyst|data engineer|data scientist/i.test(String(targetRole || ''))
@@ -992,6 +1107,14 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole,
           difficulty: primaryProblem.difficulty,
           referenceLabel: primaryProblem.label,
           referenceUrl: primaryProblem.url,
+          summary: buildTaskSummary({
+            topic: primaryTopic,
+            revisionTopic,
+            taskType: practiceType,
+            referenceLabel: primaryProblem.label,
+            targetRole,
+            preferredLanguage,
+          }),
         },
         {
           title: secondaryProblem.label,
@@ -1000,6 +1123,14 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole,
           difficulty: secondaryProblem.difficulty,
           referenceLabel: secondaryProblem.label,
           referenceUrl: secondaryProblem.url,
+          summary: buildTaskSummary({
+            topic: secondaryTopic,
+            revisionTopic,
+            taskType: practiceType,
+            referenceLabel: secondaryProblem.label,
+            targetRole,
+            preferredLanguage,
+          }),
         },
         {
           title: `Revision: ${revisionTopic}`,
@@ -1007,7 +1138,15 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole,
           estimatedMinutes: chunks[2],
           difficulty: 'Medium',
           referenceLabel: revisionTopic,
-          referenceUrl: buildArticleUrl(revisionTopic, targetRole),
+          referenceUrl: buildArticleUrl(revisionTopic, targetRole, preferredLanguage),
+          summary: buildTaskSummary({
+            topic: revisionTopic,
+            revisionTopic,
+            taskType: 'Revision',
+            referenceLabel: revisionTopic,
+            targetRole,
+            preferredLanguage,
+          }),
         },
         {
           title: `Project task: apply ${projectFocus}`,
@@ -1016,18 +1155,26 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole,
           difficulty: knownTopics.length >= 3 ? 'Medium' : 'Easy',
           referenceLabel: projectReference.label,
           referenceUrl: projectReference.url,
+          summary: buildTaskSummary({
+            topic: projectFocus,
+            revisionTopic,
+            taskType: 'Project',
+            referenceLabel: projectReference.label,
+            targetRole,
+            preferredLanguage,
+          }),
         },
       ],
     };
   });
 }
 
-function buildResources(prioritizedTopics, targetRole) {
+function buildResources(prioritizedTopics, targetRole, preferredLanguage = 'english') {
   const topics = cleanTopics([...prioritizedTopics, ...getRoleBiasTopics(targetRole)], 5);
 
   return topics.map((topic) => ({
     topic,
-    items: buildCuratedResourceItems(topic, targetRole),
+    items: buildCuratedResourceItems(topic, targetRole, preferredLanguage),
   }));
 }
 
@@ -1093,13 +1240,14 @@ function buildFallbackPlan({
   timePerDay,
   durationMonths = 1,
   targetRole,
+  preferredLanguage = 'english',
   planId = null,
   version = 1,
 }) {
   const prioritizedTopics = prioritizeTopics(knownTopics, targetTopics, targetRole);
   const roadmap = buildRoadmap(prioritizedTopics, timePerDay, targetRole, durationMonths);
-  const tasks = buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole, targetTopics);
-  const resources = buildResources(prioritizedTopics, targetRole);
+  const tasks = buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole, targetTopics, preferredLanguage);
+  const resources = buildResources(prioritizedTopics, targetRole, preferredLanguage);
   const flashcards = buildFlashcards(prioritizedTopics, knownTopics, tasks, targetRole);
   const titles = resolvePlanTitles({
     targetRole,
@@ -1115,6 +1263,7 @@ function buildFallbackPlan({
     timePerDay,
     durationMonths,
     targetRole,
+    preferredLanguage,
     title: titles.title,
     autoTitle: titles.autoTitle,
     titleSource: titles.titleSource,
@@ -1288,6 +1437,7 @@ function normalizeStoredPlanShape(plan) {
           difficulty: String(item?.difficulty || 'Medium').trim(),
           referenceLabel: reference.referenceLabel,
           referenceUrl: reference.referenceUrl,
+          summary: String(item?.summary || '').trim() || null,
         };
       }),
     })),
@@ -1370,6 +1520,7 @@ function normalizePlanResult(rawPlan, fallbackPlan) {
               difficulty: String(item.difficulty || fallbackItem.difficulty || 'Medium').trim(),
               referenceLabel: reference.referenceLabel,
               referenceUrl: reference.referenceUrl,
+              summary: String(item.summary || fallbackItem.summary || '').trim() || null,
             };
           })
           : fallbackPlan.tasks[index]?.items || [],
@@ -1430,15 +1581,18 @@ async function requestPlanJson(systemPrompt, userPrompt, fallbackFactory) {
   }
 
   try {
-    const response = await client.chat.completions.create({
-      model: currentStatus.model,
-      temperature: 0.45,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-    });
+    const response = await withTimeout(
+      client.chat.completions.create({
+        model: currentStatus.model,
+        temperature: 0.45,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+      PLAN_REQUEST_TIMEOUT_MS,
+    );
 
     markAIWorking();
 
@@ -1475,6 +1629,7 @@ function hydrateStoredPlan(plan) {
   return {
     ...normalizedPlan,
     durationMonths: normalizeDurationMonths(normalizedPlan.durationMonths || normalizedPlan.metadata?.durationMonths || 1, 1),
+    preferredLanguage: normalizePreferredLanguage(normalizedPlan.preferredLanguage || normalizedPlan.metadata?.preferredLanguage || 'english'),
     title: titles.title,
     autoTitle: titles.autoTitle,
     titleSource: titles.titleSource,
@@ -1518,7 +1673,7 @@ function planTasksForSync(plan, planId, previousTasks = []) {
 
     return {
       title: item.title,
-      description: `${firstDay.day}: ${firstDay.theme}`,
+      description: item.summary || `${firstDay.day}: ${firstDay.theme}`,
       category: item.type === 'Project' ? 'Project' : item.type === 'Revision' ? 'Core' : 'DSA',
       subcategory: firstDay.theme,
       status: matchedTask?.status || 'pending',
@@ -1537,6 +1692,7 @@ function planTasksForSync(plan, planId, previousTasks = []) {
         day: firstDay.day,
         theme: firstDay.theme,
         itemIndex: index,
+        summary: item.summary || null,
       },
       completedAt: matchedTask?.completedAt || null,
     };
@@ -1578,6 +1734,7 @@ async function syncUserWithActivePlan(user, plan = null) {
     nextCoachMetadata.prepArchitectPlanId = plan.id;
     nextCoachMetadata.prepArchitectPlanTitle = plan.title || plan.metadata?.title || null;
     nextCoachMetadata.prepArchitectCoachLine = plan.coachLine || plan.metadata?.coachLine || null;
+    nextCoachMetadata.prepArchitectLanguage = plan.preferredLanguage || plan.metadata?.preferredLanguage || 'english';
   } else {
     delete nextCoachMetadata.prepArchitectUpdatedAt;
     delete nextCoachMetadata.prepArchitectPlanId;
@@ -1623,6 +1780,7 @@ async function persistPlan(user, plan, sourcePlanId = null) {
         coachLine: plan.coachLine,
         usedFallback: plan.usedFallback,
         durationMonths: plan.durationMonths,
+        preferredLanguage: normalizePreferredLanguage(plan.preferredLanguage || 'english'),
       },
     }, client);
   });
@@ -1642,6 +1800,7 @@ async function persistPlan(user, plan, sourcePlanId = null) {
     timePerDay: plan.timePerDay,
     durationMonths: plan.durationMonths,
     targetRole: plan.targetRole,
+    preferredLanguage: normalizePreferredLanguage(plan.preferredLanguage || 'english'),
     usedFallback: plan.usedFallback,
   };
 
@@ -1658,6 +1817,7 @@ function buildPlanRequestPayload(user, payload = {}, currentPlan = null) {
   const timePerDay = clamp(payload.timePerDay || currentPlan?.timePerDay || 120, 60, 480);
   const durationMonths = normalizeDurationMonths(payload.durationMonths || currentPlan?.durationMonths || currentPlan?.metadata?.durationMonths || 1, 1);
   const targetRole = String(payload.targetRole || currentPlan?.targetRole || user.targetRole || 'Placement Engineer').trim();
+  const preferredLanguage = normalizePreferredLanguage(payload.preferredLanguage || currentPlan?.preferredLanguage || currentPlan?.metadata?.preferredLanguage || 'english');
 
   if (!knownTopics.length && !targetTopics.length) {
     throw new AppError('Add at least one known topic or one target topic to build a plan.', 400);
@@ -1669,6 +1829,7 @@ function buildPlanRequestPayload(user, payload = {}, currentPlan = null) {
     timePerDay,
     durationMonths,
     targetRole,
+    preferredLanguage,
   };
 }
 
@@ -1686,6 +1847,7 @@ async function generatePlan(user, payload = {}) {
       `Time per day: ${input.timePerDay} minutes`,
       `Plan duration: ${input.durationMonths} month${input.durationMonths === 1 ? '' : 's'}`,
       `Target role: ${input.targetRole}`,
+      `Preferred language: ${getPreferredLanguageProfile(input.preferredLanguage).label}`,
       '',
       'Generate:',
       '1. Weekly roadmap',
@@ -1702,6 +1864,7 @@ async function generatePlan(user, payload = {}) {
       '   * Make them useful for recall under interview pressure, not textbook definitions',
       '',
       'Rules:',
+      `* ${getPreferredLanguageProfile(input.preferredLanguage).promptLine}`,
       '* Blend the selected role with the user target topics. The role should shape the plan, but the listed target topics must stay visible in the roadmap, tasks, and resources.',
       '* Make the daily work role-aware: data analyst plans should lean into SQL, analysis, dashboards, and insight delivery; data engineer plans should lean into pipelines, modeling, warehousing, and orchestration; software roles should lean into coding patterns, CS fundamentals, and systems.',
       '* Keep the roadmap and daily tasks tightly relevant to the provided topics. Do not introduce random focus areas outside the chosen role and target topics.',
@@ -1709,13 +1872,15 @@ async function generatePlan(user, payload = {}) {
       '* Keep it realistic',
       '* No fluff',
       '* Avoid broad generic search links when a direct problem or targeted creator search is possible',
+      '* For readable article or newsletter resources, prefer URLs that can be translated when the preferred language is not English.',
+      '* Every task item should include a short actionable summary under the key "summary".',
       '',
       'Return JSON in this exact shape:',
       '{',
       '  "title": "string",',
       '  "coachLine": "string",',
       '  "roadmap": [{ "week": 1, "title": "string", "focusTopics": ["string"], "estimatedHours": 12, "goals": ["string"] }],',
-      '  "tasks": [{ "day": "Day 1", "theme": "string", "totalEstimatedMinutes": 120, "items": [{ "title": "string", "type": "DSA", "estimatedMinutes": 30, "difficulty": "Easy", "referenceLabel": "string", "referenceUrl": "https://..." }] }],',
+      '  "tasks": [{ "day": "Day 1", "theme": "string", "totalEstimatedMinutes": 120, "items": [{ "title": "string", "type": "DSA", "estimatedMinutes": 30, "difficulty": "Easy", "referenceLabel": "string", "referenceUrl": "https://...", "summary": "string" }] }],',
       '  "resources": [{ "topic": "string", "items": [{ "title": "string", "type": "youtube", "url": "https://..." }] }],',
       '  "flashcards": [{ "topic": "string", "question": "string", "answer": "string" }]',
       '}',
@@ -1728,6 +1893,7 @@ async function generatePlan(user, payload = {}) {
   return persistPlan(user, {
     ...input,
     ...normalizedPlan,
+    preferredLanguage: input.preferredLanguage,
     usedFallback,
   });
 }
@@ -1757,14 +1923,18 @@ async function updatePlan(user, payload = {}) {
       `Time per day: ${input.timePerDay} minutes`,
       `Plan duration: ${input.durationMonths} month${input.durationMonths === 1 ? '' : 's'}`,
       `Target role: ${input.targetRole}`,
+      `Preferred language: ${getPreferredLanguageProfile(input.preferredLanguage).label}`,
       '',
       'Regenerate the title, roadmap, tasks, resources, and flashcards while keeping the plan realistic and editable.',
+      getPreferredLanguageProfile(input.preferredLanguage).promptLine,
       'Blend the selected role with the target topics so the result feels role-specific instead of generic.',
       'For data analyst and data engineer roles, lean into SQL, analytics, pipelines, warehousing, dashboards, and role-specific project work when relevant.',
       'Keep the plan tightly relevant to the supplied target topics. Avoid drifting into unrelated areas.',
       'Make flashcards specific to the planned work and useful for fast recall under interview pressure.',
       'Use direct, specific practice problems instead of broad problem-set searches whenever possible.',
       'Prefer creator-specific YouTube resources and direct articles/newsletters over generic searches.',
+      'For readable article or newsletter resources, prefer URLs that can be translated when the preferred language is not English.',
+      'Every task item must include a short actionable summary under the key "summary".',
       'Return the same JSON structure as the original plan generation request.',
     ].join('\n'),
     () => fallbackPlan
@@ -1775,6 +1945,7 @@ async function updatePlan(user, payload = {}) {
   return persistPlan(user, {
     ...input,
     ...normalizedPlan,
+    preferredLanguage: input.preferredLanguage,
     usedFallback,
   }, currentPlan.id);
 }
