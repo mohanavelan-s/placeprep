@@ -22,6 +22,7 @@ type ClearHistoryButtonProps = {
   buttonLabel?: string;
   pendingLabel?: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   buttonVariant?: ButtonProps["variant"];
   className?: string;
 };
@@ -35,6 +36,7 @@ export default function ClearHistoryButton({
   buttonLabel = "Clear history",
   pendingLabel = "Clearing...",
   confirmLabel = "Clear history",
+  cancelLabel = "Cancel",
   buttonVariant = "outline",
   className,
 }: ClearHistoryButtonProps) {
@@ -59,7 +61,7 @@ export default function ClearHistoryButton({
         </AlertDialogHeader>
 
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             onClick={() => onConfirm()}

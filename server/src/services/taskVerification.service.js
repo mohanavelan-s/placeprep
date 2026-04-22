@@ -421,7 +421,14 @@ async function requestVisionVerification(task, proof) {
       messages: [
         {
           role: 'system',
-          content: 'You verify whether an uploaded screenshot or photo is credible proof that a student completed a task. Return only JSON with keys: verified (boolean), confidence (0-1), reason (string).',
+          content: [
+            'You verify whether an uploaded screenshot or photo is credible proof that a student completed a task.',
+            'Return only JSON with keys: verified (boolean), confidence (0-1), reason (string).',
+            'Reject unrelated images such as beaches, scenery, pets, selfies, random rooms, food, vehicles, blank walls, memes, or any photo that does not visibly contain task evidence.',
+            'For coding tasks, require visible evidence like the exact or closely matching problem title, an accepted/submitted result, code editor content, test results, or platform UI that matches the assigned task.',
+            'For notes, project, dashboard, resume, or revision tasks, require clearly relevant notes, deliverables, project screens, dashboards, resume edits, or outputs tied to the assigned topic.',
+            'If the image is ambiguous, unrelated, or lacks visible task evidence, verified must be false.',
+          ].join(' '),
         },
         {
           role: 'user',
@@ -436,8 +443,10 @@ async function requestVisionVerification(task, proof) {
                 `Expected platform: ${reference.platform}`,
                 `Topic hint: ${task?.weakArea || task?.subcategory || 'None'}`,
                 `Student caption: ${proof?.caption || 'None'}`,
+                `Expected keywords: ${reference.topicKeywords.join(', ') || 'None'}`,
                 '',
-                'Mark verified true only when the image clearly looks like completion evidence for this exact task, such as an accepted coding submission, a completed dashboard/pipeline result, or visible finished notes for the requested topic.',
+                'Mark verified true only when the image clearly looks like completion evidence for this exact task, such as an accepted coding submission, a completed dashboard or pipeline result, or visible finished notes for the requested topic.',
+                'A caption alone is not enough. The image itself must show evidence.',
               ].join('\n'),
             },
             {
@@ -469,41 +478,24 @@ async function requestVisionVerification(task, proof) {
   }
 }
 
-async function verifyTaskAgainstProof(user, task, proof) {
-  const heuristic = buildProofHeuristic(task, proof);
-
-  if (heuristic.verified) {
-    const updatedTask = await taskRepository.updateTask(task.id, user.id, {
-      status: 'completed',
-      completedAt: new Date(),
-      metadata: buildAutoVerificationMetadata(task, {
-        ...createVerificationSummary(task),
-        verified: true,
-        method: 'proof_caption_match',
-        verifiedAt: new Date().toISOString(),
-        reason: heuristic.reason,
-        proofImageId: proof.id,
-        proofCaption: heuristic.caption || null,
-        matchedTokens: heuristic.matchedTokens,
-      }),
-    });
-
-    return {
-      task: updatedTask,
-      verification: {
-        attempted: true,
-        verified: true,
-        method: 'proof_caption_match',
-        reason: heuristic.reason,
-        confidence: heuristic.confidence,
-        taskId: task.id,
-        taskStatus: updatedTask?.status || 'completed',
-      },
-    };
+function buildProofFailureReason(heuristic, visionResult) {
+  if (visionResult?.reason) {
+    return visionResult.reason;
   }
 
+  if (heuristic.verified) {
+    return 'Caption matched the task, but the uploaded image itself was not verified as real completion proof yet.';
+  }
+
+  return heuristic.reason;
+}
+
+async function verifyTaskAgainstProof(user, task, proof) {
+  const heuristic = buildProofHeuristic(task, proof);
   const visionResult = await requestVisionVerification(task, proof);
-  if (visionResult?.verified) {
+  const visionVerified = Boolean(visionResult?.verified) && Number(visionResult?.confidence || 0) >= 0.55;
+
+  if (visionVerified) {
     const updatedTask = await taskRepository.updateTask(task.id, user.id, {
       status: 'completed',
       completedAt: new Date(),
@@ -539,10 +531,12 @@ async function verifyTaskAgainstProof(user, task, proof) {
       verified: false,
       method: visionResult ? 'proof_vision_check' : 'proof_caption_match',
       checkedAt: new Date().toISOString(),
-      reason: visionResult?.reason || heuristic.reason,
+      reason: buildProofFailureReason(heuristic, visionResult),
       confidence: visionResult?.confidence || heuristic.confidence,
       proofImageId: proof.id,
       proofCaption: proof?.caption || null,
+      matchedTokens: heuristic.matchedTokens,
+      captionMatched: heuristic.verified,
     }),
   });
 
@@ -552,7 +546,7 @@ async function verifyTaskAgainstProof(user, task, proof) {
       attempted: true,
       verified: false,
       method: visionResult ? 'proof_vision_check' : 'proof_caption_match',
-      reason: visionResult?.reason || heuristic.reason,
+      reason: buildProofFailureReason(heuristic, visionResult),
       confidence: visionResult?.confidence || heuristic.confidence,
       taskId: task.id,
       taskStatus: updatedTask?.status || task.status,

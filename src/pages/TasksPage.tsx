@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { isObserverUser } from "@/lib/access";
 import {
   createTask,
@@ -31,9 +32,173 @@ import {
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import { formatHoursFromMinutes, parseHoursToMinutes } from "@/lib/time";
 import { allowsManualCompletion, getTaskVerificationHint } from "@/lib/task-verification";
+import type { UiLanguage } from "@/lib/ui-language";
 
 const statuses = ["all", "pending", "in_progress", "completed", "skipped"] as const;
 const categories = ["all", "DSA", "Core", "Project", "Aptitude", "Resume", "MockInterview", "Other"] as const;
+
+const TASKS_PAGE_TRANSLATIONS: Record<string, Record<Exclude<UiLanguage, "english">, string>> = {
+  "Task system": {
+    tamil: "பணி அமைப்பு",
+    hindi: "टास्क सिस्टम",
+  },
+  "Keep every mission visible.": {
+    tamil: "ஒவ்வொரு பணியும் தெளிவாக கண்ணில் படுமாறு வைத்திருங்கள்.",
+    hindi: "हर कार्य को साफ़ और दिखाई देने वाला रखें।",
+  },
+  Total: {
+    tamil: "மொத்தம்",
+    hindi: "कुल",
+  },
+  "In progress": {
+    tamil: "நடைமுறையில்",
+    hindi: "प्रगति में",
+  },
+  Pending: {
+    tamil: "நிலுவை",
+    hindi: "लंबित",
+  },
+  Completed: {
+    tamil: "முடிந்தது",
+    hindi: "पूर्ण",
+  },
+  Skipped: {
+    tamil: "தவிர்க்கப்பட்டது",
+    hindi: "छोड़ा गया",
+  },
+  "Quick add": {
+    tamil: "விரைவு சேர்க்கை",
+    hindi: "तेज़ जोड़ें",
+  },
+  "New task title": {
+    tamil: "புதிய பணி தலைப்பு",
+    hindi: "नया टास्क शीर्षक",
+  },
+  Add: {
+    tamil: "சேர்",
+    hindi: "जोड़ें",
+  },
+  Filters: {
+    tamil: "வடிகட்டிகள்",
+    hindi: "फ़िल्टर",
+  },
+  Status: {
+    tamil: "நிலை",
+    hindi: "स्थिति",
+  },
+  Category: {
+    tamil: "வகை",
+    hindi: "श्रेणी",
+  },
+  "All statuses": {
+    tamil: "அனைத்து நிலைகள்",
+    hindi: "सभी स्थितियाँ",
+  },
+  "All categories": {
+    tamil: "அனைத்து வகைகள்",
+    hindi: "सभी श्रेणियाँ",
+  },
+  "Task list": {
+    tamil: "பணி பட்டியல்",
+    hindi: "टास्क सूची",
+  },
+  "Execution board": {
+    tamil: "செயல்பாட்டு பலகை",
+    hindi: "निष्पादन बोर्ड",
+  },
+  "Task fallback": {
+    tamil: "பணி மாற்று நிலை",
+    hindi: "टास्क फॉलबैक",
+  },
+  Retry: {
+    tamil: "மீண்டும் முயலுங்கள்",
+    hindi: "फिर से कोशिश करें",
+  },
+  "Task data could not be loaded.": {
+    tamil: "பணி தகவலை ஏற்ற முடியவில்லை.",
+    hindi: "टास्क डेटा लोड नहीं हो सका।",
+  },
+  "The board stayed visible with safe defaults. Retry to fetch your latest tasks.": {
+    tamil: "பாதுகாப்பான இயல்புநிலைகளுடன் பலகை தெரிகிறது. சமீபத்திய பணிகளை மீண்டும் பெற முயலுங்கள்.",
+    hindi: "बोर्ड सुरक्षित डिफ़ॉल्ट के साथ दिखाई दे रहा है। अपने नवीनतम टास्क फिर से लाने के लिए पुनः प्रयास करें।",
+  },
+  Due: {
+    tamil: "கடைசி நேரம்",
+    hindi: "देय",
+  },
+  Focus: {
+    tamil: "கவனம்",
+    hindi: "फ़ोकस",
+  },
+  "Hide details": {
+    tamil: "விவரங்களை மறை",
+    hindi: "विवरण छिपाएँ",
+  },
+  Details: {
+    tamil: "விவரங்கள்",
+    hindi: "विवरण",
+  },
+  Delete: {
+    tamil: "நீக்கு",
+    hindi: "हटाएँ",
+  },
+  "Task brief": {
+    tamil: "பணி சுருக்கம்",
+    hindi: "टास्क सार",
+  },
+  "Use this task to build one concrete skill and explain the approach clearly before moving on.": {
+    tamil: "அடுத்ததிற்கு செல்லும் முன், இந்த பணியின் மூலம் ஒரு தெளிவான திறனை உருவாக்கி அணுகுமுறையை விளக்குங்கள்.",
+    hindi: "आगे बढ़ने से पहले इस टास्क से एक ठोस कौशल बनाइए और अपना तरीका स्पष्ट कीजिए।",
+  },
+  "No tasks match these filters.": {
+    tamil: "இந்த வடிகட்டிகளுக்கு பொருந்தும் பணிகள் இல்லை.",
+    hindi: "इन फ़िल्टरों से मेल खाते कोई टास्क नहीं हैं।",
+  },
+  "Generate from Prep Architect or create one manually here.": {
+    tamil: "Prep Architect இலிருந்து உருவாக்குங்கள் அல்லது இங்கே கைமுறையாகச் சேர்க்குங்கள்.",
+    hindi: "Prep Architect से जनरेट करें या यहाँ हाथ से एक बनाएँ।",
+  },
+  DSA: {
+    tamil: "DSA",
+    hindi: "DSA",
+  },
+  Core: {
+    tamil: "மூலப் பாடம்",
+    hindi: "कोर",
+  },
+  Project: {
+    tamil: "திட்டம்",
+    hindi: "प्रोजेक्ट",
+  },
+  Aptitude: {
+    tamil: "திறனறிதல்",
+    hindi: "एप्टीट्यूड",
+  },
+  Resume: {
+    tamil: "ரெஸ்யூமே",
+    hindi: "रिज़्यूमे",
+  },
+  MockInterview: {
+    tamil: "மாதிரி நேர்காணல்",
+    hindi: "मॉक इंटरव्यू",
+  },
+  Other: {
+    tamil: "மற்றவை",
+    hindi: "अन्य",
+  },
+  "Auto-checks against the saved LeetCode profile. You can also upload proof for this task.": {
+    tamil: "சேமிக்கப்பட்ட LeetCode சுயவிவரத்துடன் தானாகச் சரிபார்க்கும். இந்த பணிக்காக ஆதாரமும் பதிவேற்றலாம்.",
+    hindi: "सेव किए गए LeetCode प्रोफ़ाइल से अपने आप जाँच करता है। आप इस टास्क के लिए प्रमाण भी अपलोड कर सकते हैं।",
+  },
+  "Upload linked proof and PlacePrep will verify it before marking this complete.": {
+    tamil: "இணைக்கப்பட்ட ஆதாரத்தை பதிவேற்றுங்கள்; இதை முடிந்ததாக குறிக்கும் முன் PlacePrep சரிபார்க்கும்.",
+    hindi: "जुड़ा हुआ प्रमाण अपलोड करें और PlacePrep इसे पूर्ण चिह्नित करने से पहले सत्यापित करेगा।",
+  },
+  "Verified automatically via LeetCode profile or proof upload.": {
+    tamil: "LeetCode சுயவிவரம் அல்லது ஆதார பதிவேற்றத்தின் மூலம் தானாகச் சரிபார்க்கப்பட்டது.",
+    hindi: "LeetCode प्रोफ़ाइल या प्रमाण अपलोड के माध्यम से अपने आप सत्यापित किया गया।",
+  },
+};
 
 function formatTaskDueLabel(value?: string | null) {
   if (!value) {
@@ -55,6 +220,30 @@ function formatTaskDueLabel(value?: string | null) {
 export default function TasksPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { language, t } = useLanguage();
+  const localize = (text: string) => TASKS_PAGE_TRANSLATIONS[text]?.[language] || t(text);
+  const localizeStatus = (value: (typeof statuses)[number]) => {
+    if (value === "all") {
+      return localize("All statuses");
+    }
+
+    if (value === "in_progress") {
+      return localize("In progress");
+    }
+
+    if (value === "completed") {
+      return localize("Completed");
+    }
+
+    if (value === "skipped") {
+      return localize("Skipped");
+    }
+
+    return localize("Pending");
+  };
+  const localizeCategory = (value: (typeof categories)[number]) => (
+    value === "all" ? localize("All categories") : localize(value)
+  );
   const [status, setStatus] = useState<(typeof statuses)[number]>("all");
   const [category, setCategory] = useState<(typeof categories)[number]>("all");
   const [expandedTaskIds, setExpandedTaskIds] = useState<string[]>([]);
@@ -151,23 +340,23 @@ export default function TasksPage() {
       <section className="surface-panel p-6 md:p-7">
         <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="section-label">Task system</p>
+            <p className="section-label">{localize("Task system")}</p>
             <h2 className="mt-2 font-heading text-4xl text-foreground md:text-5xl">
-              Keep every mission visible.
+              {localize("Keep every mission visible.")}
             </h2>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-border/80 bg-card/70 px-4 py-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Total</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{localize("Total")}</p>
               <p className="mt-2 font-heading text-3xl text-foreground">{groupedCounts.total}</p>
             </div>
             <div className="rounded-2xl border border-border/80 bg-card/70 px-4 py-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">In progress</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{localize("In progress")}</p>
               <p className="mt-2 font-heading text-3xl text-foreground">{groupedCounts.active}</p>
             </div>
             <div className="rounded-2xl border border-border/80 bg-card/70 px-4 py-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Completed</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{localize("Completed")}</p>
               <p className="mt-2 font-heading text-3xl text-foreground">{groupedCounts.completed}</p>
             </div>
           </div>
@@ -175,12 +364,12 @@ export default function TasksPage() {
 
         <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-2xl border border-border/80 bg-card/70 p-5">
-            <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Quick add</p>
+            <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">{localize("Quick add")}</p>
             <div className="mt-4 grid gap-3 md:grid-cols-[1fr_180px_170px_auto]">
               <Input
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
-                placeholder="New task title"
+                placeholder={localize("New task title")}
                 className="h-11 border-border/80 bg-background/70"
               />
               <Select value={newCategory} onValueChange={setNewCategory}>
@@ -190,7 +379,7 @@ export default function TasksPage() {
                 <SelectContent>
                   {categories.filter((item) => item !== "all").map((item) => (
                     <SelectItem key={item} value={item}>
-                      {item}
+                      {localizeCategory(item)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -210,22 +399,22 @@ export default function TasksPage() {
                 onClick={() => createMutation.mutate()}
               >
                 <Plus className="h-4 w-4" />
-                Add
+                {localize("Add")}
               </Button>
             </div>
           </div>
 
           <div className="rounded-2xl border border-border/80 bg-card/70 p-5">
-            <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Filters</p>
+            <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">{localize("Filters")}</p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <Select value={status} onValueChange={(value) => setStatus(value as (typeof statuses)[number])}>
                 <SelectTrigger className="h-11 border-border/80 bg-background/70">
-                  <SelectValue placeholder="Status" />
+                  <SelectValue placeholder={localize("Status")} />
                 </SelectTrigger>
                 <SelectContent>
                   {statuses.map((item) => (
                     <SelectItem key={item} value={item}>
-                      {item === "all" ? "All statuses" : item.replace("_", " ")}
+                      {localizeStatus(item)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -233,12 +422,12 @@ export default function TasksPage() {
 
               <Select value={category} onValueChange={(value) => setCategory(value as (typeof categories)[number])}>
                 <SelectTrigger className="h-11 border-border/80 bg-background/70">
-                  <SelectValue placeholder="Category" />
+                  <SelectValue placeholder={localize("Category")} />
                 </SelectTrigger>
                 <SelectContent>
                   {categories.map((item) => (
                     <SelectItem key={item} value={item}>
-                      {item === "all" ? "All categories" : item}
+                      {localizeCategory(item)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -250,18 +439,18 @@ export default function TasksPage() {
 
       <section className="surface-panel overflow-hidden">
         <div className="border-b border-border/70 px-6 py-5">
-          <p className="section-label">Task list</p>
-          <h3 className="mt-2 font-heading text-3xl text-foreground">Execution board</h3>
+          <p className="section-label">{localize("Task list")}</p>
+          <h3 className="mt-2 font-heading text-3xl text-foreground">{localize("Execution board")}</h3>
         </div>
 
         <div>
           {tasksQuery.isError && (
             <div className="px-6 py-6">
               <PageStatusPanel
-                eyebrow="Task fallback"
-                title="Task data could not be loaded."
-                description="The board stayed visible with safe defaults. Retry to fetch your latest tasks."
-                actionLabel="Retry"
+                eyebrow={localize("Task fallback")}
+                title={localize("Task data could not be loaded.")}
+                description={localize("The board stayed visible with safe defaults. Retry to fetch your latest tasks.")}
+                actionLabel={localize("Retry")}
                 onAction={() => void tasksQuery.refetch()}
                 tone="danger"
               />
@@ -274,12 +463,12 @@ export default function TasksPage() {
                 <div className="min-w-0 flex-1">
                   <p className="text-base font-medium text-foreground">{task.title}</p>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    {task.category} / {formatHoursFromMinutes(task.estimatedMinutes)} / {task.referenceLabel || task.weakArea || "Focus"}
-                    {task.dueAt ? ` / Due ${formatTaskDueLabel(task.dueAt)}` : ""}
+                    {localizeCategory(task.category as (typeof categories)[number])} / {formatHoursFromMinutes(task.estimatedMinutes)} / {task.referenceLabel || task.weakArea || localize("Focus")}
+                    {task.dueAt ? ` / ${localize("Due")} ${formatTaskDueLabel(task.dueAt)}` : ""}
                   </p>
                   {getTaskVerificationHint(task) && (
                     <p className="mt-2 text-xs uppercase tracking-[0.14em] text-muted-foreground/80">
-                      {getTaskVerificationHint(task)}
+                      {localize(getTaskVerificationHint(task) || "")}
                     </p>
                   )}
                 </div>
@@ -291,7 +480,7 @@ export default function TasksPage() {
                   className="gap-2 text-muted-foreground"
                   onClick={() => toggleExpandedTask(task.id)}
                 >
-                  {expandedTaskIds.includes(task.id) ? "Hide details" : "Details"}
+                  {expandedTaskIds.includes(task.id) ? localize("Hide details") : localize("Details")}
                 </Button>
 
                 <TaskStatusControl
@@ -310,15 +499,15 @@ export default function TasksPage() {
                   onClick={() => deleteMutation.mutate(task.id)}
                 >
                   <Trash2 className="h-4 w-4" />
-                  Delete
+                  {localize("Delete")}
                 </Button>
               </div>
 
               {expandedTaskIds.includes(task.id) && (
                 <div className="mt-4 rounded-[1rem] border border-border/70 bg-background/45 px-4 py-4">
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Task brief</p>
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{localize("Task brief")}</p>
                   <p className="mt-3 text-sm leading-6 text-foreground/82">
-                    {task.description || String(task.metadata?.summary || "").trim() || "Use this task to build one concrete skill and explain the approach clearly before moving on."}
+                    {task.description || String(task.metadata?.summary || "").trim() || localize("Use this task to build one concrete skill and explain the approach clearly before moving on.")}
                   </p>
 
                   {task.referenceUrl && (
@@ -339,10 +528,10 @@ export default function TasksPage() {
           {!tasks.length && !tasksQuery.isPending && !tasksQuery.isError && (
             <div className="px-6 py-10 text-center">
               <p className="font-heading text-3xl text-foreground">
-                No tasks match these filters.
+                {localize("No tasks match these filters.")}
               </p>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                Generate from Prep Architect or create one manually here.
+                {localize("Generate from Prep Architect or create one manually here.")}
               </p>
             </div>
           )}
