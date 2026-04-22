@@ -301,6 +301,16 @@ export interface NotificationSyncResult {
   emailReady: boolean;
 }
 
+export interface PushNotificationTestResult {
+  notification: PrepNotification | null;
+  attempted: boolean;
+  sentCount: number;
+  failedCount: number;
+  reason: string;
+  browserReady: boolean;
+  pushReady: boolean;
+}
+
 export interface HistoryClearResult {
   deleted: number;
   clearedAt: string;
@@ -1496,6 +1506,13 @@ export async function syncNotifications(payload: { deliverEmail?: boolean } = {}
   return request<NotificationSyncResult>("/notifications/sync", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function testPushNotification() {
+  return request<PushNotificationTestResult>("/notifications/test-push", {
+    method: "POST",
+    body: JSON.stringify({}),
   });
 }
 

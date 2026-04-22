@@ -17,6 +17,7 @@ const {
   enqueueNotificationPush,
   processPendingDeliveryJobs,
 } = require('./deliveryJob.service');
+const { sendPushNotificationToUser } = require('./webPush.service');
 const progressService = require('./progress.service');
 const userProfileService = require('./userProfile.service');
 const AppError = require('../utils/appError');
@@ -836,6 +837,67 @@ async function syncNotificationsForUser(userOrId, options = {}) {
   };
 }
 
+async function sendTestPushNotification(userOrId) {
+  const user = await resolveUser(userOrId);
+  const profile = await userProfileService.getProfile(user);
+  const browserReady = Boolean(
+    profile.notificationsEnabled
+    && profile.notificationBrowserEnabled
+    && profile.notificationBrowserPermission === 'granted'
+  );
+
+  if (!browserReady) {
+    return {
+      notification: null,
+      attempted: false,
+      sentCount: 0,
+      failedCount: 0,
+      reason: !profile.notificationsEnabled
+        ? 'notifications_disabled'
+        : profile.notificationBrowserPermission !== 'granted'
+          ? 'browser_permission_not_granted'
+          : 'browser_notifications_disabled',
+      browserReady: false,
+      pushReady: false,
+    };
+  }
+
+  const notification = await notificationRepository.createNotification({
+    userId: user.id,
+    type: 'motivation',
+    message: 'This is your PlacePrep test push. Browser notifications are connected on this device.',
+    sentAt: new Date().toISOString(),
+    deliveryChannels: ['browser', 'push'],
+    metadata: {
+      source: 'manual_push_test',
+      title: 'PlacePrep test push',
+      subject: 'PlacePrep push test',
+      headline: 'Push notifications are live.',
+      preview: 'Your browser received this test signal.',
+      actionLabel: 'Open settings',
+      actionText: 'Return to notification settings.',
+      whyNow: 'Manual delivery test requested from settings.',
+      route: '/settings',
+    },
+    dedupeKey: `manual-push-test:${user.id}:${Date.now()}`,
+  });
+
+  const pushResult = await sendPushNotificationToUser({
+    userId: user.id,
+    notification,
+  });
+
+  return {
+    notification,
+    attempted: pushResult.attempted,
+    sentCount: pushResult.sentCount,
+    failedCount: pushResult.failedCount,
+    reason: pushResult.reason,
+    browserReady: true,
+    pushReady: pushResult.sentCount > 0,
+  };
+}
+
 async function runDailySweep() {
   const users = await userRepository.listUsersForNotificationSweep();
   const results = [];
@@ -905,6 +967,7 @@ async function clearNotificationHistory(user) {
 
 module.exports = {
   syncNotificationsForUser,
+  sendTestPushNotification,
   runDailySweep,
   listNotificationsForUser,
   markNotificationRead,

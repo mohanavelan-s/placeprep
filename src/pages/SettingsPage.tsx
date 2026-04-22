@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BellRing, Languages, Mail, Monitor, RefreshCw, Save } from "lucide-react";
+import { BellRing, Languages, Mail, Monitor, RefreshCw, Save, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import AdminInvitePanel from "@/components/AdminInvitePanel";
@@ -23,6 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
+import { syncBrowserPushSubscription } from "@/lib/browser-push";
 import {
   clearNotificationHistory,
   fetchNotifications,
@@ -30,6 +31,7 @@ import {
   markAllNotificationsRead,
   saveUserProfile,
   syncNotifications,
+  testPushNotification,
   updateAccount,
   uploadImage,
   type PrepNotification,
@@ -220,6 +222,62 @@ export default function SettingsPage() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to clear notification history.");
+    },
+  });
+
+  const testPushMutation = useMutation({
+    mutationFn: async () => {
+      if (runningInsideAndroidApp) {
+        throw new Error("Push testing is available in browsers, not in the embedded Android shell.");
+      }
+
+      const pushState = await syncBrowserPushSubscription({
+        enabled: true,
+        requestPermission: true,
+      });
+
+      if (pushState.permission !== "granted" || !pushState.active) {
+        throw new Error(
+          pushState.reason === "web_push_not_configured"
+            ? "Web push is not configured on the server yet."
+            : pushState.reason === "permission_not_granted"
+              ? "Browser notification permission was not granted."
+              : "This browser could not register for push notifications.",
+        );
+      }
+
+      const savedProfile = await saveUserProfile(
+        buildProfilePayload(profileQuery.data, {
+          notificationsEnabled: true,
+          notificationBrowserEnabled: true,
+          notificationBrowserPermission: "granted",
+        }),
+      );
+
+      const result = await testPushNotification();
+      return {
+        savedProfile,
+        result,
+      };
+    },
+    onSuccess: ({ savedProfile, result }) => {
+      queryClient.setQueryData(["user-profile"], savedProfile);
+      setNotificationPrefs(getNotificationDefaults(savedProfile));
+      void queryClient.invalidateQueries({ queryKey: ["notifications", "recent"] });
+
+      if (result.sentCount > 0) {
+        toast.success("Test push sent. Check this browser for the live notification.");
+        return;
+      }
+
+      toast.error(
+        result.reason === "no_subscriptions"
+          ? "Push subscription was saved, but no browser subscription was available to deliver to."
+          : `Push test did not deliver: ${result.reason}.`,
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to send a test push notification.");
     },
   });
 
@@ -486,6 +544,17 @@ export default function SettingsPage() {
           >
             <RefreshCw className={`h-4 w-4 ${notificationSyncMutation.isPending ? "animate-spin" : ""}`} />
             {notificationSyncMutation.isPending ? "Syncing..." : "Sync now"}
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 gap-2 border-border/80 bg-background/70"
+            onClick={() => void testPushMutation.mutateAsync()}
+            disabled={runningInsideAndroidApp || testPushMutation.isPending}
+          >
+            <Send className="h-4 w-4" />
+            {testPushMutation.isPending ? "Sending test..." : "Send test push"}
           </Button>
 
           <Button

@@ -16,9 +16,9 @@ function assertAutoVerifiableTaskIsNotManuallyCompleted(task, nextStatus) {
   }
 }
 
-async function refreshProgress(user) {
+async function refreshProgress(user, options = {}) {
   const progressService = require('./progress.service');
-  await progressService.refreshProgressStats(user.id, user.timezone);
+  await progressService.refreshProgressStats(user.id, user.timezone, options);
 }
 
 async function createTask(user, payload) {
@@ -51,7 +51,7 @@ async function createTask(user, payload) {
     completedAt: status === 'completed' ? new Date() : null,
   });
 
-  await refreshProgress(user);
+  await refreshProgress(user, { skipAutoVerification: true });
   return task;
 }
 
@@ -66,9 +66,9 @@ async function listTasks(user, filters = {}) {
     category: filters.category,
   });
 
-  const autoVerifiedTaskIds = await taskVerificationService.autoVerifyTasksFromLeetCode(user, tasks);
+  const autoVerifiedTaskIds = await taskVerificationService.autoVerifyOpenTasksFromLeetCode(user, { tasks });
   if (autoVerifiedTaskIds.length) {
-    await refreshProgress(user);
+    await refreshProgress(user, { skipAutoVerification: true });
 
     return taskRepository.listByUser(user.id, {
       date: dateFilter,
@@ -108,7 +108,7 @@ async function updateTask(user, taskId, updates) {
       : (updates.status && updates.status !== 'completed' ? null : undefined),
   });
 
-  await refreshProgress(user);
+  await refreshProgress(user, { skipAutoVerification: true });
   return task;
 }
 
@@ -119,7 +119,7 @@ async function deleteTask(user, taskId) {
     throw new AppError('Task not found.', 404);
   }
 
-  await refreshProgress(user);
+  await refreshProgress(user, { skipAutoVerification: true });
   return deletedTask;
 }
 

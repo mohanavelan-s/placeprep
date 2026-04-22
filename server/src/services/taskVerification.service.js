@@ -346,6 +346,17 @@ async function autoVerifyTasksFromLeetCode(user, tasks = []) {
   return verifiedTaskIds;
 }
 
+async function autoVerifyOpenTasksFromLeetCode(user, options = {}) {
+  const tasks = Array.isArray(options.tasks)
+    ? options.tasks
+    : await taskRepository.listByUser(user.id, {});
+
+  return autoVerifyTasksFromLeetCode(
+    user,
+    tasks.filter((task) => task && task.status !== 'completed' && task.status !== 'skipped')
+  );
+}
+
 function buildProofHeuristic(task, proof) {
   const reference = extractTaskReference(task);
   const caption = String(proof?.caption || '').trim();
@@ -555,5 +566,6 @@ module.exports = {
   taskSupportsProfileVerification,
   taskSupportsProofVerification,
   autoVerifyTasksFromLeetCode,
+  autoVerifyOpenTasksFromLeetCode,
   verifyTaskAgainstProof,
 };

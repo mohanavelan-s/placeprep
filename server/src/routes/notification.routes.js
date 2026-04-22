@@ -21,6 +21,7 @@ router.get(
 );
 
 router.post('/sync', asyncHandler(controller.syncNotifications));
+router.post('/test-push', asyncHandler(controller.testPushNotification));
 
 router.post(
   '/:notificationId/read',

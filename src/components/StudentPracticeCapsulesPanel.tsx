@@ -7,7 +7,16 @@ import PageStatusPanel from "@/components/PageStatusPanel";
 import TaskStatusControl from "@/components/TaskStatusControl";
 import { Button } from "@/components/ui/button";
 import { fetchTasks, type PracticeCapsule, type Task, type TaskStatus, updateTask } from "@/lib/api";
+import { allowsManualCompletion, getTaskVerificationHint } from "@/lib/task-verification";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
+
+type PracticeCapsuleTaskItem = PracticeCapsule["items"][number] & {
+  sourceTask: Task;
+};
+
+type PracticeCapsuleWithTasks = Omit<PracticeCapsule, "items"> & {
+  items: PracticeCapsuleTaskItem[];
+};
 
 function toComparableTime(value?: string | null) {
   const timestamp = new Date(value || 0).getTime();
@@ -15,7 +24,7 @@ function toComparableTime(value?: string | null) {
 }
 
 function buildPracticeCapsules(tasks: Task[]) {
-  const grouped = new Map<string, PracticeCapsule>();
+  const grouped = new Map<string, PracticeCapsuleWithTasks>();
 
   for (const task of tasks) {
     const metadata = task.metadata || {};
@@ -58,6 +67,7 @@ function buildPracticeCapsules(tasks: Task[]) {
       dueAt: typeof task.dueAt === "string" ? task.dueAt : null,
       scheduledFor: task.scheduledFor,
       createdAt: task.createdAt,
+      sourceTask: task,
     });
 
     grouped.set(bundleId, bundle);
@@ -227,12 +237,18 @@ export default function StudentPracticeCapsulesPanel() {
                     <p className="mt-3 text-sm leading-6 text-muted-foreground">
                       {item.referenceLabel || "Open the assigned task link and finish it through the task board."}
                     </p>
+                    {getTaskVerificationHint(item.sourceTask) && (
+                      <p className="mt-3 text-xs uppercase tracking-[0.14em] text-muted-foreground/80">
+                        {getTaskVerificationHint(item.sourceTask)}
+                      </p>
+                    )}
 
                     <TaskStatusControl
                       status={item.status}
                       disabled={updateTaskMutation.isPending && updateTaskMutation.variables?.taskId === item.taskId}
                       compact
                       className="mt-4"
+                      allowCompletedSelection={allowsManualCompletion(item.sourceTask)}
                       onChange={(status) => updateTaskMutation.mutate({ taskId: item.taskId, status })}
                     />
                   </div>

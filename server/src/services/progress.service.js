@@ -1,6 +1,7 @@
 const { query } = require('../config/database');
 const progressRepository = require('../repositories/progress.repository');
 const userRepository = require('../repositories/user.repository');
+const taskVerificationService = require('./taskVerification.service');
 const { buildPrepArchitectTaskVisibilityClause } = require('../utils/taskVisibility');
 const { getDateRange, getTodayInTimezone } = require('../utils/date');
 const AppError = require('../utils/appError');
@@ -183,7 +184,20 @@ function buildCoachProfile({
   };
 }
 
-async function buildSummaryForUser(user) {
+async function syncAutoVerifiedTasks(user) {
+  try {
+    return await taskVerificationService.autoVerifyOpenTasksFromLeetCode(user);
+  } catch (error) {
+    console.error(`[progress] Auto verification sync failed for user ${user.id}.`, error);
+    return [];
+  }
+}
+
+async function buildSummaryForUser(user, options = {}) {
+  if (!options.skipAutoVerification) {
+    await syncAutoVerifiedTasks(user);
+  }
+
   const today = getTodayInTimezone(user.timezone);
   const fourteenDayWindow = getDateRange(14, user.timezone);
   const sevenDayWindow = getDateRange(7, user.timezone);
@@ -582,13 +596,13 @@ async function resolveUser(userId, timezone) {
   return user;
 }
 
-async function refreshProgressStats(userIdOrUser, timezone) {
+async function refreshProgressStats(userIdOrUser, timezone, options = {}) {
   const user = await resolveUser(userIdOrUser, timezone);
-  return buildSummaryForUser(user);
+  return buildSummaryForUser(user, options);
 }
 
-async function getSummary(user) {
-  return buildSummaryForUser(user);
+async function getSummary(user, options = {}) {
+  return buildSummaryForUser(user, options);
 }
 
 async function getCoachProfile(userIdOrUser, timezone) {
@@ -596,8 +610,8 @@ async function getCoachProfile(userIdOrUser, timezone) {
   return summary.coachProfile;
 }
 
-async function getHistory(user, days = 14) {
-  await buildSummaryForUser(user);
+async function getHistory(user, days = 14, options = {}) {
+  await buildSummaryForUser(user, options);
   return progressRepository.listHistory(user.id, days);
 }
 

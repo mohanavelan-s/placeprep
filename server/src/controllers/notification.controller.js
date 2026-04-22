@@ -25,6 +25,15 @@ async function syncNotifications(req, res) {
   });
 }
 
+async function testPushNotification(req, res) {
+  const result = await notificationService.sendTestPushNotification(req.user);
+
+  res.json({
+    success: true,
+    data: result,
+  });
+}
+
 async function markRead(req, res) {
   const notification = await notificationService.markNotificationRead(
     req.user,
@@ -58,6 +67,7 @@ async function clearHistory(req, res) {
 module.exports = {
   listNotifications,
   syncNotifications,
+  testPushNotification,
   markRead,
   markAllRead,
   clearHistory,
