@@ -7,6 +7,15 @@ function getExecutor(client) {
   return client ? client.query.bind(client) : query;
 }
 
+function toSafeInteger(value, fallback, { min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY } = {}) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, Math.round(parsed)));
+}
+
 const taskColumns = `
   id,
   user_id AS "userId",
@@ -78,9 +87,9 @@ async function createTask(payload, client = null) {
       payload.dueDate || null,
       payload.dueAt || null,
       payload.scheduledFor,
-      payload.estimatedMinutes ?? 30,
-      payload.actualMinutes ?? 0,
-      payload.difficulty ?? 3,
+      toSafeInteger(payload.estimatedMinutes, 30, { min: 0, max: 1440 }),
+      toSafeInteger(payload.actualMinutes, 0, { min: 0, max: 1440 }),
+      toSafeInteger(payload.difficulty, 3, { min: 1, max: 5 }),
       payload.weakArea || null,
       Boolean(payload.aiGenerated),
       payload.metadata || {},
@@ -157,9 +166,15 @@ async function updateTask(taskId, userId, updates) {
     due_date: updates.dueDate,
     due_at: updates.dueAt,
     scheduled_for: updates.scheduledFor,
-    estimated_minutes: updates.estimatedMinutes,
-    actual_minutes: updates.actualMinutes,
-    difficulty: updates.difficulty,
+    estimated_minutes: updates.estimatedMinutes === undefined
+      ? undefined
+      : toSafeInteger(updates.estimatedMinutes, 30, { min: 0, max: 1440 }),
+    actual_minutes: updates.actualMinutes === undefined
+      ? undefined
+      : toSafeInteger(updates.actualMinutes, 0, { min: 0, max: 1440 }),
+    difficulty: updates.difficulty === undefined
+      ? undefined
+      : toSafeInteger(updates.difficulty, 3, { min: 1, max: 5 }),
     weak_area: updates.weakArea,
     ai_generated: updates.aiGenerated,
     metadata: updates.metadata,

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BellRing, Mail, Monitor, RefreshCw, Save } from "lucide-react";
+import { BellRing, Languages, Mail, Monitor, RefreshCw, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import AdminInvitePanel from "@/components/AdminInvitePanel";
@@ -12,8 +12,16 @@ import SoftSyncNotice from "@/components/SoftSyncNotice";
 import { SettingsSkeleton } from "@/components/WorkspaceSkeletons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import {
   clearNotificationHistory,
@@ -28,6 +36,7 @@ import {
   type UserProfile,
 } from "@/lib/api";
 import { isPlacePrepAndroidApp } from "@/lib/platform";
+import { UI_LANGUAGE_OPTIONS, type UiLanguage } from "@/lib/ui-language";
 
 function buildProfilePayload(profile?: UserProfile | null, overrides?: Partial<UserProfile>) {
   const next = { ...profile, ...overrides };
@@ -88,6 +97,7 @@ function renderNotificationEyebrow(type: PrepNotification["type"]) {
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const { user, refreshProfile } = useAuth();
+  const { language, setLanguage } = useLanguage();
   const runningInsideAndroidApp = isPlacePrepAndroidApp();
   const profileQuery = useQuery({
     queryKey: ["user-profile"],
@@ -130,6 +140,7 @@ export default function SettingsPage() {
         username,
         targetRole,
         placementDate: placementDate || null,
+        preferredLanguage: language,
       }),
     onSuccess: async () => {
       await refreshProfile();
@@ -166,14 +177,20 @@ export default function SettingsPage() {
   });
 
   const notificationSyncMutation = useMutation({
-    mutationFn: syncNotifications,
+    mutationFn: (payload?: { deliverEmail?: boolean }) => syncNotifications(payload),
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ["notifications", "recent"] });
-      toast.success(
-        result.created.length
-          ? `${result.created.length} new mentor signal${result.created.length > 1 ? "s" : ""} synced.`
-          : "No new mentor signals right now.",
-      );
+      const signalCopy = result.created.length
+        ? `${result.created.length} new mentor signal${result.created.length > 1 ? "s" : ""} synced.`
+        : "No new mentor signals right now.";
+      const emailCopy = result.emailSent
+        ? " Email delivered."
+        : result.emailAttempted
+          ? ` Email status: ${result.emailReason}.`
+          : result.emailReady
+            ? ""
+            : " Email provider is not configured yet.";
+      toast.success(`${signalCopy}${emailCopy}`);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to sync notifications.");
@@ -262,9 +279,11 @@ export default function SettingsPage() {
 
       setNotificationPrefs(getNotificationDefaults(savedProfile));
 
-      if (nextBrowserEnabled && nextPermission === "granted") {
+      if (notificationPrefs.notificationsEnabled && (notificationPrefs.notificationEmailEnabled || nextBrowserEnabled)) {
         try {
-          await notificationSyncMutation.mutateAsync();
+          await notificationSyncMutation.mutateAsync({
+            deliverEmail: notificationPrefs.notificationEmailEnabled,
+          });
         } catch (error) {
           console.error("[SettingsPage] Notification sync failed after saving preferences.", error);
         }
@@ -322,6 +341,34 @@ export default function SettingsPage() {
             <span className="text-sm text-muted-foreground">Placement date</span>
             <Input type="date" value={placementDate || ""} onChange={(event) => setPlacementDate(event.target.value)} className="h-11 border-border/80 bg-background/70" />
           </label>
+        </div>
+
+        <div className="mt-5 rounded-[1.4rem] border border-border/80 bg-background/50 p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-2xl">
+              <div className="flex items-center gap-2 text-foreground">
+                <Languages className="h-4 w-4" />
+                <p className="text-base">Preferred language</p>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Switches the workspace UI instantly. Saving account settings keeps the choice synced to your account.
+              </p>
+            </div>
+            <div className="w-full lg:max-w-xs">
+              <Select value={language} onValueChange={(value) => setLanguage(value as UiLanguage)}>
+                <SelectTrigger className="h-11 border-border/80 bg-background/70">
+                  <SelectValue placeholder="Choose a language" />
+                </SelectTrigger>
+                <SelectContent>
+                  {UI_LANGUAGE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label} / {option.nativeLabel}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
 
         <Button type="button" className="mt-5 h-11 gap-2" onClick={() => accountMutation.mutate()} disabled={accountMutation.isPending}>
@@ -432,7 +479,9 @@ export default function SettingsPage() {
             type="button"
             variant="outline"
             className="h-11 gap-2 border-border/80 bg-background/70"
-            onClick={() => void notificationSyncMutation.mutate()}
+            onClick={() => void notificationSyncMutation.mutate({
+              deliverEmail: notificationPrefs.notificationsEnabled && notificationPrefs.notificationEmailEnabled,
+            })}
             disabled={notificationSyncMutation.isPending}
           >
             <RefreshCw className={`h-4 w-4 ${notificationSyncMutation.isPending ? "animate-spin" : ""}`} />

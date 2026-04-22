@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import {
   activatePrepPlan,
   clearPrepPlanHistory,
@@ -55,6 +56,7 @@ import { PREP_LANGUAGES, PREP_TOPICS, TARGET_ROLES } from "@/lib/topics";
 export default function PrepArchitectPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { language } = useLanguage();
   const latestPlanQuery = useQuery({
     queryKey: ["prep-plan", "latest"],
     queryFn: fetchLatestPrepPlan,
@@ -72,7 +74,7 @@ export default function PrepArchitectPage() {
   const [timePerDayHours, setTimePerDayHours] = useState("2");
   const [durationMonths, setDurationMonths] = useState("1");
   const [targetRole, setTargetRole] = useState(user?.targetRole || "Backend Engineer");
-  const [preferredLanguage, setPreferredLanguage] = useState("english");
+  const [preferredLanguage, setPreferredLanguage] = useState(language);
   const [isEditing, setIsEditing] = useState(false);
   const [manageVersionsOpen, setManageVersionsOpen] = useState(false);
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
@@ -87,7 +89,7 @@ export default function PrepArchitectPage() {
       setTargetRole(user?.targetRole || "Backend Engineer");
       setTimePerDayHours("2");
       setDurationMonths("1");
-      setPreferredLanguage("english");
+      setPreferredLanguage(language);
       return;
     }
 
@@ -97,7 +99,7 @@ export default function PrepArchitectPage() {
     setDurationMonths(String(latestPlanQuery.data.durationMonths || 1));
     setTargetRole(latestPlanQuery.data.targetRole || user?.targetRole || "Backend Engineer");
     setPreferredLanguage(latestPlanQuery.data.preferredLanguage || "english");
-  }, [latestPlanQuery.data, user?.strongTopics, user?.targetRole, user?.weakAreas]);
+  }, [language, latestPlanQuery.data, user?.strongTopics, user?.targetRole, user?.weakAreas]);
 
   const generateMutation = useMutation({
     mutationFn: () =>

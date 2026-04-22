@@ -24,6 +24,7 @@ const publicColumns = `
   consistency_score AS "consistencyScore",
   current_streak AS "currentStreak",
   readiness_score AS "readinessScore",
+  COALESCE(coach_metadata->>'preferredLanguage', 'english') AS "preferredLanguage",
   COALESCE(coach_metadata->>'accessTier', 'standard') AS "accessTier",
   coach_metadata AS "coachMetadata",
   last_login_at AS "lastLoginAt",

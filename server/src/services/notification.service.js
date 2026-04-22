@@ -12,7 +12,11 @@ const notificationRepository = require('../repositories/notification.repository'
 const prepPlanRepository = require('../repositories/prepPlan.repository');
 const userRepository = require('../repositories/user.repository');
 const { sendNotificationDigestEmail, isEmailDeliveryReady } = require('./email.service');
-const { enqueueNotificationDigestEmail, enqueueNotificationPush } = require('./deliveryJob.service');
+const {
+  enqueueNotificationDigestEmail,
+  enqueueNotificationPush,
+  processPendingDeliveryJobs,
+} = require('./deliveryJob.service');
 const progressService = require('./progress.service');
 const userProfileService = require('./userProfile.service');
 const AppError = require('../utils/appError');
@@ -799,6 +803,21 @@ async function syncNotificationsForUser(userOrId, options = {}) {
           sent: false,
           reason: 'already_queued',
         };
+
+    if (queuedEmailJob && options.processDeliveryNow) {
+      try {
+        const deliveryResult = await processPendingDeliveryJobs(Math.max(notificationsForEmail.length, 1));
+        if (deliveryResult.processed > 0) {
+          emailResult = {
+            attempted: true,
+            sent: true,
+            reason: 'sent',
+          };
+        }
+      } catch (error) {
+        console.error('[notifications] Immediate email delivery drain failed.', error);
+      }
+    }
   } else if (options.deliverEmail && profile.notificationEmailEnabled && notificationKeys.length) {
     emailResult = {
       attempted: false,

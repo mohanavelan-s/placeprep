@@ -16,6 +16,7 @@ async function syncNotifications(req, res) {
   const result = await notificationService.syncNotificationsForUser(req.user, {
     source: 'app_sync',
     deliverEmail: req.body?.deliverEmail === true || req.query?.deliverEmail === 'true',
+    processDeliveryNow: true,
   });
 
   res.json({

@@ -197,6 +197,19 @@ async function updateProfile(userId, updates) {
     normalizedUpdates.username = await ensureUniqueUsername(username, userId);
   }
 
+  if (updates.preferredLanguage !== undefined) {
+    const existingUser = await userRepository.findById(userId);
+    if (!existingUser) {
+      throw new AppError('User not found.', 404);
+    }
+
+    normalizedUpdates.coachMetadata = {
+      ...(existingUser.coachMetadata || {}),
+      preferredLanguage: updates.preferredLanguage,
+    };
+    delete normalizedUpdates.preferredLanguage;
+  }
+
   const user = await userRepository.updateUser(userId, normalizedUpdates);
 
   if (!user) {

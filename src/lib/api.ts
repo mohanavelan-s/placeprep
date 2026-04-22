@@ -23,6 +23,7 @@ export interface User {
   consistencyScore: number;
   currentStreak: number;
   readinessScore: number;
+  preferredLanguage?: "english" | "tamil" | "hindi" | null;
   coachMetadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -894,6 +895,7 @@ export async function updateAccount(payload: {
   targetRole?: string;
   placementDate?: string | null;
   timezone?: string;
+  preferredLanguage?: "english" | "tamil" | "hindi";
 }) {
   return request<User>("/auth/me", {
     method: "PATCH",
@@ -1490,10 +1492,10 @@ export async function fetchNotifications(filters: {
   return request<PrepNotification[]>(`/notifications${queryString ? `?${queryString}` : ""}`);
 }
 
-export async function syncNotifications() {
+export async function syncNotifications(payload: { deliverEmail?: boolean } = {}) {
   return request<NotificationSyncResult>("/notifications/sync", {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify(payload),
   });
 }
 

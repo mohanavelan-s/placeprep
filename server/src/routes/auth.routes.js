@@ -84,6 +84,7 @@ router.patch(
     body('targetRole').optional().isString(),
     body('placementDate').optional({ values: 'falsy' }).isISO8601(),
     body('timezone').optional().isString(),
+    body('preferredLanguage').optional().isIn(['english', 'tamil', 'hindi']),
   ],
   validate,
   asyncHandler(authController.updateMe)

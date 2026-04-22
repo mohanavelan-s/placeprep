@@ -8,6 +8,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { LanguageProvider, useLanguage } from "@/context/LanguageContext";
 import { canAccessAppPath } from "@/lib/access";
 
 const AppShell = lazy(() => import("@/components/AppShell"));
@@ -52,6 +53,7 @@ function LoadingState() {
 
 function TitleUpdater() {
   const location = useLocation();
+  const { t } = useLanguage();
 
   useEffect(() => {
     const pageNameMap: Record<string, string> = {
@@ -70,8 +72,8 @@ function TitleUpdater() {
     };
     const pageName = pageNameMap[location.pathname] || "PlacePrep";
 
-    document.title = `${pageName} | PlacePrep`;
-  }, [location.pathname]);
+    document.title = `${t(pageName)} | PlacePrep`;
+  }, [location.pathname, t]);
 
   return null;
 }
@@ -154,15 +156,17 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <RouteErrorBoundary resetKey="app-root">
-            <BrowserRouter>
-              <AppRoutes />
-            </BrowserRouter>
-          </RouteErrorBoundary>
-        </TooltipProvider>
+        <LanguageProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <RouteErrorBoundary resetKey="app-root">
+              <BrowserRouter>
+                <AppRoutes />
+              </BrowserRouter>
+            </RouteErrorBoundary>
+          </TooltipProvider>
+        </LanguageProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
