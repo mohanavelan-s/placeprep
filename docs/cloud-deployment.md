@@ -2,8 +2,9 @@
 
 ## Frontend
 
-- Deploy the React app on Vercel.
+- Primary backup path: deploy the React app on Netlify with [netlify.toml](/D:/New%20folder/placement-powerhouse-main/placement-powerhouse-main/netlify.toml).
 - Set `VITE_API_URL=https://your-backend-domain/api`.
+- After migration, update backend `CLIENT_URLS` and `APP_URL` to the new frontend origin.
 
 ## Backend
 
@@ -11,11 +12,14 @@
 - Set `ALLOW_PUBLIC_SIGNUP=false`.
 - Set `CLIENT_URLS` to the deployed frontend origin.
 - Set `APP_URL` to the public frontend URL used in invite links.
+- [render.yaml](/D:/New%20folder/placement-powerhouse-main/placement-powerhouse-main/render.yaml) is already prepared for the backend service.
 
 ## Database
 
 - Use managed PostgreSQL such as Supabase Postgres.
 - Point `DATABASE_URL` at the managed database.
+- Before changing hosts, take a logical dump with `.\scripts\backup-placeprep.ps1 -IncludeDbDump`.
+- If you move away from the current database provider later, restore the dump first and then update `DATABASE_URL`.
 
 ## Storage
 
@@ -31,3 +35,11 @@
 
 - Build the Android app from `/android`.
 - Upload the generated `app-release.apk` from the admin Android panel in Settings.
+
+## Post-migration checks
+
+1. Run `.\scripts\check-placeprep-env.ps1`.
+2. Open `/api/health` on the new backend.
+3. Sign in on the new frontend.
+4. Trigger browser notifications from Settings.
+5. Trigger a notification sync with email delivery enabled and confirm the message arrives.

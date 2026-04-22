@@ -22,10 +22,34 @@ Run this from the repo root:
 
 What it does:
 
-- creates a Git snapshot zip of the repo
-- optionally dumps PostgreSQL when `DATABASE_URL` is available
+- creates a zip of the committed Git `HEAD`
+- creates a second zip of the current working copy so local uncommitted changes are not missed
+- auto-loads `server/.env` when present so `DATABASE_URL` and Cloudinary credentials do not need to be pre-exported
+- optionally copies live env files into the backup folder when you add `-IncludeEnvFiles`
+- optionally dumps PostgreSQL when `DATABASE_URL` is available and `pg_dump` is installed
 - optionally exports a Cloudinary asset manifest when Cloudinary credentials are available
 - writes a backup manifest JSON alongside the artifacts
+
+If you want a backup that also includes your current env files:
+
+```powershell
+.\scripts\backup-placeprep.ps1 -IncludeDbDump -IncludeEnvFiles
+```
+
+## Environment validation
+
+Before a redeploy or host migration, run:
+
+```powershell
+.\scripts\check-placeprep-env.ps1
+```
+
+What it checks:
+
+- frontend `VITE_API_URL`
+- backend core values such as `DATABASE_URL`, `JWT_SECRET`, `CLIENT_URLS`, and `APP_URL`
+- optional but important services such as SMTP, web push, OpenAI, and Cloudinary
+- migration warnings when values still point at `vercel.app`
 
 ## Recommended production setup
 
