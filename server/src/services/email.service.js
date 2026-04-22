@@ -122,6 +122,7 @@ function buildDigestText(user, notifications, summary, context = {}) {
     compactText(primary?.metadata?.headline || primary?.message || 'PlacePrep signal'),
     summaryLine || null,
     '',
+    context.deliveryWindowLabel ? `Window: ${context.deliveryWindowLabel}` : null,
     `Role: ${role}`,
     `Focus area: ${focus}`,
     weakTopics ? `Weak topics: ${weakTopics}` : null,
@@ -211,6 +212,11 @@ function buildDigestHtml(user, notifications, summary, context = {}) {
                   ${summaryLine ? `
                     <div style="margin-top:12px;color:#c7c1c1;font-size:15px;line-height:1.7;">
                       ${escapeHtml(summaryLine)}
+                    </div>
+                  ` : ''}
+                  ${context.deliveryWindowLabel ? `
+                    <div style="margin-top:12px;color:#9a9a9a;font-size:11px;letter-spacing:0.28em;text-transform:uppercase;">
+                      ${escapeHtml(context.deliveryWindowLabel)}
                     </div>
                   ` : ''}
                 </td>

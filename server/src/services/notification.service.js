@@ -40,6 +40,12 @@ const titleMap = {
   motivation: 'Nocturne push',
 };
 
+const windowLabelMap = {
+  morning: 'Morning pulse',
+  evening: 'Evening close',
+  manual: 'Manual sync',
+};
+
 function cleanList(values, limit = 6) {
   return Array.from(
     new Set(
@@ -113,6 +119,65 @@ function shouldTriggerUrgency(daysLeft) {
 
 function sortCandidates(left, right) {
   return (priorityMap[right.type] || 0) - (priorityMap[left.type] || 0);
+}
+
+function getZonedTimeParts(timezone, date = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(date);
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return {
+    date: `${map.year}-${map.month}-${map.day}`,
+    hour: Number(map.hour || 0),
+    minute: Number(map.minute || 0),
+  };
+}
+
+function isWithinNotificationWindow(currentMinutes, targetHour, windowMinutes) {
+  const startMinutes = targetHour * 60;
+  return currentMinutes >= startMinutes && currentMinutes < (startMinutes + windowMinutes);
+}
+
+function resolveDeliveryWindow({ timezone, requestedWindow = null, now = new Date() }) {
+  if (requestedWindow === 'manual') {
+    const parts = getZonedTimeParts(timezone, now);
+    return {
+      key: 'manual',
+      label: windowLabelMap.manual,
+      localDate: parts.date,
+    };
+  }
+
+  const parts = getZonedTimeParts(timezone, now);
+  const currentMinutes = (parts.hour * 60) + parts.minute;
+  const windowMinutes = Math.max(Number(env.notificationSlotWindowMinutes || 75), 15);
+
+  if (isWithinNotificationWindow(currentMinutes, env.notificationMorningHour, windowMinutes)) {
+    return {
+      key: 'morning',
+      label: windowLabelMap.morning,
+      localDate: parts.date,
+    };
+  }
+
+  if (isWithinNotificationWindow(currentMinutes, env.notificationEveningHour, windowMinutes)) {
+    return {
+      key: 'evening',
+      label: windowLabelMap.evening,
+      localDate: parts.date,
+    };
+  }
+
+  return null;
 }
 
 async function getTaskSnapshot(userId, today) {
@@ -211,16 +276,20 @@ function buildNotificationCandidates({
   daysSinceLastLogin,
   daysLeft,
   streakBroken,
+  deliveryWindow,
 }) {
   const candidates = [];
   const readiness = Number(summary?.readinessScore || 0);
+  const slotKey = deliveryWindow?.key || 'manual';
+  const dedupeSuffix = `${today}:${slotKey}`;
 
-  if (daysSinceLastLogin >= 1) {
+  if (daysSinceLastLogin >= 1 && slotKey !== 'morning') {
     candidates.push({
       type: 'daily_inactivity',
-      dedupeKey: `daily-inactivity:${today}`,
+      dedupeKey: `daily-inactivity:${dedupeSuffix}`,
       metadata: {
         daysSinceLastLogin,
+        deliveryWindow: slotKey,
       },
     });
   }
@@ -228,20 +297,22 @@ function buildNotificationCandidates({
   if (taskSnapshot.pendingCount > 0) {
     candidates.push({
       type: 'pending_tasks',
-      dedupeKey: `pending-tasks:${today}`,
+      dedupeKey: `pending-tasks:${dedupeSuffix}`,
       metadata: {
         pendingCount: taskSnapshot.pendingCount,
         overdueCount: taskSnapshot.overdueCount,
+        deliveryWindow: slotKey,
       },
     });
   }
 
-  if (streakBroken) {
+  if (streakBroken || (slotKey === 'evening' && Number(summary?.streak || 0) === 0)) {
     candidates.push({
       type: 'missed_streak',
-      dedupeKey: `missed-streak:${today}`,
+      dedupeKey: `missed-streak:${dedupeSuffix}`,
       metadata: {
         streak: Number(summary?.streak || 0),
+        deliveryWindow: slotKey,
       },
     });
   }
@@ -249,24 +320,31 @@ function buildNotificationCandidates({
   if (daysLeft !== null && daysLeft <= 30 && shouldTriggerUrgency(daysLeft)) {
     candidates.push({
       type: 'countdown_urgency',
-      dedupeKey: `countdown:${daysLeft}`,
+      dedupeKey: `countdown:${daysLeft}:${slotKey}`,
       metadata: {
         daysLeft,
+        deliveryWindow: slotKey,
       },
     });
   }
 
-  if (!candidates.length || readiness < 58) {
+  if (
+    !candidates.length
+    || readiness < 58
+    || slotKey === 'morning'
+    || (slotKey === 'evening' && Number(summary?.consistencyScore || 0) < 82)
+  ) {
     candidates.push({
       type: 'motivation',
-      dedupeKey: `motivation:${today}`,
+      dedupeKey: `motivation:${dedupeSuffix}`,
       metadata: {
         readinessScore: readiness,
+        deliveryWindow: slotKey,
       },
     });
   }
 
-  return candidates.sort(sortCandidates);
+  return candidates.sort(sortCandidates).slice(0, 3);
 }
 
 function buildNotificationKeys(candidates = []) {
@@ -306,6 +384,7 @@ function buildNotificationContext({
   daysLeft,
   placementDate,
   planSnapshot,
+  deliveryWindow,
 }) {
   const coachProfile = summary?.coachProfile || {};
   const focusArea = compactText(
@@ -343,22 +422,29 @@ function buildNotificationContext({
     planFirstTheme: compactText(planSnapshot?.firstTheme),
     planFirstItems: planSnapshot?.firstItems || [],
     planTimePerDay: Number(planSnapshot?.timePerDay || 0),
+    deliveryWindow: deliveryWindow?.key || 'manual',
+    deliveryWindowLabel: deliveryWindow?.label || windowLabelMap.manual,
   };
 }
 
 function buildFallbackSummaryLine(context) {
   const focus = context.focusArea || context.weakTopics[0] || 'placement prep';
   const role = context.targetRole || 'placement prep';
+  const windowLabel = context.deliveryWindow === 'morning' ? 'morning' : context.deliveryWindow === 'evening' ? 'evening' : 'next';
+
+  if (context.deliveryWindow === 'morning') {
+    return `${focus} sets the tone this morning. Start clean for ${role}.`;
+  }
 
   if (context.daysLeft !== null && context.daysLeft <= 14) {
-    return `${focus} will decide your ${role} finish. Close one clean block tonight.`;
+    return `${focus} will decide your ${role} finish. Close one clean block this ${windowLabel}.`;
   }
 
   if (context.pendingCount > 0) {
-    return `${focus} is still exposed. Clear one real task before the day closes.`;
+    return `${focus} is still exposed. Clear one real task this ${windowLabel}.`;
   }
 
-  return `${focus} is the pressure point. Build one honest hour around it tonight.`;
+  return `${focus} is the pressure point. Build one honest hour around it this ${windowLabel}.`;
 }
 
 function buildFallbackNotificationCopy(candidate, context) {
@@ -368,29 +454,32 @@ function buildFallbackNotificationCopy(candidate, context) {
   const nextTaskTitle = context.nextTask?.title || `${focus} recovery block`;
   const nextTaskDuration = formatHoursLabel(context.nextTask?.estimatedMinutes || 60);
   const planTheme = context.planFirstTheme || context.planTargetTopics[0] || focus;
+  const isMorning = context.deliveryWindow === 'morning';
+  const isEvening = context.deliveryWindow === 'evening';
+  const rhythmLabel = isMorning ? 'morning' : isEvening ? 'evening' : 'next block';
 
   switch (candidate.type) {
     case 'daily_inactivity':
       return {
-        subject: `PlacePrep | ${focus} is still waiting`,
+        subject: `PlacePrep | ${isMorning ? 'Morning reset' : 'Return to the work'}`,
         headline: context.daysSinceLastLogin >= 2
           ? `${focus} has been idle for ${context.daysSinceLastLogin} days.`
-          : `You stepped away before ${focus} was closed.`,
-        preview: `Return through ${nextTaskTitle}.`,
-        message: `Your ${role} prep is drifting at ${focus}. Re-enter with ${nextTaskTitle} and keep the block honest.`,
-        actionLabel: 'Return now',
+          : `${focus} was left open before the work closed.`,
+        preview: `Return through ${nextTaskTitle} this ${rhythmLabel}.`,
+        message: `Your ${role} prep is drifting at ${focus}. Re-enter with ${nextTaskTitle} and keep the block honest this ${rhythmLabel}.`,
+        actionLabel: isMorning ? 'Restart' : 'Return now',
         actionText: `Start ${nextTaskTitle} for ${nextTaskDuration}.`,
         whyNow: `${context.daysSinceLastLogin} days away turns one soft spot into two.`,
       };
     case 'pending_tasks':
       return {
-        subject: `PlacePrep | ${context.pendingCount} tasks still open`,
+        subject: `PlacePrep | ${isMorning ? 'Morning task brief' : 'Evening task close'}`,
         headline: context.overdueCount > 0
           ? `${context.overdueCount} tasks have already slipped.`
           : `${context.pendingCount} tasks are still waiting.`,
         preview: `${focus} is still exposed for ${role}.`,
-        message: `Backlog pressure is sitting on ${focus}. Start with ${nextTaskTitle} and remove one open loop tonight.`,
-        actionLabel: 'Clear one',
+        message: `Backlog pressure is sitting on ${focus}. Start with ${nextTaskTitle} and remove one open loop this ${rhythmLabel}.`,
+        actionLabel: isMorning ? 'Start clean' : 'Close one',
         actionText: `Finish ${nextTaskTitle}, then revise ${nextWeak}.`,
         whyNow: context.overdueCount > 0
           ? `${context.overdueCount} overdue tasks are already taxing focus.`
@@ -398,20 +487,20 @@ function buildFallbackNotificationCopy(candidate, context) {
       };
     case 'missed_streak':
       return {
-        subject: 'PlacePrep | The streak needs rebuilding',
-        headline: `The streak is gone. Rebuild it in ${focus}.`,
+        subject: `PlacePrep | ${isEvening ? 'Protect the streak' : 'Rebuild momentum'}`,
+        headline: `The streak needs work in ${focus}.`,
         preview: 'One clean win reopens momentum.',
-        message: `Discipline slipped, not ability. Reclaim control through ${planTheme} before you touch anything comfortable.`,
+        message: `Discipline slipped, not ability. Reclaim control through ${planTheme} before you touch anything comfortable this ${rhythmLabel}.`,
         actionLabel: 'Rebuild',
-        actionText: `Finish one focused ${focus} block tonight.`,
+        actionText: `Finish one focused ${focus} block this ${rhythmLabel}.`,
         whyNow: 'A broken streak is easiest to repair on the very next day.',
       };
     case 'countdown_urgency':
       return {
-        subject: `PlacePrep | ${context.daysLeft} days to go`,
+        subject: `PlacePrep | ${isMorning ? 'Morning countdown' : 'Deadline pressure'}`,
         headline: `${context.daysLeft} days left. ${focus} cannot stay soft.`,
         preview: `${role} pressure is no longer abstract.`,
-        message: `${focus} is still the gap between effort and readiness. Use tonight to close one measurable block before the deadline tightens further.`,
+        message: `${focus} is still the gap between effort and readiness. Use this ${rhythmLabel} to close one measurable block before the deadline tightens further.`,
         actionLabel: 'Tighten up',
         actionText: `Prioritize ${nextTaskTitle} before anything else.`,
         whyNow: `Readiness is ${Math.round(context.readinessScore)} with ${context.daysLeft} days remaining.`,
@@ -419,13 +508,17 @@ function buildFallbackNotificationCopy(candidate, context) {
     case 'motivation':
     default:
       return {
-        subject: `PlacePrep | Hold the line in ${focus}`,
-        headline: `${focus} decides the next version of you.`,
-        preview: 'Keep the work sharp and personal.',
-        message: `Your edge for ${role} still runs through ${focus}. Build one clean block, then lock the lesson before the night ends.`,
-        actionLabel: 'Stay strict',
+        subject: `PlacePrep | ${isMorning ? 'Morning motivation' : 'Consistency reminder'}`,
+        headline: isMorning
+          ? `${focus} decides how this day starts.`
+          : `${focus} still decides the next version of you.`,
+        preview: isMorning
+          ? 'Open the day with one honest block.'
+          : 'Close the day with one honest block.',
+        message: `Your edge for ${role} still runs through ${focus}. Build one clean block, then lock the lesson before this ${rhythmLabel} ends.`,
+        actionLabel: isMorning ? 'Start strict' : 'Stay strict',
         actionText: `Finish ${nextTaskTitle} and note the pattern.`,
-        whyNow: `Weak areas are ${cleanList([focus, nextWeak], 2).join(' and ')} right now.`,
+        whyNow: `Consistency is still built through ${cleanList([focus, nextWeak], 2).join(' and ')} right now.`,
       };
   }
 }
@@ -508,6 +601,8 @@ async function personalizeNotificationCopies(candidates, context) {
                 commandLine: context.commandLine,
               },
               activity: {
+                deliveryWindow: context.deliveryWindow,
+                deliveryWindowLabel: context.deliveryWindowLabel,
                 daysSinceLastLogin: context.daysSinceLastLogin,
                 pendingCount: context.pendingCount,
                 overdueCount: context.overdueCount,
@@ -604,7 +699,26 @@ async function syncNotificationsForUser(userOrId, options = {}) {
   }
 
   const timezone = user.timezone || env.defaultTimezone;
-  const today = getTodayInTimezone(timezone);
+  const deliveryWindow = resolveDeliveryWindow({
+    timezone,
+    requestedWindow: options.deliveryWindow
+      || ((options.previewOnly || options.source === 'manual' || options.processDeliveryNow) ? 'manual' : null),
+    now: options.now || new Date(),
+  });
+
+  if (!deliveryWindow && !options.previewOnly) {
+    return {
+      created: [],
+      emailAttempted: false,
+      emailSent: false,
+      emailReason: profile.notificationEmailEnabled ? 'outside_window' : 'email_disabled',
+      emailReady: isEmailDeliveryReady(),
+      usedAiTailoring: false,
+      skippedReason: 'outside_window',
+    };
+  }
+
+  const today = deliveryWindow?.localDate || getTodayInTimezone(timezone);
   const summary = await progressService.refreshProgressStats(user);
   const [taskSnapshot, pendingTasks, latestPlan, streakBroken] = await Promise.all([
     getTaskSnapshot(user.id, today),
@@ -626,6 +740,7 @@ async function syncNotificationsForUser(userOrId, options = {}) {
     daysSinceLastLogin,
     daysLeft,
     streakBroken,
+    deliveryWindow,
   });
   const notificationContext = buildNotificationContext({
     user,
@@ -636,6 +751,7 @@ async function syncNotificationsForUser(userOrId, options = {}) {
     daysLeft,
     placementDate,
     planSnapshot: buildPlanSnapshot(latestPlan),
+    deliveryWindow,
   });
   const personalization = await personalizeNotificationCopies(candidates, notificationContext);
   const notificationKeys = buildNotificationKeys(candidates);
@@ -667,6 +783,8 @@ async function syncNotificationsForUser(userOrId, options = {}) {
           ...candidate.metadata,
           title: copy.headline || titleMap[candidate.type] || 'PlacePrep notice',
           source: options.source || 'manual_preview',
+          deliveryWindow: notificationContext.deliveryWindow,
+          deliveryWindowLabel: notificationContext.deliveryWindowLabel,
           subject: copy.subject,
           headline: copy.headline,
           preview: copy.preview,
@@ -730,6 +848,8 @@ async function syncNotificationsForUser(userOrId, options = {}) {
         ...candidate.metadata,
         title: copy.headline || titleMap[candidate.type] || 'PlacePrep notice',
         source: options.source || 'manual',
+        deliveryWindow: notificationContext.deliveryWindow,
+        deliveryWindowLabel: notificationContext.deliveryWindowLabel,
         subject: copy.subject,
         headline: copy.headline,
         preview: copy.preview,

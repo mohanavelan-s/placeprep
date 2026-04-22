@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpRight,
@@ -37,6 +37,7 @@ import {
   fetchAssessmentOverview,
   generateAssessment,
   submitAssessment,
+  type AssessmentPhase,
   type AssessmentQuestion,
   type AssessmentScope,
   type AssessmentSession,
@@ -86,6 +87,28 @@ const ASSESSMENT_SCOPES: Array<{
   },
 ];
 
+const ASSESSMENT_PHASE_OPTIONS: Array<{
+  value: AssessmentPhase;
+  title: string;
+  description: string;
+}> = [
+  {
+    value: "pre",
+    title: "Pre baseline",
+    description: "Measure where the user stands before the next deliberate round of work.",
+  },
+  {
+    value: "post",
+    title: "Post check",
+    description: "Measure whether the recent work actually tightened recall and answer quality.",
+  },
+  {
+    value: "surprise",
+    title: "Surprise test",
+    description: "Pressure-test consistency with less obvious signaling and less dependence on source links.",
+  },
+];
+
 function formatDateTime(value?: string | null) {
   if (!value) {
     return "Not started";
@@ -116,17 +139,62 @@ function scoreTone(score: number) {
   return "text-rose-200 border-rose-400/20 bg-rose-500/10";
 }
 
+function formatAssessmentPhase(value?: AssessmentPhase | string | null) {
+  if (value === "post") {
+    return "Post check";
+  }
+
+  if (value === "surprise") {
+    return "Surprise test";
+  }
+
+  return "Pre baseline";
+}
+
+function formatCountdown(totalSeconds: number | null) {
+  if (totalSeconds === null || totalSeconds < 0) {
+    return "--:--";
+  }
+
+  const safeSeconds = Math.max(0, totalSeconds);
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function scoreDeltaTone(delta: number) {
+  if (delta > 0) {
+    return "text-emerald-200";
+  }
+
+  if (delta < 0) {
+    return "text-rose-200";
+  }
+
+  return "text-muted-foreground";
+}
+
 function QuestionCard({
   question,
   value,
   onChange,
   disabled,
+  onBlockedPaste,
 }: {
   question: AssessmentQuestion;
   value: string;
   onChange: (next: string) => void;
   disabled?: boolean;
+  onBlockedPaste: () => void;
 }) {
+  const sourceLabel = question.referenceLabel || question.taskTitle || question.topic;
+
   return (
     <article className="rounded-[1.25rem] border border-border/80 bg-card/60 p-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -140,16 +208,54 @@ function QuestionCard({
         </div>
       </div>
 
+      <div className="mt-4 rounded-[1rem] border border-border/80 bg-background/45 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-border/70 bg-card/70 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+            {question.contextTitle || "Assessment brief"}
+          </span>
+          {sourceLabel && (
+            <span className="rounded-full border border-border/70 bg-card/70 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              Source anchor: {sourceLabel}
+            </span>
+          )}
+        </div>
+
+        {question.contextSummary && (
+          <p className="mt-3 text-sm leading-6 text-foreground/85">{question.contextSummary}</p>
+        )}
+
+        {(question.expectedTimeComplexity || question.expectedSpaceComplexity) && (
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {question.expectedTimeComplexity && (
+              <div className="rounded-[0.9rem] border border-border/70 bg-card/60 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Expected time</p>
+                <p className="mt-1 text-sm text-foreground/85">{question.expectedTimeComplexity}</p>
+              </div>
+            )}
+            {question.expectedSpaceComplexity && (
+              <div className="rounded-[0.9rem] border border-border/70 bg-card/60 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Expected space</p>
+                <p className="mt-1 text-sm text-foreground/85">{question.expectedSpaceComplexity}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!!question.benchmarkChecks?.length && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {question.benchmarkChecks.map((item) => (
+              <span key={item} className="rounded-full border border-border/70 bg-card/60 px-3 py-1.5 text-xs text-foreground/80">
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
       {question.referenceUrl && (
-        <a
-          href={question.referenceUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-4 inline-flex items-center gap-2 text-sm text-primary transition hover:text-foreground"
-        >
-          {question.referenceLabel || question.taskTitle || "Open linked task"}
-          <ArrowUpRight className="h-4 w-4" />
-        </a>
+        <p className="mt-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+          Linked source captured in-module for the test. Stay here and answer from recall.
+        </p>
       )}
 
       {question.type === "mcq" && (
@@ -179,6 +285,14 @@ function QuestionCard({
           <Input
             value={value}
             onChange={(event) => onChange(event.target.value)}
+            onPaste={(event) => {
+              event.preventDefault();
+              onBlockedPaste();
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              onBlockedPaste();
+            }}
             placeholder={question.placeholder || "Type the missing phrase"}
             className="h-11 border-border/80 bg-background/70"
             disabled={disabled}
@@ -191,6 +305,14 @@ function QuestionCard({
           <Textarea
             value={value}
             onChange={(event) => onChange(event.target.value)}
+            onPaste={(event) => {
+              event.preventDefault();
+              onBlockedPaste();
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              onBlockedPaste();
+            }}
             placeholder={question.placeholder || "Write code or structured pseudocode here."}
             className="min-h-[170px] border-border/80 bg-background/70"
             disabled={disabled}
@@ -206,9 +328,13 @@ export default function AssessmentsPage() {
   const queryClient = useQueryClient();
   const [selectedType, setSelectedType] = useState<AssessmentType>("mcq");
   const [assessmentScope, setAssessmentScope] = useState<AssessmentScope>("daily");
+  const [assessmentPhase, setAssessmentPhase] = useState<AssessmentPhase>("pre");
   const [durationMinutes, setDurationMinutes] = useState("20");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [missingPlanDialogOpen, setMissingPlanDialogOpen] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const [autoSubmittedSessionId, setAutoSubmittedSessionId] = useState<string | null>(null);
+  const lastPasteWarningAtRef = useRef(0);
 
   const overviewQuery = useQuery({
     queryKey: ["assessments", "overview"],
@@ -242,15 +368,52 @@ export default function AssessmentsPage() {
     setAnswers(seededAnswers);
   }, [currentSession]);
 
+  useEffect(() => {
+    if (!currentSession || currentSession.status === "completed") {
+      setRemainingSeconds(null);
+      return;
+    }
+
+    const expiresAt = currentSession.expiresAt
+      ? new Date(currentSession.expiresAt).getTime()
+      : currentSession.startedAt
+        ? new Date(currentSession.startedAt).getTime() + (currentSession.durationMinutes * 60000)
+        : null;
+
+    if (!expiresAt || Number.isNaN(expiresAt)) {
+      setRemainingSeconds(null);
+      return;
+    }
+
+    const updateRemaining = () => {
+      setRemainingSeconds(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
+    };
+
+    updateRemaining();
+    const intervalId = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [currentSession]);
+
+  function handleBlockedPaste() {
+    const now = Date.now();
+
+    if (now - lastPasteWarningAtRef.current > 2500) {
+      lastPasteWarningAtRef.current = now;
+      toast.error("Paste is disabled during assessments. Answer from recall.");
+    }
+  }
+
   const startAssessmentMutation = useMutation({
     mutationFn: () =>
       generateAssessment({
         assessmentType: selectedType,
         assessmentScope,
+        assessmentPhase,
         durationMinutes: Math.min(90, Math.max(10, Number(durationMinutes || 20))),
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["assessments", "overview"] });
+      setAutoSubmittedSessionId(null);
       toast.success("Assessment generated from your current plan.");
     },
     onError: (error) => {
@@ -264,17 +427,24 @@ export default function AssessmentsPage() {
   });
 
   const submitAssessmentMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (options?: { timedOut?: boolean }) => {
       if (!currentSession) {
         throw new Error("Start an assessment before submitting.");
       }
 
-      return submitAssessment(currentSession.id, { answers });
+      return submitAssessment(currentSession.id, {
+        answers,
+        timedOut: options?.timedOut === true,
+      });
     },
-    onSuccess: async (session) => {
+    onSuccess: async (session, options) => {
       await queryClient.invalidateQueries({ queryKey: ["assessments", "overview"] });
       setAnswers(Object.fromEntries(Object.entries(session.submission?.answers || {}).map(([key, value]) => [key, String(value || "")])));
-      toast.success("Assessment submitted. Weak spots and recommendations are ready.");
+      if (options?.timedOut) {
+        toast.info("Time ran out. The assessment was auto-submitted and the report is ready.");
+      } else {
+        toast.success("Assessment submitted. Weak spots and recommendations are ready.");
+      }
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to submit assessment.");
@@ -313,6 +483,28 @@ export default function AssessmentsPage() {
     return currentSession.questions.filter((question) => !String(answers[question.id] || "").trim()).length;
   }, [answers, currentSession]);
 
+  useEffect(() => {
+    if (!currentSession || currentSession.status === "completed") {
+      return;
+    }
+
+    if (remainingSeconds === null || remainingSeconds > 0) {
+      return;
+    }
+
+    if (submitAssessmentMutation.isPending || autoSubmittedSessionId === currentSession.id) {
+      return;
+    }
+
+    setAutoSubmittedSessionId(currentSession.id);
+    submitAssessmentMutation.mutate({ timedOut: true });
+  }, [autoSubmittedSessionId, currentSession, remainingSeconds, submitAssessmentMutation]);
+
+  const activePhaseLabel = formatAssessmentPhase(currentSession?.assessmentPhase || assessmentPhase);
+  const report = currentSession?.report || null;
+  const strongAnswerCount = currentSession?.submission?.questionResults?.filter((result) => Number(result.score || 0) >= 0.75).length || 0;
+  const timedOut = currentSession?.submission?.timedOut === true;
+
   if (isBooting) {
     return <AssessmentsSkeleton />;
   }
@@ -327,7 +519,7 @@ export default function AssessmentsPage() {
               Test recall in the same lane your plan is asking you to improve.
             </h2>
             <p className="mt-3 max-w-3xl text-base leading-7 text-foreground/80">
-              Choose the assessment format you want: MCQs, fill in the blanks, or short programming under an average time budget. The questions pull from your active Prep Architect plan, recent tasks, and role focus.
+              Choose the assessment format and phase you want: a pre-baseline, a post-check, or a surprise test. The prompts stay inside this module, the clock stays visible, and the report pushes the next plan update toward consistency instead of guesswork.
             </p>
           </div>
 
@@ -431,6 +623,27 @@ export default function AssessmentsPage() {
             </div>
           </div>
 
+          <div className="mt-6 rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Measurement phase</p>
+            <div className="mt-4 grid gap-3">
+              {ASSESSMENT_PHASE_OPTIONS.map((phase) => (
+                <button
+                  key={phase.value}
+                  type="button"
+                  onClick={() => setAssessmentPhase(phase.value)}
+                  className={`rounded-[1rem] border px-4 py-4 text-left transition ${
+                    assessmentPhase === phase.value
+                      ? "border-primary/35 bg-primary/10"
+                      : "border-border/80 bg-card/50 hover:border-border hover:bg-background/60"
+                  }`}
+                >
+                  <p className="text-sm text-foreground">{phase.title}</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{phase.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <Button
             type="button"
             className="mt-6 h-11 gap-2"
@@ -446,7 +659,7 @@ export default function AssessmentsPage() {
           </Button>
 
           <div className="mt-6 rounded-[1.15rem] border border-border/80 bg-card/60 p-4 text-sm leading-6 text-muted-foreground">
-            Assessments stay role-aware. A Data Analyst plan leans into SQL, analysis, dashboards, and metrics. A Data Engineer plan leans into pipelines, warehousing, orchestration, and implementation. Software roles keep leaning into DSA, core CS, and systems.
+            Assessments stay role-aware and consistency-aware. A Data Analyst plan leans into SQL, analysis, dashboards, and metrics. A Data Engineer plan leans into pipelines, warehousing, orchestration, and implementation. Software roles keep leaning into DSA, core CS, and systems.
           </div>
         </section>
 
@@ -464,13 +677,24 @@ export default function AssessmentsPage() {
                         : "Short programming"}
                   </h3>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Started {formatDateTime(currentSession.startedAt)} / {currentSession.durationMinutes} total minutes / {currentSession.assessmentScope || "daily"} scope
+                    Started {formatDateTime(currentSession.startedAt)} / {currentSession.durationMinutes} total minutes / {currentSession.assessmentScope || "daily"} scope / {activePhaseLabel}
                   </p>
                 </div>
 
-                <div className="rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                  {unansweredCount} unanswered
+                <div className="grid gap-2 sm:min-w-[210px]">
+                  <div className={`rounded-[1rem] border px-4 py-3 ${remainingSeconds !== null && remainingSeconds <= 300 ? "border-rose-400/30 bg-rose-500/10" : "border-border/80 bg-background/70"}`}>
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Countdown</p>
+                    <p className="mt-2 font-heading text-3xl text-foreground">{formatCountdown(remainingSeconds)}</p>
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">Auto-submit triggers at zero.</p>
+                  </div>
+                  <div className="rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                    {unansweredCount} unanswered
+                  </div>
                 </div>
+              </div>
+
+              <div className="mt-5 rounded-[1rem] border border-border/80 bg-background/45 px-4 py-3 text-sm leading-6 text-muted-foreground">
+                Paste is blocked during the assessment. Answer from recall, explain the approach directly here, and let the timer show the real signal.
               </div>
 
               <div className="mt-6 space-y-4">
@@ -480,6 +704,8 @@ export default function AssessmentsPage() {
                     question={question}
                     value={answers[question.id] || ""}
                     onChange={(next) => setAnswers((current) => ({ ...current, [question.id]: next }))}
+                    disabled={submitAssessmentMutation.isPending || remainingSeconds === 0}
+                    onBlockedPaste={handleBlockedPaste}
                   />
                 ))}
               </div>
@@ -527,25 +753,59 @@ export default function AssessmentsPage() {
                 </div>
               </div>
 
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
+              {timedOut && (
+                <div className="mt-5 rounded-[1rem] border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
+                  The timer expired before submission. This report is still valid, but it should be read as a live-pressure signal.
+                </div>
+              )}
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Coverage</p>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-[1rem] border border-border/70 bg-card/60 px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Questions</p>
-                      <p className="mt-2 font-heading text-3xl text-foreground">{currentSession.questions.length}</p>
-                    </div>
-                    <div className="rounded-[1rem] border border-border/70 bg-card/60 px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Scope</p>
-                      <p className="mt-2 font-heading text-2xl text-foreground capitalize">{currentSession.assessmentScope || "daily"}</p>
-                    </div>
-                    <div className="rounded-[1rem] border border-border/70 bg-card/60 px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Strong answers</p>
-                      <p className="mt-2 font-heading text-3xl text-foreground">
-                        {currentSession.submission?.questionResults?.filter((result) => Number(result.score || 0) >= 0.75).length || 0}
-                      </p>
-                    </div>
+                  <p className="mt-2 font-heading text-3xl text-foreground">{currentSession.questions.length}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">{formatAssessmentPhase(currentSession.assessmentPhase)} / {currentSession.assessmentScope || "daily"} scope</p>
+                </div>
+
+                <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Strong answers</p>
+                  <p className="mt-2 font-heading text-3xl text-foreground">{strongAnswerCount}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Questions that landed above the useful-quality bar.</p>
+                </div>
+
+                <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Industry benchmark</p>
+                  <p className="mt-2 font-heading text-3xl text-foreground">{Math.round(report?.benchmarkScore || 0)}%</p>
+                  <p className="mt-2 text-sm text-muted-foreground">{report?.benchmarkComparison || "Benchmark comparison not available yet."}</p>
+                </div>
+
+                <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Phase trend</p>
+                  <p className="mt-2 font-heading text-3xl text-foreground">{Math.round(report?.phaseAverageScore || currentSession.score)}%</p>
+                  <p className={`mt-2 text-sm ${scoreDeltaTone(Number(report?.phaseDeltaScore || 0))}`}>
+                    {Number(report?.phaseDeltaScore || 0) > 0 ? "+" : ""}{Number(report?.phaseDeltaScore || 0).toFixed(1)} vs your average in this phase
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Strong spots</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {((report?.strongSpots?.length ? report.strongSpots : currentSession.submission?.questionResults?.filter((result) => Number(result.score || 0) >= 0.75).map((result) => result.topic)) || ["No strong spots recorded"]).map((topic) => (
+                      <span key={topic} className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-100">
+                        {topic}
+                      </span>
+                    ))}
                   </div>
+                  {!!report?.strongSignals?.length && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {report.strongSignals.map((signal) => (
+                        <span key={signal} className="rounded-full border border-border/80 bg-card/60 px-3 py-1.5 text-xs text-foreground/80">
+                          {signal}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
@@ -557,13 +817,35 @@ export default function AssessmentsPage() {
                       </span>
                     ))}
                   </div>
+                  {!!report?.gapSignals?.length && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {report.gapSignals.map((signal) => (
+                        <span key={signal} className="rounded-full border border-rose-400/20 bg-rose-500/10 px-3 py-1.5 text-xs text-rose-100">
+                          {signal}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
+              </div>
 
+              <div className="mt-4 grid gap-4 md:grid-cols-[1.05fr_0.95fr]">
                 <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Plan adjustment</p>
                   <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                    If the weak spots are real, push them back into Prep Architect so the roadmap, tasks, and flashcards adapt.
+                    {report?.summary || "If the weak spots are real, push them back into Prep Architect so the roadmap, tasks, and flashcards adapt."}
                   </p>
+
+                  {!!report?.fixPlan?.length && (
+                    <div className="mt-4 space-y-2">
+                      {report.fixPlan.map((item) => (
+                        <div key={item} className="rounded-[0.95rem] border border-border/70 bg-card/60 px-3 py-3 text-sm text-foreground/85">
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <Button
                     type="button"
                     className="mt-4 h-10 gap-2"
@@ -577,6 +859,16 @@ export default function AssessmentsPage() {
                     )}
                     {applyPlanUpdateMutation.isPending ? "Updating plan..." : "Apply to plan"}
                   </Button>
+                </div>
+
+                <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Consistency note</p>
+                  <p className="mt-4 text-base leading-7 text-foreground/85">
+                    {report?.motivation || "Consistency is key. Keep the next block honest and let the weak spots drive the plan."}
+                  </p>
+                  <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                    {report?.consistencyLine || "Follow the goal, follow the plan, and let repetition close the gap."}
+                  </p>
                 </div>
               </div>
 
@@ -636,6 +928,51 @@ export default function AssessmentsPage() {
                             {Math.round(result.score * 100)}%
                           </span>
                         </div>
+
+                        {result.industryComparison && (
+                          <p className="mt-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                            {result.industryComparison}
+                          </p>
+                        )}
+
+                        {(result.timeComplexity || result.spaceComplexity) && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {result.timeComplexity && (
+                              <span className="rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs text-foreground/80">
+                                Time: {result.timeComplexity}
+                              </span>
+                            )}
+                            {result.spaceComplexity && (
+                              <span className="rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs text-foreground/80">
+                                Space: {result.spaceComplexity}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {!!result.strengths?.length && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {result.strengths.map((item) => (
+                              <span key={item} className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-100">
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {!!result.weaknesses?.length && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {result.weaknesses.map((item) => (
+                              <span key={item} className="rounded-full border border-rose-400/20 bg-rose-500/10 px-3 py-1.5 text-xs text-rose-100">
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {result.recommendation && (
+                          <p className="mt-3 text-sm leading-6 text-muted-foreground">{result.recommendation}</p>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -684,7 +1021,7 @@ export default function AssessmentsPage() {
                   </p>
                   <p className="mt-2 text-base text-foreground">{formatDateTime(session.createdAt)}</p>
                   <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                    {session.assessmentScope || "daily"} scope
+                    {session.assessmentScope || "daily"} scope / {formatAssessmentPhase(session.assessmentPhase)}
                   </p>
                 </div>
                 <div className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.16em] ${scoreTone(session.score)}`}>
@@ -697,6 +1034,12 @@ export default function AssessmentsPage() {
                   ? `Weak spots: ${session.weakSpots.join(", ")}`
                   : "No weak spots recorded yet for this session."}
               </p>
+
+              {session.report?.benchmarkComparison && (
+                <p className="mt-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  {session.report.benchmarkComparison}
+                </p>
+              )}
             </article>
           )) : (
             <div className="xl:col-span-3 rounded-[1.15rem] border border-border/80 bg-card/60 px-4 py-4 text-sm text-muted-foreground">

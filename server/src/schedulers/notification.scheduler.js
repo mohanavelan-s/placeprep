@@ -18,7 +18,7 @@ function startNotificationScheduler() {
 
   try {
     notificationTask = cron.schedule(
-      env.notificationCron,
+      env.notificationSweepCron,
       async () => {
         try {
           const result = await runDailySweep();
@@ -35,7 +35,9 @@ function startNotificationScheduler() {
       }
     );
 
-    console.log(`[notifications] Scheduler armed on "${env.notificationCron}" (${env.defaultTimezone}).`);
+    console.log(
+      `[notifications] Scheduler armed on "${env.notificationSweepCron}" (${env.defaultTimezone}) with morning=${env.notificationMorningHour}:00 evening=${env.notificationEveningHour}:00.`,
+    );
 
     if (env.deliveryWorkerEnabled) {
       deliveryTask = cron.schedule(

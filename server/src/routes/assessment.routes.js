@@ -18,6 +18,7 @@ router.post(
     body('assessmentType').optional().isIn(['mcq', 'fill_blank', 'coding']),
     body('durationMinutes').optional().isInt({ min: 10, max: 90 }),
     body('assessmentScope').optional().isIn(['daily', 'weekly']),
+    body('assessmentPhase').optional().isIn(['pre', 'post', 'surprise']),
   ],
   validate,
   asyncHandler(controller.generateAssessment)
@@ -34,6 +35,7 @@ router.post(
 
       return true;
     }),
+    body('timedOut').optional().isBoolean(),
   ],
   validate,
   asyncHandler(controller.submitAssessment)

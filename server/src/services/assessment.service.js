@@ -58,8 +58,53 @@ const GENERIC_TOPIC_TOKENS = new Set([
   'lane',
 ]);
 
+const ASSESSMENT_PHASES = {
+  pre: {
+    label: 'Pre assessment',
+    benchmarkScore: 68,
+    benchmarkHeadline: 'Baseline before the heavier reps start.',
+  },
+  post: {
+    label: 'Post assessment',
+    benchmarkScore: 82,
+    benchmarkHeadline: 'After practice, the answer should feel tighter and cleaner.',
+  },
+  surprise: {
+    label: 'Surprise assessment',
+    benchmarkScore: 76,
+    benchmarkHeadline: 'Pressure check with less hand-holding and less pattern signaling.',
+  },
+};
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function compactText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function pickText(value, fallback = '', maxLength = 220) {
+  const text = compactText(value || fallback);
+  if (!text) {
+    return '';
+  }
+
+  if (!maxLength || text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, Math.max(maxLength - 3, 0)).trim()}...`;
+}
+
+function normalizeAssessmentPhase(value) {
+  return ['pre', 'post', 'surprise'].includes(String(value || '').trim().toLowerCase())
+    ? String(value).trim().toLowerCase()
+    : 'pre';
+}
+
+function getAssessmentPhaseConfig(phase) {
+  return ASSESSMENT_PHASES[normalizeAssessmentPhase(phase)] || ASSESSMENT_PHASES.pre;
 }
 
 function uniqueStrings(values = [], limit = 12) {
@@ -149,6 +194,8 @@ function normalizePlanShape(plan) {
         ...item,
         title: String(item?.title || '').trim(),
         type: String(item?.type || '').trim(),
+        summary: item?.summary ? String(item.summary).trim() : null,
+        description: item?.description ? String(item.description).trim() : null,
         referenceLabel: item?.referenceLabel ? String(item.referenceLabel).trim() : null,
         referenceUrl: item?.referenceUrl ? String(item.referenceUrl).trim() : null,
       })),
@@ -206,6 +253,13 @@ function normalizeSessionShape(session) {
       })).filter((choice) => choice.text),
       placeholder: question?.placeholder ? String(question.placeholder).trim() : null,
       taskTitle: question?.taskTitle ? String(question.taskTitle).trim() : null,
+      contextTitle: question?.contextTitle ? String(question.contextTitle).trim() : null,
+      contextSummary: question?.contextSummary ? String(question.contextSummary).trim() : null,
+      benchmarkLabel: question?.benchmarkLabel ? String(question.benchmarkLabel).trim() : null,
+      benchmarkTargetScore: Number(question?.benchmarkTargetScore || 0),
+      benchmarkChecks: normalizeStringList(question?.benchmarkChecks, 6),
+      expectedTimeComplexity: question?.expectedTimeComplexity ? String(question.expectedTimeComplexity).trim() : null,
+      expectedSpaceComplexity: question?.expectedSpaceComplexity ? String(question.expectedSpaceComplexity).trim() : null,
     })).filter((question) => question.id && question.prompt),
     submission: {
       ...normalizedSubmission,
@@ -218,6 +272,13 @@ function normalizeSessionShape(session) {
         score: Number(result?.score || 0),
         correct: Boolean(result?.correct),
         feedback: String(result?.feedback || '').trim(),
+        strengths: normalizeStringList(result?.strengths, 4),
+        weaknesses: normalizeStringList(result?.weaknesses, 4),
+        timeComplexity: result?.timeComplexity ? String(result.timeComplexity).trim() : null,
+        spaceComplexity: result?.spaceComplexity ? String(result.spaceComplexity).trim() : null,
+        industryComparison: result?.industryComparison ? String(result.industryComparison).trim() : null,
+        benchmarkScore: Number(result?.benchmarkScore || 0),
+        recommendation: result?.recommendation ? String(result.recommendation).trim() : null,
       })).filter((result) => result.questionId),
       submittedAt: normalizedSubmission.submittedAt || session.submittedAt || null,
     },
@@ -366,6 +427,38 @@ function sanitizeQuestion(question) {
     choices: Array.isArray(question.choices) ? question.choices : undefined,
     placeholder: question.placeholder || null,
     taskTitle: question.taskTitle || null,
+    contextTitle: question.contextTitle || null,
+    contextSummary: question.contextSummary || null,
+    benchmarkLabel: question.benchmarkLabel || null,
+    benchmarkTargetScore: Number(question.benchmarkTargetScore || 0),
+    benchmarkChecks: Array.isArray(question.benchmarkChecks) ? question.benchmarkChecks : [],
+    expectedTimeComplexity: question.expectedTimeComplexity || null,
+    expectedSpaceComplexity: question.expectedSpaceComplexity || null,
+  };
+}
+
+function normalizeAssessmentReport(report) {
+  const normalized = normalizeRecord(report);
+
+  if (!Object.keys(normalized).length) {
+    return null;
+  }
+
+  return {
+    summary: compactText(normalized.summary),
+    benchmarkScore: Number(normalized.benchmarkScore || 0),
+    benchmarkStatus: compactText(normalized.benchmarkStatus),
+    benchmarkComparison: compactText(normalized.benchmarkComparison),
+    phaseAverageScore: Number(normalized.phaseAverageScore || 0),
+    phaseDeltaScore: Number(normalized.phaseDeltaScore || 0),
+    attemptsInPhase: Number(normalized.attemptsInPhase || 0),
+    strongSpots: normalizeStringList(normalized.strongSpots, 6),
+    weakSpots: normalizeStringList(normalized.weakSpots, 6),
+    strongSignals: normalizeStringList(normalized.strongSignals, 6),
+    gapSignals: normalizeStringList(normalized.gapSignals, 6),
+    fixPlan: normalizeStringList(normalized.fixPlan, 5),
+    motivation: compactText(normalized.motivation),
+    consistencyLine: compactText(normalized.consistencyLine),
   };
 }
 
@@ -375,10 +468,18 @@ function sanitizeSession(session, includeQuestions = false) {
   }
 
   const normalizedSession = normalizeSessionShape(session);
+  const assessmentPhase = normalizeAssessmentPhase(
+    normalizedSession.assessmentPhase
+    || normalizedSession.metadata?.assessmentPhase
+    || normalizedSession.metadata?.phase
+  );
 
   return {
     ...normalizedSession,
     assessmentScope: normalizedSession.assessmentScope || normalizedSession.metadata?.scope || 'daily',
+    assessmentPhase,
+    expiresAt: normalizedSession.metadata?.expiresAt || null,
+    report: normalizeAssessmentReport(normalizedSession.report || normalizedSession.metadata?.report || null),
     questions: includeQuestions ? normalizedSession.questions.map(sanitizeQuestion).filter(Boolean) : [],
   };
 }
@@ -423,6 +524,8 @@ function inferTaskTopic(task, plan) {
     task.subcategory,
     task.title,
     task.referenceLabel,
+    task.description,
+    task.summary,
   ].join(' ');
   const matchedFocusTopic = focusTopics.find((topic) => topicMatchesText(topic, combinedText));
 
@@ -459,6 +562,8 @@ function findTaskForTopic(taskPool = [], topic) {
       task.subcategory,
       task.title,
       task.referenceLabel,
+      task.description,
+      task.summary,
     ].join(' ');
     return topicMatchesText(topic, combinedText);
   }) || null;
@@ -471,6 +576,7 @@ function buildAssessmentReference(plan, topic, taskPool = []) {
       referenceLabel: relatedTask.referenceLabel || relatedTask.title || topic,
       referenceUrl: relatedTask.referenceUrl,
       taskTitle: relatedTask.title || null,
+      contextSummary: relatedTask.description || relatedTask.summary || null,
     };
   }
 
@@ -480,6 +586,7 @@ function buildAssessmentReference(plan, topic, taskPool = []) {
     referenceLabel: resourceItem?.title || null,
     referenceUrl: resourceItem?.url || null,
     taskTitle: relatedTask?.title || null,
+    contextSummary: relatedTask?.description || relatedTask?.summary || null,
   };
 }
 
@@ -496,6 +603,15 @@ function buildTaskSource(task, plan, sourceKind = 'daily-task') {
     referenceLabel: task.referenceLabel || task.title || reference.referenceLabel || topic,
     referenceUrl: task.referenceUrl || reference.referenceUrl || null,
     theme: task.theme || task.subcategory || task.weakArea || null,
+    description: pickText(
+      task.description
+      || task.summary
+      || task.metadata?.coachReason
+      || reference.contextSummary
+      || '',
+      '',
+      200,
+    ),
   };
 }
 
@@ -510,6 +626,7 @@ function buildTopicSource(topic, plan, sourceKind = 'known-topic', taskPool = []
     referenceLabel: reference.referenceLabel || String(topic || '').trim(),
     referenceUrl: reference.referenceUrl || null,
     theme: null,
+    description: pickText(reference.contextSummary || '', '', 200),
   };
 }
 
@@ -556,7 +673,7 @@ function getQuestionCount(assessmentType, durationMinutes, assessmentScope) {
   return clamp(Math.round(durationMinutes / 5), 4, assessmentScope === 'weekly' ? 8 : 6);
 }
 
-function buildAssessmentSources(plan, taskPool = [], assessmentType, durationMinutes, assessmentScope = 'daily') {
+function buildAssessmentSources(plan, taskPool = [], assessmentType, durationMinutes, assessmentScope = 'daily', assessmentPhase = 'pre') {
   const questionCount = getQuestionCount(assessmentType, durationMinutes, assessmentScope);
   const weeklyPlanTasks = flattenPlanItems(plan).filter((item) => item.type !== 'Revision');
   const dailyTasks = (taskPool || []).length ? taskPool : weeklyPlanTasks.slice(0, 4);
@@ -574,9 +691,17 @@ function buildAssessmentSources(plan, taskPool = [], assessmentType, durationMin
     .flatMap((week) => week.focusTopics || [])
     .map((topic) => buildTopicSource(topic, plan, 'weekly-focus', weeklyPlanTasks)));
 
-  const orderedSources = assessmentScope === 'weekly'
-    ? interleaveSourceBuckets([weeklyTaskSources, knownTopicSources, targetTopicSources, weeklyFocusSources], questionCount)
-    : interleaveSourceBuckets([dailyTaskSources, knownTopicSources, targetTopicSources], questionCount);
+  const orderedSources = assessmentPhase === 'surprise'
+    ? shuffle(dedupeSources([
+      ...weeklyTaskSources,
+      ...dailyTaskSources,
+      ...targetTopicSources,
+      ...knownTopicSources,
+      ...weeklyFocusSources,
+    ])).slice(0, questionCount)
+    : assessmentScope === 'weekly'
+      ? interleaveSourceBuckets([weeklyTaskSources, knownTopicSources, targetTopicSources, weeklyFocusSources], questionCount)
+      : interleaveSourceBuckets([dailyTaskSources, knownTopicSources, targetTopicSources], questionCount);
 
   return orderedSources.length
     ? orderedSources.slice(0, questionCount)
@@ -641,8 +766,121 @@ function chooseBlankPhrase(answer, source) {
   return extractKeyPhrase(answer) || source.topic || 'core idea';
 }
 
-function buildMcqQuestions(plan, sources, durationMinutes) {
-  const fallbackSources = sources.length ? sources : buildAssessmentSources(plan, [], 'mcq', durationMinutes, 'daily');
+function inferComplexityBenchmarks(topic) {
+  const normalized = normalizeText(topic);
+
+  if (normalized.includes('array') || normalized.includes('string')) {
+    return {
+      time: 'O(n) to O(n log n), depending on the chosen approach',
+      space: 'O(1) to O(n), depending on auxiliary storage',
+    };
+  }
+
+  if (normalized.includes('tree') || normalized.includes('graph')) {
+    return {
+      time: 'O(V + E) or O(n), depending on the traversal model',
+      space: 'O(V) or O(n) for recursion, queue, or visited state',
+    };
+  }
+
+  if (normalized.includes('dynamic')) {
+    return {
+      time: 'State the transition cost clearly, usually O(n) or O(n*m)',
+      space: 'State the table or memo footprint clearly',
+    };
+  }
+
+  if (normalized.includes('sql') || normalized.includes('db')) {
+    return {
+      time: 'Explain the dominant scan or join cost clearly',
+      space: 'Explain any temporary grouping or sorting footprint',
+    };
+  }
+
+  return {
+    time: 'State the dominant runtime clearly',
+    space: 'State the extra memory cost clearly',
+  };
+}
+
+function buildBenchmarkChecks(questionType, assessmentPhase) {
+  const phaseConfig = getAssessmentPhaseConfig(assessmentPhase);
+
+  if (questionType === 'coding') {
+    return uniqueStrings([
+      'Name the core approach before or while you code',
+      'Mention one supporting structure or state choice',
+      'State time complexity explicitly',
+      'State space complexity explicitly',
+      assessmentPhase === 'surprise'
+        ? 'Stay clear under pressure without depending on the original link'
+        : `Hit at least the ${phaseConfig.benchmarkScore}% delivery bar for this phase`,
+    ], 5);
+  }
+
+  return uniqueStrings([
+    'Stay precise instead of vague',
+    'Answer in the same lane as the plan focus',
+    assessmentPhase === 'post'
+      ? 'Show that the practice actually stuck'
+      : 'Prove that the idea is available from memory',
+    `Aim for the ${phaseConfig.benchmarkScore}% benchmark for this phase`,
+  ], 4);
+}
+
+function buildAssessmentBrief(source, flashcard, assessmentPhase) {
+  const phaseConfig = getAssessmentPhaseConfig(assessmentPhase);
+  const flashcardAnswer = pickText(flashcard?.answer, '', 180);
+  const description = pickText(source.description, '', 180);
+
+  if (assessmentPhase === 'surprise') {
+    return pickText(
+      description
+      || flashcardAnswer
+      || `${phaseConfig.label}: solve ${source.topic || source.referenceLabel || 'this prompt'} from first principles and keep the explanation self-contained.`,
+      '',
+      180,
+    );
+  }
+
+  if (flashcardAnswer) {
+    return flashcardAnswer;
+  }
+
+  if (description) {
+    return description;
+  }
+
+  return pickText(
+    source.kind === 'task'
+      ? `${phaseConfig.label}: use ${source.referenceLabel || source.taskTitle || source.topic} as the working context and explain the idea with one clear tradeoff.`
+      : `${phaseConfig.label}: explain ${source.topic || 'the current focus'} cleanly enough that you could say it out loud in an interview.`,
+    '',
+    180,
+  );
+}
+
+function buildQuestionMeta(source, flashcard, questionType, assessmentPhase) {
+  const phaseConfig = getAssessmentPhaseConfig(assessmentPhase);
+  const complexity = questionType === 'coding'
+    ? inferComplexityBenchmarks(source.topic || source.referenceLabel || source.taskTitle)
+    : { time: null, space: null };
+
+  return {
+    contextTitle: source.kind === 'task'
+      ? `${phaseConfig.label} brief`
+      : `${phaseConfig.label} focus`,
+    contextSummary: buildAssessmentBrief(source, flashcard, assessmentPhase),
+    benchmarkLabel: `${phaseConfig.label} / industry-style delivery`,
+    benchmarkTargetScore: phaseConfig.benchmarkScore,
+    benchmarkChecks: buildBenchmarkChecks(questionType, assessmentPhase),
+    expectedTimeComplexity: complexity.time,
+    expectedSpaceComplexity: complexity.space,
+  };
+}
+
+function buildMcqQuestions(plan, sources, durationMinutes, assessmentPhase = 'pre') {
+  const fallbackSources = sources.length ? sources : buildAssessmentSources(plan, [], 'mcq', durationMinutes, 'daily', assessmentPhase);
   const answersBySource = fallbackSources.map((source) => ({
     source,
     flashcard: findFlashcardForSource(plan, source),
@@ -682,12 +920,13 @@ function buildMcqQuestions(plan, sources, durationMinutes) {
       correctOptionId: correctOption.id,
       expectedAnswer: correctText,
       explanation: correctText,
+      ...buildQuestionMeta(source, flashcard, 'mcq', assessmentPhase),
     };
   });
 }
 
-function buildFillBlankQuestions(plan, sources, durationMinutes, assessmentScope = 'daily') {
-  const fallbackSources = sources.length ? sources : buildAssessmentSources(plan, [], 'fill_blank', durationMinutes, assessmentScope);
+function buildFillBlankQuestions(plan, sources, durationMinutes, assessmentScope = 'daily', assessmentPhase = 'pre') {
+  const fallbackSources = sources.length ? sources : buildAssessmentSources(plan, [], 'fill_blank', durationMinutes, assessmentScope, assessmentPhase);
 
   return fallbackSources.map((source, index) => {
     const flashcard = findFlashcardForSource(plan, source);
@@ -710,11 +949,12 @@ function buildFillBlankQuestions(plan, sources, durationMinutes, assessmentScope
       expectedAnswer: keyPhrase,
       expectedKeywords: extractKeywords(answer, extractKeywords(keyPhrase)),
       explanation: answer,
+      ...buildQuestionMeta(source, flashcard, 'fill_blank', assessmentPhase),
     };
   });
 }
 
-function buildCodingQuestions(plan, sources, durationMinutes, assessmentScope = 'daily') {
+function buildCodingQuestions(plan, sources, durationMinutes, assessmentScope = 'daily', assessmentPhase = 'pre') {
   const taskSources = sources.filter((source) => source.kind === 'task');
   const baseSources = (taskSources.length ? taskSources : sources).slice(0, getQuestionCount('coding', durationMinutes, assessmentScope));
 
@@ -727,6 +967,8 @@ function buildCodingQuestions(plan, sources, durationMinutes, assessmentScope = 
       'complexity',
     ], 8);
 
+    const questionMeta = buildQuestionMeta(source, null, 'coding', assessmentPhase);
+
     return {
       id: `code-${index + 1}-${slugify(referenceLabel)}`,
       type: 'coding',
@@ -738,23 +980,24 @@ function buildCodingQuestions(plan, sources, durationMinutes, assessmentScope = 
       taskTitle: source.taskTitle || referenceLabel,
       placeholder: 'Use a compact solution sketch. Code or structured pseudocode both work here.',
       expectedKeywords,
-      explanation: `A strong answer should clearly state the approach for ${referenceLabel}, name one relevant data structure, and include time complexity.`,
+      explanation: `A strong answer should clearly state the approach for ${referenceLabel}, name one relevant data structure, and include both time and space complexity.`,
+      ...questionMeta,
     };
   });
 }
 
-function buildQuestions(plan, taskPool, assessmentType, durationMinutes, assessmentScope = 'daily') {
-  const sources = buildAssessmentSources(plan, taskPool, assessmentType, durationMinutes, assessmentScope);
+function buildQuestions(plan, taskPool, assessmentType, durationMinutes, assessmentScope = 'daily', assessmentPhase = 'pre') {
+  const sources = buildAssessmentSources(plan, taskPool, assessmentType, durationMinutes, assessmentScope, assessmentPhase);
 
   if (assessmentType === 'coding') {
-    return buildCodingQuestions(plan, sources, durationMinutes, assessmentScope);
+    return buildCodingQuestions(plan, sources, durationMinutes, assessmentScope, assessmentPhase);
   }
 
   if (assessmentType === 'fill_blank') {
-    return buildFillBlankQuestions(plan, sources, durationMinutes, assessmentScope);
+    return buildFillBlankQuestions(plan, sources, durationMinutes, assessmentScope, assessmentPhase);
   }
 
-  return buildMcqQuestions(plan, sources, durationMinutes);
+  return buildMcqQuestions(plan, sources, durationMinutes, assessmentPhase);
 }
 
 function scoreTextAgainstKeywords(response, expectedKeywords = []) {
@@ -772,19 +1015,142 @@ function scoreTextAgainstKeywords(response, expectedKeywords = []) {
   return matches / expectedKeywords.length;
 }
 
+function extractComplexityMentions(response) {
+  return uniqueStrings(
+    Array.from(String(response || '').matchAll(/o\([^)]*\)/gi)).map((match) => match[0]),
+    4,
+  );
+}
+
+function extractComplexityMention(response, kind = 'time') {
+  const text = String(response || '');
+  const labeledMatch = text.match(
+    kind === 'space'
+      ? /space(?:\s+complexity|\s+cost)?\s*[:=-]?\s*(O\([^)]*\))/i
+      : /time(?:\s+complexity|\s+cost)?\s*[:=-]?\s*(O\([^)]*\))/i
+  );
+
+  if (labeledMatch?.[1]) {
+    return labeledMatch[1];
+  }
+
+  const mentions = extractComplexityMentions(text);
+  if (!mentions.length) {
+    return null;
+  }
+
+  return kind === 'space'
+    ? (mentions[1] || null)
+    : (mentions[0] || null);
+}
+
+function normalizeComplexitySignature(value) {
+  const normalized = normalizeText(value).replace(/\s+/g, '');
+
+  if (!normalized) {
+    return '';
+  }
+  if (normalized.includes('1')) {
+    return 'constant';
+  }
+  if (normalized.includes('v+e')) {
+    return 'graph-traversal';
+  }
+  if (normalized.includes('nlogn')) {
+    return 'n-log-n';
+  }
+  if (normalized.includes('n2') || normalized.includes('n^2')) {
+    return 'quadratic';
+  }
+  if (normalized.includes('logn')) {
+    return 'logarithmic';
+  }
+  if (normalized.includes('n')) {
+    return 'linear-family';
+  }
+
+  return normalized;
+}
+
+function scoreComplexityMention(expected, actual) {
+  if (!actual) {
+    return 0;
+  }
+
+  if (!expected) {
+    return 1;
+  }
+
+  const expectedSignature = normalizeComplexitySignature(expected);
+  const actualSignature = normalizeComplexitySignature(actual);
+
+  if (!expectedSignature || !actualSignature) {
+    return 0.6;
+  }
+
+  if (expectedSignature === actualSignature) {
+    return 1;
+  }
+
+  if (
+    expectedSignature === 'linear-family'
+    && ['linear-family', 'n-log-n', 'graph-traversal'].includes(actualSignature)
+  ) {
+    return 0.8;
+  }
+
+  if (expectedSignature === 'graph-traversal' && actualSignature === 'linear-family') {
+    return 0.7;
+  }
+
+  return 0.45;
+}
+
+function buildIndustryComparison(score, benchmarkTargetScore) {
+  const target = Number(benchmarkTargetScore || 75);
+  const scorePercent = Math.round(Number(score || 0) * 100);
+
+  if (scorePercent >= target + 8) {
+    return `Above the current industry bar. ${scorePercent}% against a ${target}% benchmark.`;
+  }
+
+  if (scorePercent >= target) {
+    return `At the current industry bar. ${scorePercent}% against a ${target}% benchmark.`;
+  }
+
+  if (scorePercent >= target - 10) {
+    return `Close to the current industry bar. ${scorePercent}% against a ${target}% benchmark.`;
+  }
+
+  return `Below the current industry bar. ${scorePercent}% against a ${target}% benchmark.`;
+}
+
 function gradeQuestion(question, response) {
   const normalizedResponse = normalizeText(response);
+  const benchmarkTargetScore = Number(question?.benchmarkTargetScore || 75);
+  const minimumStrongScore = Math.max(0.6, (benchmarkTargetScore / 100) - 0.06);
 
   if (question.type === 'mcq') {
     const isCorrect = String(response || '').trim() === question.correctOptionId;
+    const score = isCorrect ? 1 : 0;
+
     return {
       questionId: question.id,
       topic: question.topic,
-      score: isCorrect ? 1 : 0,
+      score,
       correct: isCorrect,
       feedback: isCorrect
-        ? 'Good read. The selected answer matches the planned recall target.'
-        : 'This one slipped. Revisit the explanation and then retry the linked study resource.',
+        ? 'Good read. The selected answer matches the planned recall target quickly and cleanly.'
+        : 'This one slipped. Revisit the explanation, then repeat the concept without looking at the source.',
+      strengths: isCorrect ? ['Concept recognition stayed sharp under pressure'] : [],
+      weaknesses: isCorrect ? [] : ['Concept recall broke on a direct recognition prompt'],
+      timeComplexity: null,
+      spaceComplexity: null,
+      industryComparison: buildIndustryComparison(score, benchmarkTargetScore),
+      benchmarkScore: score,
+      recommendation: isCorrect
+        ? 'Keep the same pace, then move to a harder prompt in the same lane.'
+        : `Repeat ${question.topic} once more and explain why the correct option wins.`,
     };
   }
 
@@ -792,49 +1158,173 @@ function gradeQuestion(question, response) {
     const expectedAnswer = normalizeText(question.expectedAnswer);
     const keywordScore = scoreTextAgainstKeywords(response, question.expectedKeywords || []);
     const isCorrect = normalizedResponse.includes(expectedAnswer) || keywordScore >= 0.6;
+    const score = isCorrect ? 1 : keywordScore >= 0.55 ? 0.7 : keywordScore >= 0.35 ? 0.4 : 0;
 
     return {
       questionId: question.id,
       topic: question.topic,
-      score: isCorrect ? 1 : keywordScore >= 0.35 ? 0.5 : 0,
-      correct: isCorrect,
+      score,
+      correct: score >= minimumStrongScore,
       feedback: isCorrect
         ? 'Nice. The missing idea is intact.'
         : `Tighten the recall phrase for ${question.topic} and keep it short enough to say under pressure.`,
+      strengths: isCorrect ? ['The core phrase was recoverable from memory'] : [],
+      weaknesses: isCorrect ? [] : ['Recall phrase is still too fuzzy or too slow'],
+      timeComplexity: null,
+      spaceComplexity: null,
+      industryComparison: buildIndustryComparison(score, benchmarkTargetScore),
+      benchmarkScore: score,
+      recommendation: isCorrect
+        ? `Turn ${question.topic} into one spoken line and keep it available.`
+        : `Shrink ${question.topic} into one exact recall phrase and repeat it until it is effortless.`,
     };
   }
 
   const keywordScore = scoreTextAgainstKeywords(response, question.expectedKeywords || []);
+  const responseText = String(response || '').trim();
   const hasComplexitySignal = /o\(|time complexity|space complexity/.test(String(response || '').toLowerCase());
   const hasCodeSignal = /(for|while|if|return|function|def|class|select|join|group by)/i.test(String(response || ''));
-  let score = 0;
-
-  if (String(response || '').trim().length >= 120) {
-    score = Math.max(score, 0.4);
-  } else if (String(response || '').trim().length >= 60) {
-    score = Math.max(score, 0.25);
-  }
-
-  score = Math.max(score, keywordScore);
-
-  if (hasCodeSignal) {
-    score = Math.max(score, 0.5);
-  }
-
-  if (hasComplexitySignal) {
-    score = Math.min(1, score + 0.15);
-  }
-
-  const correct = score >= 0.75;
+  const mentionsEdgeCases = /edge case|empty|duplicate|null|overflow|boundary|single/i.test(responseText);
+  const timeComplexity = extractComplexityMention(responseText, 'time');
+  const spaceComplexity = extractComplexityMention(responseText, 'space');
+  const timeScore = scoreComplexityMention(question.expectedTimeComplexity, timeComplexity);
+  const spaceScore = scoreComplexityMention(question.expectedSpaceComplexity, spaceComplexity);
+  const structureScore = responseText.length >= 180
+    ? 1
+    : responseText.length >= 100
+      ? 0.78
+      : responseText.length >= 60
+        ? 0.55
+        : 0.2;
+  const implementationScore = hasCodeSignal ? 0.9 : 0.45;
+  const edgeCaseScore = mentionsEdgeCases ? 1 : 0.35;
+  const score = clamp(Number((
+    (keywordScore * 0.26)
+    + (structureScore * 0.18)
+    + (implementationScore * 0.18)
+    + (timeScore * 0.2)
+    + (spaceScore * 0.12)
+    + (edgeCaseScore * 0.06)
+  ).toFixed(2)), 0, 1);
+  const correct = score >= minimumStrongScore;
+  const strengths = uniqueStrings([
+    keywordScore >= 0.7 ? 'Core approach is visible' : '',
+    hasCodeSignal ? 'Implementation structure is present' : '',
+    timeComplexity ? `Time complexity stated as ${timeComplexity}` : '',
+    spaceComplexity ? `Space complexity stated as ${spaceComplexity}` : '',
+    mentionsEdgeCases ? 'Edge case awareness is visible' : '',
+  ], 4);
+  const weaknesses = uniqueStrings([
+    keywordScore < 0.55 ? 'Approach explanation is still thin' : '',
+    !hasCodeSignal ? 'Implementation structure is not concrete enough' : '',
+    !timeComplexity ? 'Time complexity is missing' : '',
+    !spaceComplexity ? 'Space complexity is missing' : '',
+    !mentionsEdgeCases ? 'No edge case or boundary handling was called out' : '',
+  ], 4);
 
   return {
     questionId: question.id,
     topic: question.topic,
-    score: clamp(Number(score.toFixed(2)), 0, 1),
+    score,
     correct,
     feedback: correct
-      ? 'Solid. The solution sketch mentions the approach and the cost clearly.'
-      : 'Add the core approach, one key data structure, and the time complexity so the answer feels interview-ready.',
+      ? 'Solid. The solution sketch reads close to an interview-ready answer.'
+      : 'Add the approach, one supporting structure, and explicit time and space complexity so the answer reads like a production interview response.',
+    strengths,
+    weaknesses,
+    timeComplexity: timeComplexity || null,
+    spaceComplexity: spaceComplexity || null,
+    industryComparison: buildIndustryComparison(score, benchmarkTargetScore),
+    benchmarkScore: score,
+    recommendation: weaknesses.length
+      ? `Next pass: ${weaknesses.slice(0, 2).join('; ')}.`
+      : 'Keep the same structure and push one level harder.',
+  };
+}
+
+function buildBenchmarkStatus(score, benchmarkScore) {
+  const delta = Number(score || 0) - Number(benchmarkScore || 0);
+
+  if (delta >= 8) {
+    return 'above';
+  }
+  if (delta >= 0) {
+    return 'at';
+  }
+  if (delta >= -10) {
+    return 'close';
+  }
+  return 'below';
+}
+
+function buildAssessmentReport({
+  phase,
+  questionResults,
+  score,
+  recommendations,
+  previousSessions,
+  targetRole,
+  timedOut,
+}) {
+  const phaseConfig = getAssessmentPhaseConfig(phase);
+  const strongSpots = uniqueStrings(
+    questionResults.filter((item) => Number(item.score || 0) >= 0.75).map((item) => item.topic),
+    6,
+  );
+  const weakSpots = uniqueStrings(
+    questionResults.filter((item) => Number(item.score || 0) < 0.75).map((item) => item.topic),
+    6,
+  );
+  const strongSignals = uniqueStrings(questionResults.flatMap((item) => item.strengths || []), 6);
+  const gapSignals = uniqueStrings(questionResults.flatMap((item) => item.weaknesses || []), 6);
+  const priorPhaseScores = previousSessions
+    .map(normalizeSessionShape)
+    .filter((entry) =>
+      entry
+      && entry.status === 'completed'
+      && normalizeAssessmentPhase(entry.metadata?.assessmentPhase || entry.assessmentPhase) === phase
+    )
+    .map((entry) => Number(entry.score || 0));
+  const phaseAverageScore = priorPhaseScores.length
+    ? Number((priorPhaseScores.reduce((sum, value) => sum + value, 0) / priorPhaseScores.length).toFixed(2))
+    : Number(score || 0);
+  const phaseDeltaScore = Number((Number(score || 0) - phaseAverageScore).toFixed(2));
+  const benchmarkStatus = buildBenchmarkStatus(score, phaseConfig.benchmarkScore);
+  const benchmarkComparison = benchmarkStatus === 'above'
+    ? `You cleared the ${phaseConfig.label.toLowerCase()} bar and landed above the current ${phaseConfig.benchmarkScore}% benchmark.`
+    : benchmarkStatus === 'at'
+      ? `You met the ${phaseConfig.label.toLowerCase()} bar and reached the current ${phaseConfig.benchmarkScore}% benchmark.`
+      : benchmarkStatus === 'close'
+        ? `You are close to the ${phaseConfig.label.toLowerCase()} bar. The benchmark is ${phaseConfig.benchmarkScore}% and the next honest block can close that gap.`
+        : `You are below the ${phaseConfig.label.toLowerCase()} bar. The benchmark is ${phaseConfig.benchmarkScore}%, so the next plan update should focus hard on the exposed topics.`;
+
+  return {
+    summary: benchmarkStatus === 'below'
+      ? `${phaseConfig.label} exposed real gaps for ${targetRole || 'your target role'} in ${weakSpots.slice(0, 2).join(' and ') || 'the current focus lane'}.`
+      : `${phaseConfig.label} showed measurable control in ${strongSpots.slice(0, 2).join(' and ') || 'the current focus lane'}.`,
+    benchmarkScore: phaseConfig.benchmarkScore,
+    benchmarkStatus,
+    benchmarkComparison,
+    phaseAverageScore,
+    phaseDeltaScore,
+    attemptsInPhase: priorPhaseScores.length + 1,
+    strongSpots,
+    weakSpots,
+    strongSignals,
+    gapSignals,
+    fixPlan: uniqueStrings([
+      ...recommendations.map((item) => item.action),
+      weakSpots.length
+        ? `Push ${weakSpots.slice(0, 2).join(' and ')} back into the plan until the answer quality feels natural.`
+        : '',
+      timedOut
+        ? 'Run one more timed block so the delivery stays clean when the clock is visible.'
+        : '',
+    ], 5),
+    motivation: benchmarkStatus === 'below'
+      ? 'Consistency is the edge here. Do not chase a perfect jump. Stack the next honest reps and let the weak spots tighten.'
+      : 'Consistency is still the edge. Keep the standard, keep the reps clean, and let the plan compound.',
+    consistencyLine: 'Consistency is key. Follow the plan, keep the reps honest, and the score will move.',
   };
 }
 
@@ -891,10 +1381,20 @@ async function generateAssessment(user, payload = {}) {
     ? payload.assessmentType
     : 'mcq';
   const assessmentScope = payload.assessmentScope === 'weekly' ? 'weekly' : 'daily';
+  const assessmentPhase = normalizeAssessmentPhase(payload.assessmentPhase);
   const durationMinutes = clamp(Number(payload.durationMinutes || 20), 10, 90);
   const today = getTodayInTimezone(user.timezone);
   const todaysTasks = await taskRepository.listByUser(user.id, { date: today });
-  const questions = buildQuestions(activePlan, todaysTasks, assessmentType, durationMinutes, assessmentScope);
+  const questions = buildQuestions(
+    activePlan,
+    todaysTasks,
+    assessmentType,
+    durationMinutes,
+    assessmentScope,
+    assessmentPhase,
+  );
+  const startedAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + (durationMinutes * 60000)).toISOString();
 
   if (!questions.length) {
     throw new AppError('Unable to build an assessment from the current plan.', 400);
@@ -913,11 +1413,15 @@ async function generateAssessment(user, payload = {}) {
       targetRole: activePlan.targetRole || null,
       targetTopics: activePlan.targetTopics || [],
       scope: assessmentScope,
+      assessmentPhase,
+      phaseLabel: getAssessmentPhaseConfig(assessmentPhase).label,
+      phaseHeadline: getAssessmentPhaseConfig(assessmentPhase).benchmarkHeadline,
       sourceTaskCount: todaysTasks.length,
       sourceKnownTopicCount: (activePlan.knownTopics || []).length,
       questionCount: questions.length,
+      expiresAt,
     },
-    startedAt: new Date().toISOString(),
+    startedAt,
   });
 
   return {
@@ -936,18 +1440,25 @@ async function submitAssessment(user, assessmentId, payload = {}) {
     return sanitizeSession(session, true);
   }
 
+  const normalizedSession = normalizeSessionShape(session);
   const answers = payload.answers && typeof payload.answers === 'object' && !Array.isArray(payload.answers)
     ? payload.answers
     : {};
-  const plan = session.planId
-    ? normalizePlanShape(await prepPlanRepository.findById(session.planId, user.id))
+  const timedOut = payload.timedOut === true;
+  const assessmentPhase = normalizeAssessmentPhase(
+    normalizedSession.metadata?.assessmentPhase
+    || normalizedSession.assessmentPhase
+  );
+  const plan = normalizedSession.planId
+    ? normalizePlanShape(await prepPlanRepository.findById(normalizedSession.planId, user.id))
     : await resolveActivePlan(user.id);
 
   if (!plan) {
     throw new AppError('The linked Prep Architect plan could not be found.', 404);
   }
 
-  const questionResults = (session.questions || []).map((question) =>
+  const previousSessions = await assessmentRepository.listByUser(user.id, 12);
+  const questionResults = (normalizedSession.questions || []).map((question) =>
     gradeQuestion(question, answers[question.id])
   );
   const aggregateScore = questionResults.length
@@ -960,9 +1471,25 @@ async function submitAssessment(user, assessmentId, payload = {}) {
       .map((item) => item.topic),
     5,
   );
-  const recommendations = buildRecommendations(plan, weakSpots, session.assessmentType);
+  const strongSpots = uniqueStrings(
+    questionResults
+      .filter((item) => Number(item.score || 0) >= 0.75)
+      .map((item) => item.topic),
+    5,
+  );
+  const recommendations = buildRecommendations(plan, weakSpots, normalizedSession.assessmentType);
+  const report = buildAssessmentReport({
+    phase: assessmentPhase,
+    questionResults,
+    score: roundedScore,
+    recommendations,
+    previousSessions: previousSessions.filter((entry) => entry.id !== normalizedSession.id),
+    targetRole: plan.targetRole || user.targetRole || null,
+    timedOut,
+  });
+  const submittedAt = new Date().toISOString();
 
-  const updatedSession = await assessmentRepository.updateSession(session.id, user.id, {
+  const updatedSession = await assessmentRepository.updateSession(normalizedSession.id, user.id, {
     status: 'completed',
     weakSpots,
     recommendations,
@@ -970,13 +1497,18 @@ async function submitAssessment(user, assessmentId, payload = {}) {
     submission: {
       answers,
       questionResults,
-      submittedAt: new Date().toISOString(),
+      submittedAt,
+      timedOut,
     },
-    submittedAt: new Date().toISOString(),
+    submittedAt,
     metadata: {
-      ...(session.metadata || {}),
+      ...(normalizedSession.metadata || {}),
       latestScore: roundedScore,
       weakSpotCount: weakSpots.length,
+      strongSpotCount: strongSpots.length,
+      assessmentPhase,
+      report,
+      timedOut,
     },
   });
 

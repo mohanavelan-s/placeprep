@@ -559,6 +559,7 @@ export interface PrepPlan {
 
 export type AssessmentType = "mcq" | "fill_blank" | "coding";
 export type AssessmentScope = "daily" | "weekly";
+export type AssessmentPhase = "pre" | "post" | "surprise";
 
 export interface AssessmentQuestionChoice {
   id: string;
@@ -577,6 +578,13 @@ export interface AssessmentQuestion {
   choices?: AssessmentQuestionChoice[];
   placeholder?: string | null;
   taskTitle?: string | null;
+  contextTitle?: string | null;
+  contextSummary?: string | null;
+  benchmarkLabel?: string | null;
+  benchmarkTargetScore?: number;
+  benchmarkChecks?: string[];
+  expectedTimeComplexity?: string | null;
+  expectedSpaceComplexity?: string | null;
 }
 
 export interface AssessmentQuestionResult {
@@ -585,6 +593,13 @@ export interface AssessmentQuestionResult {
   score: number;
   correct: boolean;
   feedback: string;
+  strengths?: string[];
+  weaknesses?: string[];
+  timeComplexity?: string | null;
+  spaceComplexity?: string | null;
+  industryComparison?: string | null;
+  benchmarkScore?: number;
+  recommendation?: string | null;
 }
 
 export interface AssessmentRecommendation {
@@ -601,6 +616,24 @@ export interface AssessmentSubmission {
   answers?: Record<string, string>;
   questionResults?: AssessmentQuestionResult[];
   submittedAt?: string | null;
+  timedOut?: boolean;
+}
+
+export interface AssessmentReport {
+  summary?: string;
+  benchmarkScore?: number;
+  benchmarkStatus?: string;
+  benchmarkComparison?: string;
+  phaseAverageScore?: number;
+  phaseDeltaScore?: number;
+  attemptsInPhase?: number;
+  strongSpots?: string[];
+  weakSpots?: string[];
+  strongSignals?: string[];
+  gapSignals?: string[];
+  fixPlan?: string[];
+  motivation?: string;
+  consistencyLine?: string;
 }
 
 export interface AssessmentPlanSummary {
@@ -622,12 +655,15 @@ export interface AssessmentSession {
   status: "draft" | "started" | "completed" | "skipped";
   assessmentType: AssessmentType;
   assessmentScope?: AssessmentScope;
+  assessmentPhase?: AssessmentPhase;
   durationMinutes: number;
   weakSpots: string[];
   recommendations: AssessmentRecommendation[];
   questions: AssessmentQuestion[];
   submission: AssessmentSubmission;
   score: number;
+  expiresAt?: string | null;
+  report?: AssessmentReport | null;
   metadata: Record<string, unknown>;
   startedAt?: string | null;
   submittedAt?: string | null;
@@ -1130,6 +1166,36 @@ function normalizeAssessmentQuestion(question: AssessmentQuestion): AssessmentQu
     })).filter((choice) => choice.text),
     placeholder: question?.placeholder ? String(question.placeholder).trim() : null,
     taskTitle: question?.taskTitle ? String(question.taskTitle).trim() : null,
+    contextTitle: question?.contextTitle ? String(question.contextTitle).trim() : null,
+    contextSummary: question?.contextSummary ? String(question.contextSummary).trim() : null,
+    benchmarkLabel: question?.benchmarkLabel ? String(question.benchmarkLabel).trim() : null,
+    benchmarkTargetScore: Number(question?.benchmarkTargetScore || 0),
+    benchmarkChecks: normalizeStringList(question?.benchmarkChecks, 6),
+    expectedTimeComplexity: question?.expectedTimeComplexity ? String(question.expectedTimeComplexity).trim() : null,
+    expectedSpaceComplexity: question?.expectedSpaceComplexity ? String(question.expectedSpaceComplexity).trim() : null,
+  };
+}
+
+function normalizeAssessmentReport(report: AssessmentReport | null | undefined): AssessmentReport | null {
+  if (!report) {
+    return null;
+  }
+
+  return {
+    summary: report.summary ? String(report.summary).trim() : "",
+    benchmarkScore: Number(report.benchmarkScore || 0),
+    benchmarkStatus: report.benchmarkStatus ? String(report.benchmarkStatus).trim() : "",
+    benchmarkComparison: report.benchmarkComparison ? String(report.benchmarkComparison).trim() : "",
+    phaseAverageScore: Number(report.phaseAverageScore || 0),
+    phaseDeltaScore: Number(report.phaseDeltaScore || 0),
+    attemptsInPhase: Number(report.attemptsInPhase || 0),
+    strongSpots: normalizeStringList(report.strongSpots, 6),
+    weakSpots: normalizeStringList(report.weakSpots, 6),
+    strongSignals: normalizeStringList(report.strongSignals, 6),
+    gapSignals: normalizeStringList(report.gapSignals, 6),
+    fixPlan: normalizeStringList(report.fixPlan, 6),
+    motivation: report.motivation ? String(report.motivation).trim() : "",
+    consistencyLine: report.consistencyLine ? String(report.consistencyLine).trim() : "",
   };
 }
 
@@ -1175,6 +1241,12 @@ function normalizeAssessmentSession(session: AssessmentSession | null): Assessme
   return {
     ...session,
     assessmentScope: String(session.assessmentScope || session.metadata?.scope || "daily").trim().toLowerCase() as AssessmentScope,
+    assessmentPhase: String(
+      session.assessmentPhase
+      || session.metadata?.assessmentPhase
+      || session.metadata?.phase
+      || "pre",
+    ).trim().toLowerCase() as AssessmentPhase,
     weakSpots: normalizeStringList(session.weakSpots, 8),
     recommendations: toArray<AssessmentRecommendation>(session.recommendations)
       .map(normalizeAssessmentRecommendation)
@@ -1192,10 +1264,20 @@ function normalizeAssessmentSession(session: AssessmentSession | null): Assessme
         score: Number(result?.score || 0),
         correct: Boolean(result?.correct),
         feedback: String(result?.feedback || "").trim(),
+        strengths: normalizeStringList(result?.strengths, 4),
+        weaknesses: normalizeStringList(result?.weaknesses, 4),
+        timeComplexity: result?.timeComplexity ? String(result.timeComplexity).trim() : null,
+        spaceComplexity: result?.spaceComplexity ? String(result.spaceComplexity).trim() : null,
+        industryComparison: result?.industryComparison ? String(result.industryComparison).trim() : null,
+        benchmarkScore: Number(result?.benchmarkScore || 0),
+        recommendation: result?.recommendation ? String(result.recommendation).trim() : null,
       })).filter((result) => result.questionId),
       submittedAt: submission.submittedAt ? String(submission.submittedAt) : (session.submittedAt || null),
+      timedOut: submission.timedOut === true,
     },
     score: Number(session.score || 0),
+    expiresAt: session.expiresAt ? String(session.expiresAt) : (session.metadata?.expiresAt ? String(session.metadata.expiresAt) : null),
+    report: normalizeAssessmentReport((session.report as AssessmentReport | null | undefined) || (session.metadata?.report as AssessmentReport | null | undefined)),
     metadata: normalizeRecord(session.metadata),
   };
 }
@@ -1765,6 +1847,7 @@ export async function generateAssessment(payload: {
   assessmentType: AssessmentType;
   durationMinutes?: number;
   assessmentScope?: AssessmentScope;
+  assessmentPhase?: AssessmentPhase;
 }) {
   const result = await request<AssessmentGenerationResult>("/assessments/generate", {
     method: "POST",
@@ -1779,7 +1862,7 @@ export async function generateAssessment(payload: {
 
 export async function submitAssessment(
   assessmentId: string,
-  payload: { answers: Record<string, string> },
+  payload: { answers: Record<string, string>; timedOut?: boolean },
 ) {
   return normalizeAssessmentSession(await request<AssessmentSession>(`/assessments/${assessmentId}/submit`, {
     method: "POST",
