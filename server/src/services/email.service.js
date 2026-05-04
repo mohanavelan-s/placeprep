@@ -79,6 +79,36 @@ function buildNextTaskLabel(context = {}) {
   return compactText(context.nextTask?.title);
 }
 
+function buildPlacementTimeLabel(context = {}) {
+  if (context.daysLeft === null || context.daysLeft === undefined) {
+    return context.placementDate ? `Placement date: ${context.placementDate}` : '';
+  }
+
+  const daysLeft = Number(context.daysLeft);
+  if (daysLeft < 0) {
+    return `${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? '' : 's'} past placement date`;
+  }
+
+  if (daysLeft === 0) {
+    return 'Placement is today';
+  }
+
+  return `${daysLeft} day${daysLeft === 1 ? '' : 's'} left till placement`;
+}
+
+function buildPlanPaceLabel(context = {}) {
+  return compactText(context.planPaceLabel || context.planPace?.label || '');
+}
+
+function buildRemainingTasksLabel(context = {}) {
+  const count = Number(context.remainingTaskCount || context.planPace?.remainingCount || 0);
+  if (!count) {
+    return '';
+  }
+
+  return `${count} task${count === 1 ? '' : 's'} left in the plan`;
+}
+
 function buildDeadlineLabel(deadlineAt, timezone) {
   if (!deadlineAt) {
     return 'Next available slot';
@@ -115,6 +145,9 @@ function buildDigestText(user, notifications, summary, context = {}) {
   const focus = buildFocusLabel(context, summary);
   const weakTopics = buildWeakTopicsLabel(context, summary);
   const nextTask = buildNextTaskLabel(context);
+  const placementTime = buildPlacementTimeLabel(context);
+  const planPace = buildPlanPaceLabel(context);
+  const remainingTasks = buildRemainingTasksLabel(context);
 
   return [
     `${user.name || user.username || 'PlacePrep user'},`,
@@ -124,6 +157,9 @@ function buildDigestText(user, notifications, summary, context = {}) {
     '',
     context.deliveryWindowLabel ? `Window: ${context.deliveryWindowLabel}` : null,
     `Role: ${role}`,
+    placementTime ? `Placement countdown: ${placementTime}` : null,
+    remainingTasks ? `Tasks left: ${remainingTasks}` : null,
+    planPace ? `Plan pace: ${planPace}` : null,
     `Focus area: ${focus}`,
     weakTopics ? `Weak topics: ${weakTopics}` : null,
     nextTask ? `Next task: ${nextTask}` : null,
@@ -139,10 +175,13 @@ function buildDigestText(user, notifications, summary, context = {}) {
 function buildSignalChips(context = {}, summary = {}) {
   const chips = [
     buildRoleLabel(context),
+    buildPlacementTimeLabel(context),
+    buildPlanPaceLabel(context),
+    buildRemainingTasksLabel(context),
     buildFocusLabel(context, summary),
     buildWeakTopicsLabel(context, summary),
     buildNextTaskLabel(context),
-  ].filter(Boolean).slice(0, 4);
+  ].filter(Boolean).slice(0, 6);
 
   return chips.map((chip) => `
     <span style="display:inline-block;margin:0 10px 10px 0;padding:9px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:#d7d2d2;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">
@@ -195,6 +234,9 @@ function buildDigestHtml(user, notifications, summary, context = {}) {
   );
   const role = buildRoleLabel(context);
   const focus = buildFocusLabel(context, summary);
+  const placementTime = buildPlacementTimeLabel(context);
+  const planPace = buildPlanPaceLabel(context);
+  const remainingTasks = buildRemainingTasksLabel(context);
   const rows = buildNotificationRows(notifications);
 
   return `
@@ -253,6 +295,9 @@ function buildDigestHtml(user, notifications, summary, context = {}) {
                   <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:18px;color:#9a9a9a;font-size:13px;line-height:1.8;">
                     <div>${escapeHtml(user.name || user.username || 'PlacePrep user')}</div>
                     <div>Role: ${escapeHtml(role)}</div>
+                    ${placementTime ? `<div>Placement countdown: ${escapeHtml(placementTime)}</div>` : ''}
+                    ${remainingTasks ? `<div>Tasks left: ${escapeHtml(remainingTasks)}</div>` : ''}
+                    ${planPace ? `<div>Plan pace: ${escapeHtml(planPace)}</div>` : ''}
                     <div>Focus: ${escapeHtml(focus)}</div>
                     <div>Readiness: ${Math.round(Number(summary?.readinessScore || 0))}</div>
                     <div>Streak: ${Math.round(Number(summary?.streak || 0))}</div>

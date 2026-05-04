@@ -117,19 +117,24 @@ const env = {
   defaultTimezone: process.env.DEFAULT_TIMEZONE || 'Asia/Calcutta',
   maxUploadFileSize: Number(process.env.MAX_UPLOAD_FILE_SIZE || 8 * 1024 * 1024),
   maxApkUploadFileSize: Number(process.env.MAX_APK_UPLOAD_FILE_SIZE || 150 * 1024 * 1024),
-  smtpHost: process.env.SMTP_HOST || '',
-  smtpPort: Number(process.env.SMTP_PORT || 587),
-  smtpSecure: process.env.SMTP_SECURE === 'true',
-  smtpUser: process.env.SMTP_USER || '',
-  smtpPass: process.env.SMTP_PASS || '',
-  smtpFrom: process.env.SMTP_FROM || '',
+  smtpHost: process.env.SMTP_HOST || process.env.SMPT_HOST || '',
+  smtpPort: Number(process.env.SMTP_PORT || process.env.SMPT_PORT || 587),
+  smtpSecure: (process.env.SMTP_SECURE || process.env.SMPT_SECURE) === 'true',
+  smtpUser: process.env.SMTP_USER || process.env.SMPT_USER || '',
+  smtpPass: process.env.SMTP_PASS || process.env.SMPT_PASS || '',
+  smtpFrom: process.env.SMTP_FROM || process.env.SMPT_FROM || process.env.SMTP_USER || process.env.SMPT_USER || '',
   webPushPublicKey: process.env.WEB_PUSH_PUBLIC_KEY || '',
   webPushPrivateKey: process.env.WEB_PUSH_PRIVATE_KEY || '',
   webPushSubject: normalizeWebPushSubject(
-    process.env.WEB_PUSH_SUBJECT || process.env.SMTP_FROM || process.env.SMTP_USER || '',
-    process.env.SMTP_USER || 'support@placeprep.app',
+    process.env.WEB_PUSH_SUBJECT
+      || process.env.SMTP_FROM
+      || process.env.SMPT_FROM
+      || process.env.SMTP_USER
+      || process.env.SMPT_USER
+      || '',
+    process.env.SMTP_USER || process.env.SMPT_USER || 'support@placeprep.app',
   ),
-  inviteSignupNotifyEmail: process.env.INVITE_SIGNUP_NOTIFY_EMAIL || process.env.SMTP_USER || '',
+  inviteSignupNotifyEmail: process.env.INVITE_SIGNUP_NOTIFY_EMAIL || process.env.SMTP_USER || process.env.SMPT_USER || '',
   notificationCron: process.env.NOTIFICATION_CRON || '0 20 * * *',
   notificationSweepCron: process.env.NOTIFICATION_SWEEP_CRON || '*/15 * * * *',
   notificationMorningHour: Number(process.env.NOTIFICATION_MORNING_HOUR || 8),

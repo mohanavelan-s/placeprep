@@ -51,6 +51,16 @@ export interface WebPushConfig {
   publicKey: string;
 }
 
+export interface ServiceHealth {
+  status: string;
+  service: string;
+  version: string;
+  timestamp: string;
+  emailEnabled: boolean;
+  notificationSchedulerEnabled: boolean;
+  appUrl: string;
+}
+
 export interface InvitePreview {
   code: string;
   valid: boolean;
@@ -309,6 +319,10 @@ export interface PushNotificationTestResult {
   reason: string;
   browserReady: boolean;
   pushReady: boolean;
+  emailAttempted: boolean;
+  emailSent: boolean;
+  emailReason: string;
+  emailReady: boolean;
 }
 
 export interface HistoryClearResult {
@@ -1044,6 +1058,12 @@ export async function saveUserProfile(payload: {
 
 export async function fetchWebPushConfig() {
   return request<WebPushConfig>("/profile/web-push/config");
+}
+
+export async function fetchServiceHealth() {
+  return request<ServiceHealth>("/health", {
+    skipAuth: true,
+  });
 }
 
 export async function savePushSubscription(payload: {
