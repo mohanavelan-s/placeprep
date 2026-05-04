@@ -708,6 +708,20 @@ function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
 
+function looksLikeBareHostnameApiUrl(value: string) {
+  return /^(localhost(?::\d+)?|127(?:\.\d{1,3}){3}(?::\d+)?|[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?)(?:\/.*)?$/i.test(value);
+}
+
+function withImpliedProtocol(value: string) {
+  const trimmedValue = value.trim();
+  if (!looksLikeBareHostnameApiUrl(trimmedValue)) {
+    return trimmedValue;
+  }
+
+  const usesHttp = /^(localhost(?::\d+)?|127(?:\.\d{1,3}){3}(?::\d+)?)(?:\/.*)?$/i.test(trimmedValue);
+  return `${usesHttp ? "http" : "https"}://${trimmedValue}`;
+}
+
 function stripKnownEndpointSuffix(pathname: string) {
   const normalizedPath = trimTrailingSlash(pathname || "") || "/";
 
@@ -762,7 +776,7 @@ function normalizeAbsoluteApiBaseUrl(value: string) {
 }
 
 function normalizeConfiguredApiBaseUrl(rawValue?: string) {
-  const configuredValue = String(rawValue || "").trim();
+  const configuredValue = withImpliedProtocol(String(rawValue || "").trim());
   if (!configuredValue) {
     return DEFAULT_API_BASE_URL;
   }
