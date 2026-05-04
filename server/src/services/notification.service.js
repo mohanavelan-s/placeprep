@@ -40,6 +40,14 @@ const titleMap = {
   motivation: 'Nocturne push',
 };
 
+const windowLabelMap = {
+  morning: 'Morning pulse',
+  evening: 'Evening close',
+  idle_6h: 'Six-hour check-in',
+  idle_8h: 'Eight-hour recovery',
+  manual: 'Manual sync',
+};
+
 function cleanList(values, limit = 6) {
   return Array.from(
     new Set(
@@ -107,12 +115,100 @@ function differenceInDays(fromDate, toDate) {
   return dayNumber(toDate) - dayNumber(fromDate);
 }
 
+function differenceInHours(fromDate, toDate = new Date()) {
+  if (!fromDate) {
+    return 999;
+  }
+
+  const diffMs = new Date(toDate).getTime() - new Date(fromDate).getTime();
+  if (!Number.isFinite(diffMs)) {
+    return 999;
+  }
+
+  return Math.max(0, Math.floor(diffMs / 3600000));
+}
+
 function shouldTriggerUrgency(daysLeft) {
   return [30, 21, 14, 10, 7, 5, 3, 2, 1, 0].includes(daysLeft);
 }
 
 function sortCandidates(left, right) {
   return (priorityMap[right.type] || 0) - (priorityMap[left.type] || 0);
+}
+
+function getZonedTimeParts(timezone, date = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(date);
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return {
+    date: `${map.year}-${map.month}-${map.day}`,
+    hour: Number(map.hour || 0),
+    minute: Number(map.minute || 0),
+  };
+}
+
+function isWithinNotificationWindow(currentMinutes, targetHour, windowMinutes) {
+  const startMinutes = targetHour * 60;
+  return currentMinutes >= startMinutes && currentMinutes < (startMinutes + windowMinutes);
+}
+
+function resolveDeliveryWindow({ timezone, requestedWindow = null, now = new Date(), hoursSinceLastLogin = 0 }) {
+  if (requestedWindow === 'manual') {
+    const parts = getZonedTimeParts(timezone, now);
+    return {
+      key: 'manual',
+      label: windowLabelMap.manual,
+      localDate: parts.date,
+    };
+  }
+
+  const parts = getZonedTimeParts(timezone, now);
+  const currentMinutes = (parts.hour * 60) + parts.minute;
+  const windowMinutes = Math.max(Number(env.notificationSlotWindowMinutes || 75), 15);
+
+  if (isWithinNotificationWindow(currentMinutes, env.notificationMorningHour, windowMinutes)) {
+    return {
+      key: 'morning',
+      label: windowLabelMap.morning,
+      localDate: parts.date,
+    };
+  }
+
+  if (isWithinNotificationWindow(currentMinutes, env.notificationEveningHour, windowMinutes)) {
+    return {
+      key: 'evening',
+      label: windowLabelMap.evening,
+      localDate: parts.date,
+    };
+  }
+
+  if (hoursSinceLastLogin >= 8) {
+    return {
+      key: 'idle_8h',
+      label: windowLabelMap.idle_8h,
+      localDate: parts.date,
+    };
+  }
+
+  if (hoursSinceLastLogin >= 6) {
+    return {
+      key: 'idle_6h',
+      label: windowLabelMap.idle_6h,
+      localDate: parts.date,
+    };
+  }
+
+  return null;
 }
 
 async function getTaskSnapshot(userId, today) {
@@ -128,6 +224,13 @@ async function getTaskSnapshot(userId, today) {
        WHERE id = $1
      )
      SELECT
+       COUNT(*)::INT AS total_count,
+       COUNT(*) FILTER (WHERE status = 'completed')::INT AS completed_count,
+       COUNT(*) FILTER (WHERE scheduled_for <= $2)::INT AS planned_due_count,
+       COUNT(*) FILTER (
+         WHERE status = 'completed'
+           AND scheduled_for <= $2
+       )::INT AS completed_due_count,
        COUNT(*) FILTER (
          WHERE status IN ('pending', 'in_progress')
            AND scheduled_for <= $2
@@ -146,8 +249,44 @@ async function getTaskSnapshot(userId, today) {
   );
 
   return {
+    totalCount: Number(result.rows[0]?.total_count || 0),
+    completedCount: Number(result.rows[0]?.completed_count || 0),
+    plannedDueCount: Number(result.rows[0]?.planned_due_count || 0),
+    completedDueCount: Number(result.rows[0]?.completed_due_count || 0),
     pendingCount: Number(result.rows[0]?.pending_count || 0),
     overdueCount: Number(result.rows[0]?.overdue_count || 0),
+  };
+}
+
+function buildPlanPaceSnapshot(taskSnapshot = {}) {
+  const plannedDueCount = Number(taskSnapshot.plannedDueCount || 0);
+  const completedDueCount = Number(taskSnapshot.completedDueCount || 0);
+  const totalCount = Number(taskSnapshot.totalCount || 0);
+  const completedCount = Number(taskSnapshot.completedCount || 0);
+  const delta = completedDueCount - plannedDueCount;
+  const remainingCount = Math.max(totalCount - completedCount, Number(taskSnapshot.pendingCount || 0));
+  const completionPercent = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  let status = 'on_track';
+  let label = 'On track with the plan';
+  if (delta > 0) {
+    status = 'ahead';
+    label = `${delta} task${delta === 1 ? '' : 's'} ahead of plan`;
+  } else if (delta < 0) {
+    status = 'behind';
+    label = `${Math.abs(delta)} task${Math.abs(delta) === 1 ? '' : 's'} behind plan`;
+  }
+
+  return {
+    status,
+    label,
+    delta,
+    plannedDueCount,
+    completedDueCount,
+    totalCount,
+    completedCount,
+    remainingCount,
+    completionPercent,
   };
 }
 
@@ -209,18 +348,24 @@ function buildNotificationCandidates({
   summary,
   taskSnapshot,
   daysSinceLastLogin,
+  hoursSinceLastLogin,
   daysLeft,
   streakBroken,
+  deliveryWindow,
 }) {
   const candidates = [];
   const readiness = Number(summary?.readinessScore || 0);
+  const slotKey = deliveryWindow?.key || 'manual';
+  const dedupeSuffix = `${today}:${slotKey}`;
 
-  if (daysSinceLastLogin >= 1) {
+  if ((daysSinceLastLogin >= 1 || hoursSinceLastLogin >= 6) && slotKey !== 'morning') {
     candidates.push({
       type: 'daily_inactivity',
-      dedupeKey: `daily-inactivity:${today}`,
+      dedupeKey: `daily-inactivity:${dedupeSuffix}`,
       metadata: {
         daysSinceLastLogin,
+        hoursSinceLastLogin,
+        deliveryWindow: slotKey,
       },
     });
   }
@@ -228,20 +373,24 @@ function buildNotificationCandidates({
   if (taskSnapshot.pendingCount > 0) {
     candidates.push({
       type: 'pending_tasks',
-      dedupeKey: `pending-tasks:${today}`,
+      dedupeKey: `pending-tasks:${dedupeSuffix}`,
       metadata: {
         pendingCount: taskSnapshot.pendingCount,
         overdueCount: taskSnapshot.overdueCount,
+        remainingCount: taskSnapshot.remainingCount,
+        planPaceLabel: taskSnapshot.planPaceLabel,
+        deliveryWindow: slotKey,
       },
     });
   }
 
-  if (streakBroken) {
+  if (streakBroken || (slotKey === 'evening' && Number(summary?.streak || 0) === 0)) {
     candidates.push({
       type: 'missed_streak',
-      dedupeKey: `missed-streak:${today}`,
+      dedupeKey: `missed-streak:${dedupeSuffix}`,
       metadata: {
         streak: Number(summary?.streak || 0),
+        deliveryWindow: slotKey,
       },
     });
   }
@@ -249,24 +398,31 @@ function buildNotificationCandidates({
   if (daysLeft !== null && daysLeft <= 30 && shouldTriggerUrgency(daysLeft)) {
     candidates.push({
       type: 'countdown_urgency',
-      dedupeKey: `countdown:${daysLeft}`,
+      dedupeKey: `countdown:${daysLeft}:${slotKey}`,
       metadata: {
         daysLeft,
+        deliveryWindow: slotKey,
       },
     });
   }
 
-  if (!candidates.length || readiness < 58) {
+  if (
+    !candidates.length
+    || readiness < 58
+    || slotKey === 'morning'
+    || (slotKey === 'evening' && Number(summary?.consistencyScore || 0) < 82)
+  ) {
     candidates.push({
       type: 'motivation',
-      dedupeKey: `motivation:${today}`,
+      dedupeKey: `motivation:${dedupeSuffix}`,
       metadata: {
         readinessScore: readiness,
+        deliveryWindow: slotKey,
       },
     });
   }
 
-  return candidates.sort(sortCandidates);
+  return candidates.sort(sortCandidates).slice(0, 2);
 }
 
 function buildNotificationKeys(candidates = []) {
@@ -303,9 +459,11 @@ function buildNotificationContext({
   taskSnapshot,
   pendingTasks,
   daysSinceLastLogin,
+  hoursSinceLastLogin,
   daysLeft,
   placementDate,
   planSnapshot,
+  deliveryWindow,
 }) {
   const coachProfile = summary?.coachProfile || {};
   const focusArea = compactText(
@@ -332,8 +490,12 @@ function buildNotificationContext({
     failedAttempts: Number(coachProfile.failedAttempts || 0),
     commandLine: compactText(coachProfile.commandLine),
     daysSinceLastLogin,
+    hoursSinceLastLogin,
     pendingCount: Number(taskSnapshot.pendingCount || 0),
     overdueCount: Number(taskSnapshot.overdueCount || 0),
+    planPace: taskSnapshot.planPace || buildPlanPaceSnapshot(taskSnapshot),
+    planPaceLabel: compactText(taskSnapshot.planPaceLabel || taskSnapshot.planPace?.label),
+    remainingTaskCount: Number(taskSnapshot.remainingCount || 0),
     nextTask,
     pendingTasks,
     planId: planSnapshot?.id || null,
@@ -343,22 +505,29 @@ function buildNotificationContext({
     planFirstTheme: compactText(planSnapshot?.firstTheme),
     planFirstItems: planSnapshot?.firstItems || [],
     planTimePerDay: Number(planSnapshot?.timePerDay || 0),
+    deliveryWindow: deliveryWindow?.key || 'manual',
+    deliveryWindowLabel: deliveryWindow?.label || windowLabelMap.manual,
   };
 }
 
 function buildFallbackSummaryLine(context) {
   const focus = context.focusArea || context.weakTopics[0] || 'placement prep';
   const role = context.targetRole || 'placement prep';
+  const windowLabel = context.deliveryWindow === 'morning' ? 'morning' : context.deliveryWindow === 'evening' ? 'evening' : 'next';
+
+  if (context.deliveryWindow === 'morning') {
+    return `${focus} sets the tone this morning. Start clean for ${role}.`;
+  }
 
   if (context.daysLeft !== null && context.daysLeft <= 14) {
-    return `${focus} will decide your ${role} finish. Close one clean block tonight.`;
+    return `${focus} will decide your ${role} finish. Close one clean block this ${windowLabel}.`;
   }
 
   if (context.pendingCount > 0) {
-    return `${focus} is still exposed. Clear one real task before the day closes.`;
+    return `${focus} is still exposed. Clear one real task this ${windowLabel}.`;
   }
 
-  return `${focus} is the pressure point. Build one honest hour around it tonight.`;
+  return `${focus} is the pressure point. Build one honest hour around it this ${windowLabel}.`;
 }
 
 function buildFallbackNotificationCopy(candidate, context) {
@@ -368,50 +537,57 @@ function buildFallbackNotificationCopy(candidate, context) {
   const nextTaskTitle = context.nextTask?.title || `${focus} recovery block`;
   const nextTaskDuration = formatHoursLabel(context.nextTask?.estimatedMinutes || 60);
   const planTheme = context.planFirstTheme || context.planTargetTopics[0] || focus;
+  const isMorning = context.deliveryWindow === 'morning';
+  const isEvening = context.deliveryWindow === 'evening';
+  const rhythmLabel = isMorning ? 'morning' : isEvening ? 'evening' : 'next block';
 
   switch (candidate.type) {
     case 'daily_inactivity':
       return {
-        subject: `PlacePrep | ${focus} is still waiting`,
+        subject: `PlacePrep | ${isMorning ? 'Morning reset' : 'Return to the work'}`,
         headline: context.daysSinceLastLogin >= 2
           ? `${focus} has been idle for ${context.daysSinceLastLogin} days.`
-          : `You stepped away before ${focus} was closed.`,
-        preview: `Return through ${nextTaskTitle}.`,
-        message: `Your ${role} prep is drifting at ${focus}. Re-enter with ${nextTaskTitle} and keep the block honest.`,
-        actionLabel: 'Return now',
+          : `${focus} has been idle for ${context.hoursSinceLastLogin || 6} hours.`,
+        preview: `Return through ${nextTaskTitle} this ${rhythmLabel}.`,
+        message: `Your ${role} prep is drifting at ${focus}. Re-enter with ${nextTaskTitle} and keep the block honest this ${rhythmLabel}.`,
+        actionLabel: isMorning ? 'Restart' : 'Return now',
         actionText: `Start ${nextTaskTitle} for ${nextTaskDuration}.`,
-        whyNow: `${context.daysSinceLastLogin} days away turns one soft spot into two.`,
+        whyNow: context.daysSinceLastLogin >= 1
+          ? `${context.daysSinceLastLogin} days away turns one soft spot into two.`
+          : `${context.hoursSinceLastLogin || 6} hours away is enough for drift to set in.`,
       };
     case 'pending_tasks':
       return {
-        subject: `PlacePrep | ${context.pendingCount} tasks still open`,
+        subject: `PlacePrep | ${isMorning ? 'Morning task brief' : 'Evening task close'}`,
         headline: context.overdueCount > 0
           ? `${context.overdueCount} tasks have already slipped.`
           : `${context.pendingCount} tasks are still waiting.`,
         preview: `${focus} is still exposed for ${role}.`,
-        message: `Backlog pressure is sitting on ${focus}. Start with ${nextTaskTitle} and remove one open loop tonight.`,
-        actionLabel: 'Clear one',
+        message: `Backlog pressure is sitting on ${focus}. Start with ${nextTaskTitle} and remove one open loop this ${rhythmLabel}.`,
+        actionLabel: isMorning ? 'Start clean' : 'Close one',
         actionText: `Finish ${nextTaskTitle}, then revise ${nextWeak}.`,
-        whyNow: context.overdueCount > 0
+        whyNow: context.planPace?.status === 'behind'
+          ? context.planPace.label
+          : context.overdueCount > 0
           ? `${context.overdueCount} overdue tasks are already taxing focus.`
           : `${context.pendingCount} open tasks still block a clean day.`,
       };
     case 'missed_streak':
       return {
-        subject: 'PlacePrep | The streak needs rebuilding',
-        headline: `The streak is gone. Rebuild it in ${focus}.`,
+        subject: `PlacePrep | ${isEvening ? 'Protect the streak' : 'Rebuild momentum'}`,
+        headline: `The streak needs work in ${focus}.`,
         preview: 'One clean win reopens momentum.',
-        message: `Discipline slipped, not ability. Reclaim control through ${planTheme} before you touch anything comfortable.`,
+        message: `Discipline slipped, not ability. Reclaim control through ${planTheme} before you touch anything comfortable this ${rhythmLabel}.`,
         actionLabel: 'Rebuild',
-        actionText: `Finish one focused ${focus} block tonight.`,
+        actionText: `Finish one focused ${focus} block this ${rhythmLabel}.`,
         whyNow: 'A broken streak is easiest to repair on the very next day.',
       };
     case 'countdown_urgency':
       return {
-        subject: `PlacePrep | ${context.daysLeft} days to go`,
+        subject: `PlacePrep | ${isMorning ? 'Morning countdown' : 'Deadline pressure'}`,
         headline: `${context.daysLeft} days left. ${focus} cannot stay soft.`,
         preview: `${role} pressure is no longer abstract.`,
-        message: `${focus} is still the gap between effort and readiness. Use tonight to close one measurable block before the deadline tightens further.`,
+        message: `${focus} is still the gap between effort and readiness. Use this ${rhythmLabel} to close one measurable block before the deadline tightens further.`,
         actionLabel: 'Tighten up',
         actionText: `Prioritize ${nextTaskTitle} before anything else.`,
         whyNow: `Readiness is ${Math.round(context.readinessScore)} with ${context.daysLeft} days remaining.`,
@@ -419,13 +595,17 @@ function buildFallbackNotificationCopy(candidate, context) {
     case 'motivation':
     default:
       return {
-        subject: `PlacePrep | Hold the line in ${focus}`,
-        headline: `${focus} decides the next version of you.`,
-        preview: 'Keep the work sharp and personal.',
-        message: `Your edge for ${role} still runs through ${focus}. Build one clean block, then lock the lesson before the night ends.`,
-        actionLabel: 'Stay strict',
+        subject: `PlacePrep | ${isMorning ? 'Morning motivation' : 'Consistency reminder'}`,
+        headline: isMorning
+          ? `${focus} decides how this day starts.`
+          : `${focus} still decides the next version of you.`,
+        preview: isMorning
+          ? 'Open the day with one honest block.'
+          : 'Close the day with one honest block.',
+        message: `Your edge for ${role} still runs through ${focus}. Build one clean block, then lock the lesson before this ${rhythmLabel} ends.`,
+        actionLabel: isMorning ? 'Start strict' : 'Stay strict',
         actionText: `Finish ${nextTaskTitle} and note the pattern.`,
-        whyNow: `Weak areas are ${cleanList([focus, nextWeak], 2).join(' and ')} right now.`,
+        whyNow: `Consistency is still built through ${cleanList([focus, nextWeak], 2).join(' and ')} right now.`,
       };
   }
 }
@@ -508,9 +688,14 @@ async function personalizeNotificationCopies(candidates, context) {
                 commandLine: context.commandLine,
               },
               activity: {
+                deliveryWindow: context.deliveryWindow,
+                deliveryWindowLabel: context.deliveryWindowLabel,
                 daysSinceLastLogin: context.daysSinceLastLogin,
+                hoursSinceLastLogin: context.hoursSinceLastLogin,
                 pendingCount: context.pendingCount,
                 overdueCount: context.overdueCount,
+                remainingTaskCount: context.remainingTaskCount,
+                planPace: context.planPace,
                 nextTask: context.nextTask,
                 pendingTasks: context.pendingTasks,
               },
@@ -604,7 +789,29 @@ async function syncNotificationsForUser(userOrId, options = {}) {
   }
 
   const timezone = user.timezone || env.defaultTimezone;
-  const today = getTodayInTimezone(timezone);
+  const now = options.now || new Date();
+  const hoursSinceLastLogin = differenceInHours(user.lastLoginAt, now);
+  const deliveryWindow = resolveDeliveryWindow({
+    timezone,
+    requestedWindow: options.deliveryWindow
+      || ((options.previewOnly || options.source === 'manual' || options.processDeliveryNow) ? 'manual' : null),
+    now,
+    hoursSinceLastLogin,
+  });
+
+  if (!deliveryWindow && !options.previewOnly) {
+    return {
+      created: [],
+      emailAttempted: false,
+      emailSent: false,
+      emailReason: profile.notificationEmailEnabled ? 'outside_window' : 'email_disabled',
+      emailReady: isEmailDeliveryReady(),
+      usedAiTailoring: false,
+      skippedReason: 'outside_window',
+    };
+  }
+
+  const today = deliveryWindow?.localDate || getTodayInTimezone(timezone);
   const summary = await progressService.refreshProgressStats(user);
   const [taskSnapshot, pendingTasks, latestPlan, streakBroken] = await Promise.all([
     getTaskSnapshot(user.id, today),
@@ -618,24 +825,35 @@ async function syncNotificationsForUser(userOrId, options = {}) {
   const daysSinceLastLogin = lastLoginDate ? differenceInDays(lastLoginDate, today) : 999;
   const placementDate = user.placementDate ? String(user.placementDate).slice(0, 10) : null;
   const daysLeft = placementDate ? differenceInDays(today, placementDate) : null;
+  const planPace = buildPlanPaceSnapshot(taskSnapshot);
+  const enrichedTaskSnapshot = {
+    ...taskSnapshot,
+    planPace,
+    planPaceLabel: planPace.label,
+    remainingCount: planPace.remainingCount,
+  };
 
   const candidates = buildNotificationCandidates({
     today,
     summary,
-    taskSnapshot,
+    taskSnapshot: enrichedTaskSnapshot,
     daysSinceLastLogin,
+    hoursSinceLastLogin,
     daysLeft,
     streakBroken,
+    deliveryWindow,
   });
   const notificationContext = buildNotificationContext({
     user,
     summary,
-    taskSnapshot,
+    taskSnapshot: enrichedTaskSnapshot,
     pendingTasks,
     daysSinceLastLogin,
+    hoursSinceLastLogin,
     daysLeft,
     placementDate,
     planSnapshot: buildPlanSnapshot(latestPlan),
+    deliveryWindow,
   });
   const personalization = await personalizeNotificationCopies(candidates, notificationContext);
   const notificationKeys = buildNotificationKeys(candidates);
@@ -667,6 +885,8 @@ async function syncNotificationsForUser(userOrId, options = {}) {
           ...candidate.metadata,
           title: copy.headline || titleMap[candidate.type] || 'PlacePrep notice',
           source: options.source || 'manual_preview',
+          deliveryWindow: notificationContext.deliveryWindow,
+          deliveryWindowLabel: notificationContext.deliveryWindowLabel,
           subject: copy.subject,
           headline: copy.headline,
           preview: copy.preview,
@@ -680,6 +900,11 @@ async function syncNotificationsForUser(userOrId, options = {}) {
           strongTopics: notificationContext.strongTopics,
           nextTask: notificationContext.nextTask,
           planCoachLine: notificationContext.planCoachLine,
+          planPace: notificationContext.planPace,
+          planPaceLabel: notificationContext.planPaceLabel,
+          remainingTaskCount: notificationContext.remainingTaskCount,
+          placementDate: notificationContext.placementDate,
+          daysLeft: notificationContext.daysLeft,
           aiTailored: !personalization.usedFallback,
         },
       };
@@ -730,6 +955,8 @@ async function syncNotificationsForUser(userOrId, options = {}) {
         ...candidate.metadata,
         title: copy.headline || titleMap[candidate.type] || 'PlacePrep notice',
         source: options.source || 'manual',
+        deliveryWindow: notificationContext.deliveryWindow,
+        deliveryWindowLabel: notificationContext.deliveryWindowLabel,
         subject: copy.subject,
         headline: copy.headline,
         preview: copy.preview,
@@ -743,6 +970,11 @@ async function syncNotificationsForUser(userOrId, options = {}) {
         strongTopics: notificationContext.strongTopics,
         nextTask: notificationContext.nextTask,
         planCoachLine: notificationContext.planCoachLine,
+        planPace: notificationContext.planPace,
+        planPaceLabel: notificationContext.planPaceLabel,
+        remainingTaskCount: notificationContext.remainingTaskCount,
+        placementDate: notificationContext.placementDate,
+        daysLeft: notificationContext.daysLeft,
         aiTailored: !personalization.usedFallback,
       },
       dedupeKey: candidate.dedupeKey,
@@ -840,52 +1072,126 @@ async function syncNotificationsForUser(userOrId, options = {}) {
 async function sendTestPushNotification(userOrId) {
   const user = await resolveUser(userOrId);
   const profile = await userProfileService.getProfile(user);
+  const emailReady = Boolean(
+    profile.notificationsEnabled
+    && profile.notificationEmailEnabled
+    && isEmailDeliveryReady()
+  );
   const browserReady = Boolean(
     profile.notificationsEnabled
     && profile.notificationBrowserEnabled
     && profile.notificationBrowserPermission === 'granted'
   );
 
-  if (!browserReady) {
+  if (!profile.notificationsEnabled) {
     return {
       notification: null,
       attempted: false,
       sentCount: 0,
       failedCount: 0,
-      reason: !profile.notificationsEnabled
-        ? 'notifications_disabled'
-        : profile.notificationBrowserPermission !== 'granted'
-          ? 'browser_permission_not_granted'
-          : 'browser_notifications_disabled',
+      reason: 'notifications_disabled',
+      browserReady,
+      pushReady: false,
+      emailAttempted: false,
+      emailSent: false,
+      emailReason: 'notifications_disabled',
+      emailReady,
+    };
+  }
+
+  if (!browserReady && !profile.notificationEmailEnabled) {
+    return {
+      notification: null,
+      attempted: false,
+      sentCount: 0,
+      failedCount: 0,
+      reason: profile.notificationBrowserPermission !== 'granted'
+        ? 'browser_permission_not_granted'
+        : 'browser_notifications_disabled',
       browserReady: false,
       pushReady: false,
+      emailAttempted: false,
+      emailSent: false,
+      emailReason: 'email_notifications_disabled',
+      emailReady,
     };
   }
 
   const notification = await notificationRepository.createNotification({
     userId: user.id,
     type: 'motivation',
-    message: 'This is your PlacePrep test push. Browser notifications are connected on this device.',
+    message: 'This is your PlacePrep test notification. Browser and email alerts are connected for this account.',
     sentAt: new Date().toISOString(),
-    deliveryChannels: ['browser', 'push'],
+    deliveryChannels: [
+      ...(profile.notificationEmailEnabled ? ['email'] : []),
+      ...(browserReady ? ['browser', 'push'] : []),
+    ],
     metadata: {
       source: 'manual_push_test',
-      title: 'PlacePrep test push',
-      subject: 'PlacePrep push test',
-      headline: 'Push notifications are live.',
-      preview: 'Your browser received this test signal.',
+      title: 'PlacePrep test notification',
+      subject: 'PlacePrep notification test',
+      headline: 'Notifications are live.',
+      preview: 'Your account received this test signal.',
       actionLabel: 'Open settings',
       actionText: 'Return to notification settings.',
       whyNow: 'Manual delivery test requested from settings.',
+      summaryLine: 'This confirms PlacePrep can reach your saved account channels.',
+      targetRole: user.targetRole || 'Placement preparation',
+      focusArea: user.weakAreas?.[0] || 'placement prep',
       route: '/settings',
     },
     dedupeKey: `manual-push-test:${user.id}:${Date.now()}`,
   });
 
-  const pushResult = await sendPushNotificationToUser({
-    userId: user.id,
-    notification,
-  });
+  const pushResult = browserReady
+    ? await sendPushNotificationToUser({
+        userId: user.id,
+        notification,
+      })
+    : {
+        attempted: false,
+        sentCount: 0,
+        failedCount: 0,
+        reason: profile.notificationBrowserPermission !== 'granted'
+          ? 'browser_permission_not_granted'
+          : 'browser_notifications_disabled',
+      };
+
+  let emailResult = {
+    attempted: false,
+    sent: false,
+    reason: profile.notificationEmailEnabled ? 'email_not_configured' : 'email_notifications_disabled',
+  };
+
+  if (profile.notificationEmailEnabled) {
+    emailResult = await sendNotificationDigestEmail({
+      user,
+      notifications: [notification],
+      summary: {
+        readinessScore: user.readinessScore,
+        streak: user.currentStreak,
+        consistencyScore: user.consistencyScore,
+        coachProfile: {
+          focusArea: user.weakAreas?.[0] || 'placement prep',
+          weakTopics: user.weakAreas || [],
+          strongTopics: user.strongTopics || [],
+          commandLine: 'Manual notification delivery test requested from Settings.',
+        },
+      },
+      context: {
+        targetRole: user.targetRole || 'Placement preparation',
+        focusArea: user.weakAreas?.[0] || 'placement prep',
+        weakTopics: user.weakAreas || [],
+        strongTopics: user.strongTopics || [],
+        summaryLine: 'This confirms PlacePrep can send email to your saved account address.',
+        deliveryWindowLabel: 'Manual test',
+      },
+    });
+
+    if (emailResult.sent) {
+      await notificationRepository.markEmailed([notification.id]);
+    }
+  }
 
   return {
     notification,
@@ -893,8 +1199,12 @@ async function sendTestPushNotification(userOrId) {
     sentCount: pushResult.sentCount,
     failedCount: pushResult.failedCount,
     reason: pushResult.reason,
-    browserReady: true,
+    browserReady,
     pushReady: pushResult.sentCount > 0,
+    emailAttempted: emailResult.attempted,
+    emailSent: emailResult.sent,
+    emailReason: emailResult.reason,
+    emailReady,
   };
 }
 

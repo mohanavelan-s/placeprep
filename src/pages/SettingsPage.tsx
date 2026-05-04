@@ -26,6 +26,7 @@ import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import { syncBrowserPushSubscription } from "@/lib/browser-push";
 import {
   clearNotificationHistory,
+  fetchServiceHealth,
   fetchNotifications,
   fetchUserProfile,
   markAllNotificationsRead,
@@ -109,9 +110,15 @@ export default function SettingsPage() {
     queryKey: ["notifications", "recent"],
     queryFn: () => fetchNotifications({ limit: 6 }),
   });
+  const healthQuery = useQuery({
+    queryKey: ["service-health"],
+    queryFn: fetchServiceHealth,
+    staleTime: 60_000,
+  });
 
   useQueryErrorLogger("SettingsPage:user-profile", profileQuery.error);
   useQueryErrorLogger("SettingsPage:notifications", notificationsQuery.error);
+  useQueryErrorLogger("SettingsPage:service-health", healthQuery.error);
 
   const [name, setName] = useState(user?.name || "");
   const [username, setUsername] = useState(user?.username || "");
@@ -134,6 +141,30 @@ export default function SettingsPage() {
     () => (notificationsQuery.data || []).filter((item) => !item.read).length,
     [notificationsQuery.data],
   );
+  const emailDeliveryStatus = useMemo(() => {
+    if (!notificationPrefs.notificationsEnabled) {
+      return "Off";
+    }
+
+    if (!notificationPrefs.notificationEmailEnabled) {
+      return "Disabled";
+    }
+
+    if (healthQuery.data?.emailEnabled) {
+      return "Ready";
+    }
+
+    if (healthQuery.isPending) {
+      return "Checking";
+    }
+
+    return "Needs SMTP";
+  }, [
+    healthQuery.data?.emailEnabled,
+    healthQuery.isPending,
+    notificationPrefs.notificationEmailEnabled,
+    notificationPrefs.notificationsEnabled,
+  ]);
 
   const accountMutation = useMutation({
     mutationFn: () =>
@@ -227,30 +258,36 @@ export default function SettingsPage() {
 
   const testPushMutation = useMutation({
     mutationFn: async () => {
-      if (runningInsideAndroidApp) {
-        throw new Error("Push testing is available in browsers, not in the embedded Android shell.");
-      }
+      let nextBrowserEnabled = Boolean(
+        notificationPrefs.notificationBrowserEnabled
+        && notificationPrefs.notificationBrowserPermission === "granted",
+      );
+      let nextBrowserPermission = notificationPrefs.notificationBrowserPermission || "default";
 
-      const pushState = await syncBrowserPushSubscription({
-        enabled: true,
-        requestPermission: true,
-      });
+      if (!runningInsideAndroidApp) {
+        try {
+          const pushState = await syncBrowserPushSubscription({
+            enabled: true,
+            requestPermission: true,
+          });
 
-      if (pushState.permission !== "granted" || !pushState.active) {
-        throw new Error(
-          pushState.reason === "web_push_not_configured"
-            ? "Web push is not configured on the server yet."
-            : pushState.reason === "permission_not_granted"
-              ? "Browser notification permission was not granted."
-              : "This browser could not register for push notifications.",
-        );
+          nextBrowserPermission = pushState.permission === "unsupported" ? "denied" : pushState.permission;
+          if (pushState.permission === "granted" && pushState.active) {
+            nextBrowserEnabled = true;
+          } else if (pushState.permission !== "granted") {
+            nextBrowserEnabled = false;
+          }
+        } catch (error) {
+          console.error("[SettingsPage] Browser push test setup failed. Email test will still continue.", error);
+        }
       }
 
       const savedProfile = await saveUserProfile(
         buildProfilePayload(profileQuery.data, {
           notificationsEnabled: true,
-          notificationBrowserEnabled: true,
-          notificationBrowserPermission: "granted",
+          notificationEmailEnabled: true,
+          notificationBrowserEnabled: nextBrowserEnabled,
+          notificationBrowserPermission: nextBrowserPermission,
         }),
       );
 
@@ -264,20 +301,32 @@ export default function SettingsPage() {
       queryClient.setQueryData(["user-profile"], savedProfile);
       setNotificationPrefs(getNotificationDefaults(savedProfile));
       void queryClient.invalidateQueries({ queryKey: ["notifications", "recent"] });
+      void queryClient.invalidateQueries({ queryKey: ["service-health"] });
 
-      if (result.sentCount > 0) {
-        toast.success("Test push sent. Check this browser for the live notification.");
+      const pushDelivered = result.sentCount > 0;
+      const emailDelivered = result.emailSent;
+
+      if (pushDelivered && emailDelivered) {
+        toast.success("Test browser push and email sent.");
+        return;
+      }
+
+      if (pushDelivered) {
+        toast.success(`Test browser push sent. Email status: ${result.emailReason}.`);
+        return;
+      }
+
+      if (emailDelivered) {
+        toast.success(`Test email sent to ${user?.email || "your account email"}. Browser push status: ${result.reason}.`);
         return;
       }
 
       toast.error(
-        result.reason === "no_subscriptions"
-          ? "Push subscription was saved, but no browser subscription was available to deliver to."
-          : `Push test did not deliver: ${result.reason}.`,
+        `Test notification did not deliver. Browser: ${result.reason}. Email: ${result.emailReason}.`,
       );
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Unable to send a test push notification.");
+      toast.error(error instanceof Error ? error.message : "Unable to send a test notification.");
     },
   });
 
@@ -444,11 +493,20 @@ export default function SettingsPage() {
               Daily reminders, pending task pressure, streak warnings, deadline urgency, and sharp motivation.
             </p>
           </div>
-          <div className="rounded-2xl border border-border/80 bg-background/60 px-4 py-3 text-sm text-foreground/80">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Browser permission</p>
-            <p className="mt-2 font-medium capitalize">
-              {notificationPrefs.notificationBrowserPermission}
-            </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[24rem]">
+            <div className="rounded-2xl border border-border/80 bg-background/60 px-4 py-3 text-sm text-foreground/80">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Email delivery</p>
+              <p className="mt-2 font-medium">{emailDeliveryStatus}</p>
+              {user?.email && (
+                <p className="mt-1 max-w-[12rem] truncate text-xs text-muted-foreground">{user.email}</p>
+              )}
+            </div>
+            <div className="rounded-2xl border border-border/80 bg-background/60 px-4 py-3 text-sm text-foreground/80">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Browser permission</p>
+              <p className="mt-2 font-medium capitalize">
+                {notificationPrefs.notificationBrowserPermission}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -551,10 +609,10 @@ export default function SettingsPage() {
             variant="outline"
             className="h-11 gap-2 border-border/80 bg-background/70"
             onClick={() => void testPushMutation.mutateAsync()}
-            disabled={runningInsideAndroidApp || testPushMutation.isPending}
+            disabled={testPushMutation.isPending}
           >
             <Send className="h-4 w-4" />
-            {testPushMutation.isPending ? "Sending test..." : "Send test push"}
+            {testPushMutation.isPending ? "Sending test..." : "Send test notification"}
           </Button>
 
           <Button
