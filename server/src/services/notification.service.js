@@ -30,6 +30,7 @@ const priorityMap = {
   pending_tasks: 3,
   daily_inactivity: 2,
   motivation: 1,
+  test_notification: 0,
 };
 
 const titleMap = {
@@ -38,6 +39,7 @@ const titleMap = {
   pending_tasks: 'Pending tasks',
   daily_inactivity: 'Return to command',
   motivation: 'Nocturne push',
+  test_notification: 'Notification test',
 };
 
 const windowLabelMap = {
@@ -1119,8 +1121,8 @@ async function sendTestPushNotification(userOrId) {
 
   const notification = await notificationRepository.createNotification({
     userId: user.id,
-    type: 'motivation',
-    message: 'This is your PlacePrep test notification. Browser and email alerts are connected for this account.',
+    type: 'test_notification',
+    message: 'This is your PlacePrep test notification. Delivery was requested from Settings.',
     sentAt: new Date().toISOString(),
     deliveryChannels: [
       ...(profile.notificationEmailEnabled ? ['email'] : []),
@@ -1130,12 +1132,12 @@ async function sendTestPushNotification(userOrId) {
       source: 'manual_push_test',
       title: 'PlacePrep test notification',
       subject: 'PlacePrep notification test',
-      headline: 'Notifications are live.',
-      preview: 'Your account received this test signal.',
+      headline: 'Notification test requested.',
+      preview: 'Delivery status is reported by each channel.',
       actionLabel: 'Open settings',
       actionText: 'Return to notification settings.',
-      whyNow: 'Manual delivery test requested from settings.',
-      summaryLine: 'This confirms PlacePrep can reach your saved account channels.',
+      whyNow: 'Manual delivery test requested from Settings.',
+      summaryLine: 'This test records the request while each channel reports its own delivery status.',
       targetRole: user.targetRole || 'Placement preparation',
       focusArea: user.weakAreas?.[0] || 'placement prep',
       route: '/settings',

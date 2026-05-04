@@ -234,7 +234,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT notifications_type_check CHECK (
-    type IN ('daily_inactivity', 'pending_tasks', 'missed_streak', 'countdown_urgency', 'motivation', 'coach_capsule')
+    type IN ('daily_inactivity', 'pending_tasks', 'missed_streak', 'countdown_urgency', 'motivation', 'coach_capsule', 'test_notification')
   ),
   CONSTRAINT notifications_user_type_dedupe_unique UNIQUE (user_id, type, dedupe_key)
 );
@@ -242,7 +242,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
 ALTER TABLE notifications
 ADD CONSTRAINT notifications_type_check CHECK (
-  type IN ('daily_inactivity', 'pending_tasks', 'missed_streak', 'countdown_urgency', 'motivation', 'coach_capsule')
+  type IN ('daily_inactivity', 'pending_tasks', 'missed_streak', 'countdown_urgency', 'motivation', 'coach_capsule', 'test_notification')
 );
 
 CREATE TABLE IF NOT EXISTS delivery_jobs (

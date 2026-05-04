@@ -80,8 +80,12 @@ function formatNotificationTime(value: string) {
   }
 }
 
-function renderNotificationEyebrow(type: PrepNotification["type"]) {
-  switch (type) {
+function renderNotificationEyebrow(notification: PrepNotification) {
+  if (notification.type === "test_notification" || notification.metadata?.source === "manual_push_test") {
+    return "Test notification";
+  }
+
+  switch (notification.type) {
     case "coach_capsule":
       return "Admin assignment";
     case "countdown_urgency":
@@ -95,6 +99,20 @@ function renderNotificationEyebrow(type: PrepNotification["type"]) {
     default:
       return "Motivation";
   }
+}
+
+type EmailTestState = {
+  status: "sent" | "queued" | "failed";
+  reason?: string;
+};
+
+function formatDeliveryReason(reason?: string) {
+  if (!reason) {
+    return "";
+  }
+
+  const cleaned = reason.replace(/^Error:\s*/i, "").replace(/_/g, " ");
+  return cleaned.length > 58 ? `${cleaned.slice(0, 55)}...` : cleaned;
 }
 
 export default function SettingsPage() {
@@ -125,6 +143,7 @@ export default function SettingsPage() {
   const [targetRole, setTargetRole] = useState(user?.targetRole || "");
   const [placementDate, setPlacementDate] = useState(user?.placementDate || "");
   const [notificationPrefs, setNotificationPrefs] = useState(getNotificationDefaults(profileQuery.data));
+  const [lastEmailTest, setLastEmailTest] = useState<EmailTestState | null>(null);
 
   useEffect(() => {
     setName(user?.name || "");
@@ -142,6 +161,18 @@ export default function SettingsPage() {
     [notificationsQuery.data],
   );
   const emailDeliveryStatus = useMemo(() => {
+    if (lastEmailTest?.status === "failed") {
+      return "Test failed";
+    }
+
+    if (lastEmailTest?.status === "sent") {
+      return "Test sent";
+    }
+
+    if (lastEmailTest?.status === "queued") {
+      return "Queued";
+    }
+
     if (!notificationPrefs.notificationsEnabled) {
       return "Off";
     }
@@ -151,7 +182,7 @@ export default function SettingsPage() {
     }
 
     if (healthQuery.data?.emailEnabled) {
-      return "Ready";
+      return "SMTP configured";
     }
 
     if (healthQuery.isPending) {
@@ -162,9 +193,13 @@ export default function SettingsPage() {
   }, [
     healthQuery.data?.emailEnabled,
     healthQuery.isPending,
+    lastEmailTest?.status,
     notificationPrefs.notificationEmailEnabled,
     notificationPrefs.notificationsEnabled,
   ]);
+  const emailDeliveryDetail = lastEmailTest?.status === "failed"
+    ? formatDeliveryReason(lastEmailTest.reason)
+    : user?.email || "";
 
   const accountMutation = useMutation({
     mutationFn: () =>
@@ -306,6 +341,17 @@ export default function SettingsPage() {
       const pushDelivered = result.sentCount > 0;
       const emailDelivered = result.emailSent;
       const emailQueued = result.emailReason === "queued" || result.emailReason === "already_queued";
+      const emailFailed = result.emailAttempted && !emailDelivered && !emailQueued;
+
+      setLastEmailTest(
+        emailDelivered
+          ? { status: "sent", reason: result.emailReason }
+          : emailQueued
+            ? { status: "queued", reason: result.emailReason }
+            : emailFailed
+              ? { status: "failed", reason: result.emailReason }
+              : null,
+      );
 
       if (pushDelivered && emailDelivered) {
         toast.success("Test browser push and email sent.");
@@ -318,7 +364,7 @@ export default function SettingsPage() {
       }
 
       if (pushDelivered) {
-        toast.success(`Test browser push sent. Email status: ${result.emailReason}.`);
+        toast.error(`Browser push sent, but test email failed: ${formatDeliveryReason(result.emailReason)}.`);
         return;
       }
 
@@ -508,8 +554,8 @@ export default function SettingsPage() {
             <div className="rounded-2xl border border-border/80 bg-background/60 px-4 py-3 text-sm text-foreground/80">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Email delivery</p>
               <p className="mt-2 font-medium">{emailDeliveryStatus}</p>
-              {user?.email && (
-                <p className="mt-1 max-w-[12rem] truncate text-xs text-muted-foreground">{user.email}</p>
+              {emailDeliveryDetail && (
+                <p className="mt-1 max-w-[12rem] truncate text-xs text-muted-foreground">{emailDeliveryDetail}</p>
               )}
             </div>
             <div className="rounded-2xl border border-border/80 bg-background/60 px-4 py-3 text-sm text-foreground/80">
@@ -687,7 +733,7 @@ export default function SettingsPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-                      {renderNotificationEyebrow(item.type)}
+                      {renderNotificationEyebrow(item)}
                     </p>
                     <p className="mt-2 text-base leading-7 text-foreground">{item.message}</p>
                   </div>

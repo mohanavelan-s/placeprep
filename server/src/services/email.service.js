@@ -9,6 +9,7 @@ const subjectMap = {
   missed_streak: 'PlacePrep | The streak is gone',
   countdown_urgency: 'PlacePrep | Deadline pressure is rising',
   motivation: 'PlacePrep | Show up tonight',
+  test_notification: 'PlacePrep | Notification test',
 };
 
 let transporter = null;

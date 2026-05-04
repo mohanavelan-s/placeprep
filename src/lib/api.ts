@@ -286,7 +286,8 @@ export type NotificationType =
   | "missed_streak"
   | "countdown_urgency"
   | "motivation"
-  | "coach_capsule";
+  | "coach_capsule"
+  | "test_notification";
 
 export interface PrepNotification {
   id: string;
