@@ -305,9 +305,15 @@ export default function SettingsPage() {
 
       const pushDelivered = result.sentCount > 0;
       const emailDelivered = result.emailSent;
+      const emailQueued = result.emailReason === "queued" || result.emailReason === "already_queued";
 
       if (pushDelivered && emailDelivered) {
         toast.success("Test browser push and email sent.");
+        return;
+      }
+
+      if (pushDelivered && emailQueued) {
+        toast.success("Test browser push sent. Test email queued.");
         return;
       }
 
@@ -318,6 +324,11 @@ export default function SettingsPage() {
 
       if (emailDelivered) {
         toast.success(`Test email sent to ${user?.email || "your account email"}. Browser push status: ${result.reason}.`);
+        return;
+      }
+
+      if (emailQueued) {
+        toast.success(`Test email queued for ${user?.email || "your account email"}. Browser push status: ${result.reason}.`);
         return;
       }
 

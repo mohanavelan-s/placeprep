@@ -1164,32 +1164,58 @@ async function sendTestPushNotification(userOrId) {
   };
 
   if (profile.notificationEmailEnabled) {
-    emailResult = await sendNotificationDigestEmail({
-      user,
-      notifications: [notification],
-      summary: {
-        readinessScore: user.readinessScore,
-        streak: user.currentStreak,
-        consistencyScore: user.consistencyScore,
-        coachProfile: {
-          focusArea: user.weakAreas?.[0] || 'placement prep',
-          weakTopics: user.weakAreas || [],
-          strongTopics: user.strongTopics || [],
-          commandLine: 'Manual notification delivery test requested from Settings.',
-        },
-      },
-      context: {
-        targetRole: user.targetRole || 'Placement preparation',
-        focusArea: user.weakAreas?.[0] || 'placement prep',
-        weakTopics: user.weakAreas || [],
-        strongTopics: user.strongTopics || [],
-        summaryLine: 'This confirms PlacePrep can send email to your saved account address.',
-        deliveryWindowLabel: 'Manual test',
-      },
-    });
+    if (!isEmailDeliveryReady()) {
+      emailResult = {
+        attempted: false,
+        sent: false,
+        reason: 'email_not_configured',
+      };
+    } else {
+      try {
+        const queuedEmailJob = await enqueueNotificationDigestEmail({
+          user,
+          notifications: [notification],
+          summary: {
+            readinessScore: user.readinessScore,
+            streak: user.currentStreak,
+            consistencyScore: user.consistencyScore,
+            coachProfile: {
+              focusArea: user.weakAreas?.[0] || 'placement prep',
+              weakTopics: user.weakAreas || [],
+              strongTopics: user.strongTopics || [],
+              commandLine: 'Manual notification delivery test requested from Settings.',
+            },
+          },
+          context: {
+            targetRole: user.targetRole || 'Placement preparation',
+            focusArea: user.weakAreas?.[0] || 'placement prep',
+            weakTopics: user.weakAreas || [],
+            strongTopics: user.strongTopics || [],
+            summaryLine: 'This confirms PlacePrep can send email to your saved account address.',
+            deliveryWindowLabel: 'Manual test',
+          },
+          dedupeKey: `manual-test-email:${notification.id}`,
+        });
 
-    if (emailResult.sent) {
-      await notificationRepository.markEmailed([notification.id]);
+        emailResult = queuedEmailJob
+          ? {
+              attempted: true,
+              sent: false,
+              reason: 'queued',
+            }
+          : {
+              attempted: false,
+              sent: false,
+              reason: 'already_queued',
+            };
+      } catch (error) {
+        console.error('[notifications] Failed to queue test email.', error);
+        emailResult = {
+          attempted: true,
+          sent: false,
+          reason: error?.message || 'email_queue_failed',
+        };
+      }
     }
   }
 

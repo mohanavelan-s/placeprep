@@ -30,6 +30,9 @@ function getTransporter() {
     host: env.smtpHost,
     port: env.smtpPort,
     secure: env.smtpSecure,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     auth: env.smtpUser
       ? {
           user: env.smtpUser,
