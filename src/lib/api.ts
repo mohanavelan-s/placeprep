@@ -731,35 +731,92 @@ interface RegisterPayload {
 }
 
 const DEFAULT_API_BASE_URL = "/api";
-const PRODUCTION_API_BASE_URL = "https://placeprep-api-production.up.railway.app/api";
+const KNOWN_ENDPOINT_SUFFIXES = [
+  "/api/health",
+  "/health",
+  "/healthz",
+  "/auth/login",
+  "/auth/register",
+  "/auth/me",
+] as const;
 
-function isLocalHostname(hostname: string) {
-  return hostname === "localhost" || hostname === "127.0.0.1";
+function trimTrailingSlash(value: string) {
+  return value.replace(/\/+$/, "");
 }
 
-function isEphemeralApiHostname(hostname: string) {
-  return isLocalHostname(hostname) || /ngrok-free\.(app|dev)$/i.test(hostname);
+function stripKnownEndpointSuffix(pathname: string) {
+  const normalizedPath = trimTrailingSlash(pathname || "") || "/";
+
+  for (const suffix of KNOWN_ENDPOINT_SUFFIXES) {
+    if (normalizedPath === suffix) {
+      return "/";
+    }
+
+    if (normalizedPath.endsWith(suffix)) {
+      return normalizedPath.slice(0, -suffix.length) || "/";
+    }
+  }
+
+  return normalizedPath;
+}
+
+function normalizeRelativeApiBaseUrl(value: string) {
+  let normalizedPath = trimTrailingSlash(value.trim());
+  if (!normalizedPath) {
+    return DEFAULT_API_BASE_URL;
+  }
+
+  if (!normalizedPath.startsWith("/")) {
+    normalizedPath = `/${normalizedPath}`;
+  }
+
+  normalizedPath = stripKnownEndpointSuffix(normalizedPath);
+
+  if (normalizedPath === "/") {
+    return DEFAULT_API_BASE_URL;
+  }
+
+  if (normalizedPath === "/functions/v1") {
+    return "/functions/v1/api";
+  }
+
+  return normalizedPath;
+}
+
+function normalizeAbsoluteApiBaseUrl(value: string) {
+  const parsed = new URL(value);
+  let normalizedPath = stripKnownEndpointSuffix(parsed.pathname);
+
+  if (normalizedPath === "/") {
+    normalizedPath = "/api";
+  } else if (normalizedPath === "/functions/v1") {
+    normalizedPath = "/functions/v1/api";
+  }
+
+  parsed.pathname = normalizedPath;
+  return trimTrailingSlash(parsed.toString());
+}
+
+function normalizeConfiguredApiBaseUrl(rawValue?: string) {
+  const configuredValue = String(rawValue || "").trim();
+  if (!configuredValue) {
+    return DEFAULT_API_BASE_URL;
+  }
+
+  if (/^https?:\/\//i.test(configuredValue)) {
+    try {
+      return normalizeAbsoluteApiBaseUrl(configuredValue);
+    } catch (error) {
+      console.warn("[API] Failed to parse the configured absolute API URL. Falling back to the raw value.", error);
+      return trimTrailingSlash(configuredValue);
+    }
+  }
+
+  return normalizeRelativeApiBaseUrl(configuredValue);
 }
 
 function resolveApiBaseUrl() {
-  const configuredBaseUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || DEFAULT_API_BASE_URL;
-
-  if (typeof window === "undefined") {
-    return configuredBaseUrl;
-  }
-
-  try {
-    const currentHostname = window.location.hostname;
-    const parsedConfiguredUrl = new URL(configuredBaseUrl, window.location.origin);
-
-    if (!isLocalHostname(currentHostname) && isEphemeralApiHostname(parsedConfiguredUrl.hostname)) {
-      return PRODUCTION_API_BASE_URL;
-    }
-  } catch (error) {
-    console.warn("[API] Failed to parse configured API URL. Falling back to the configured value.", error);
-  }
-
-  return configuredBaseUrl;
+  return normalizeConfiguredApiBaseUrl(import.meta.env.VITE_API_URL);
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
