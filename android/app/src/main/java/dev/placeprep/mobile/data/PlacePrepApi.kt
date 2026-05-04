@@ -1,7 +1,12 @@
 package dev.placeprep.mobile.data
 
 import dev.placeprep.mobile.BuildConfig
+import java.net.InetAddress
+import java.net.UnknownHostException
+import okhttp3.Dns
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
+import okhttp3.dnsoverhttps.DnsOverHttps
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -57,6 +62,7 @@ interface PlacePrepApi {
             }
 
             val client = OkHttpClient.Builder()
+                .dns(systemDnsWithGoogleFallback())
                 .addInterceptor(AuthInterceptor(sessionStore))
                 .addInterceptor(logging)
                 .build()
@@ -67,6 +73,27 @@ interface PlacePrepApi {
                 .addConverterFactory(GsonConverterFactory.create())
                 .build()
                 .create(PlacePrepApi::class.java)
+        }
+
+        private fun systemDnsWithGoogleFallback(): Dns {
+            val doh = DnsOverHttps.Builder()
+                .client(OkHttpClient.Builder().build())
+                .url("https://dns.google/dns-query".toHttpUrl())
+                .bootstrapDnsHosts(
+                    InetAddress.getByName("8.8.8.8"),
+                    InetAddress.getByName("8.8.4.4"),
+                )
+                .build()
+
+            return object : Dns {
+                override fun lookup(hostname: String): List<InetAddress> {
+                    return try {
+                        Dns.SYSTEM.lookup(hostname)
+                    } catch (error: UnknownHostException) {
+                        doh.lookup(hostname)
+                    }
+                }
+            }
         }
     }
 }
