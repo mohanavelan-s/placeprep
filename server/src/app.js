@@ -100,6 +100,8 @@ function buildHealthPayload() {
       cloudinaryEnabled: env.cloudinaryEnabled,
       emailEnabled: env.emailEnabled,
       notificationSchedulerEnabled: env.notificationSchedulerEnabled,
+      deliveryWorkerEnabled: env.deliveryWorkerEnabled,
+      notificationEmailMode: 'direct',
       inviteOnlyAccess: env.inviteOnlyAccess,
       appUrl: env.appUrl,
     },

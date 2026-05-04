@@ -13,9 +13,7 @@ const prepPlanRepository = require('../repositories/prepPlan.repository');
 const userRepository = require('../repositories/user.repository');
 const { sendNotificationDigestEmail, isEmailDeliveryReady } = require('./email.service');
 const {
-  enqueueNotificationDigestEmail,
   enqueueNotificationPush,
-  processPendingDeliveryJobs,
 } = require('./deliveryJob.service');
 const { sendPushNotificationToUser } = require('./webPush.service');
 const progressService = require('./progress.service');
@@ -1015,7 +1013,7 @@ async function syncNotificationsForUser(userOrId, options = {}) {
   };
 
   if (notificationsForEmail.length && options.deliverEmail && profile.notificationEmailEnabled) {
-    const queuedEmailJob = await enqueueNotificationDigestEmail({
+    emailResult = await sendNotificationDigestEmail({
       user,
       notifications: notificationsForEmail,
       summary,
@@ -1024,34 +1022,12 @@ async function syncNotificationsForUser(userOrId, options = {}) {
         summaryLine: personalization.summaryLine,
         usedAiTailoring: !personalization.usedFallback,
       },
-      dedupeKey: `notification-digest:${notificationsForEmail.map((notification) => notification.id).sort().join(':')}`,
     });
 
-    emailResult = queuedEmailJob
-      ? {
-          attempted: true,
-          sent: false,
-          reason: 'queued',
-        }
-      : {
-          attempted: false,
-          sent: false,
-          reason: 'already_queued',
-        };
-
-    if (queuedEmailJob && options.processDeliveryNow) {
-      try {
-        const deliveryResult = await processPendingDeliveryJobs(Math.max(notificationsForEmail.length, 1));
-        if (deliveryResult.processed > 0) {
-          emailResult = {
-            attempted: true,
-            sent: true,
-            reason: 'sent',
-          };
-        }
-      } catch (error) {
-        console.error('[notifications] Immediate email delivery drain failed.', error);
-      }
+    if (emailResult.sent) {
+      await notificationRepository.markEmailed(
+        notificationsForEmail.map((notification) => notification.id)
+      );
     }
   } else if (options.deliverEmail && profile.notificationEmailEnabled && notificationKeys.length) {
     emailResult = {
@@ -1174,7 +1150,7 @@ async function sendTestPushNotification(userOrId) {
       };
     } else {
       try {
-        const queuedEmailJob = await enqueueNotificationDigestEmail({
+        emailResult = await sendNotificationDigestEmail({
           user,
           notifications: [notification],
           summary: {
@@ -1196,26 +1172,17 @@ async function sendTestPushNotification(userOrId) {
             summaryLine: 'This confirms PlacePrep can send email to your saved account address.',
             deliveryWindowLabel: 'Manual test',
           },
-          dedupeKey: `manual-test-email:${notification.id}`,
         });
 
-        emailResult = queuedEmailJob
-          ? {
-              attempted: true,
-              sent: false,
-              reason: 'queued',
-            }
-          : {
-              attempted: false,
-              sent: false,
-              reason: 'already_queued',
-            };
+        if (emailResult.sent) {
+          await notificationRepository.markEmailed([notification.id]);
+        }
       } catch (error) {
-        console.error('[notifications] Failed to queue test email.', error);
+        console.error('[notifications] Failed to send test email.', error);
         emailResult = {
           attempted: true,
           sent: false,
-          reason: error?.message || 'email_queue_failed',
+          reason: error?.message || 'email_failed',
         };
       }
     }
