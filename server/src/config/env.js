@@ -120,6 +120,8 @@ const env = {
   smtpHost: process.env.SMTP_HOST || process.env.SMPT_HOST || '',
   smtpPort: Number(process.env.SMTP_PORT || process.env.SMPT_PORT || 587),
   smtpSecure: (process.env.SMTP_SECURE || process.env.SMPT_SECURE) === 'true',
+  smtpForceIPv4: (process.env.SMTP_FORCE_IPV4 || process.env.SMPT_FORCE_IPV4 || 'true') !== 'false',
+  smtpConnectionTimeoutMs: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || process.env.SMPT_CONNECTION_TIMEOUT_MS || 30000),
   smtpUser: process.env.SMTP_USER || process.env.SMPT_USER || '',
   smtpPass: process.env.SMTP_PASS || process.env.SMPT_PASS || '',
   smtpFrom: process.env.SMTP_FROM || process.env.SMPT_FROM || process.env.SMTP_USER || process.env.SMPT_USER || '',

@@ -1,4 +1,6 @@
 const nodemailer = require('nodemailer');
+const dns = require('dns').promises;
+const net = require('net');
 const env = require('../config/env');
 const { formatDateTimeInTimezone } = require('../utils/date');
 
@@ -13,41 +15,31 @@ const subjectMap = {
 };
 
 let transporter = null;
+let transporterPromise = null;
 
 function isEmailDeliveryReady() {
   return env.emailEnabled;
 }
 
-function getTransporter() {
-  if (!isEmailDeliveryReady()) {
-    return null;
-  }
-
-  if (transporter) {
-    return transporter;
-  }
-
-  transporter = nodemailer.createTransport({
-    host: env.smtpHost,
-    port: env.smtpPort,
-    secure: env.smtpSecure,
-    family: 4,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-    auth: env.smtpUser
-      ? {
-          user: env.smtpUser,
-          pass: env.smtpPass,
-        }
-      : undefined,
-  });
-
-  return transporter;
+function isIpv6NetworkFailure(error) {
+  const message = String(error?.message || '');
+  return (
+    error?.code === 'ENETUNREACH'
+    || /ENETUNREACH/i.test(message)
+  ) && /(?:^|[\s([:])(?:[a-f0-9]{0,4}:){2,}[a-f0-9]{0,4}/i.test(message);
 }
 
 function normalizeEmailError(error, fallback = 'email_failed') {
-  const message = compactText(error?.message || fallback);
+  const reason = isIpv6NetworkFailure(error)
+    ? 'smtp_ipv6_unreachable'
+    : error?.code === 'ETIMEDOUT' || /timed out|timeout/i.test(error?.message || '')
+      ? 'smtp_connection_timeout'
+      : error?.code === 'EAUTH' || /invalid login|authentication/i.test(error?.message || '')
+        ? 'smtp_auth_failed'
+        : error?.code === 'ESOCKET' || /ECONNREFUSED|ECONNRESET|ESOCKET/i.test(error?.message || '')
+          ? 'smtp_connection_failed'
+          : compactText(error?.message || fallback);
+  const message = compactText(error?.message || reason || fallback);
   const code = compactText(error?.code || '');
   const syscall = compactText(error?.syscall || '');
   const address = compactText(error?.address || '');
@@ -58,9 +50,93 @@ function normalizeEmailError(error, fallback = 'email_failed') {
   ].filter(Boolean);
 
   return {
-    reason: message || fallback,
+    reason: reason || fallback,
     error: detailParts.length ? `${message} (${detailParts.join(', ')})` : message,
   };
+}
+
+async function resolveSmtpHostForTransport() {
+  if (!env.smtpForceIPv4 || !env.smtpHost || net.isIP(env.smtpHost)) {
+    return {
+      host: env.smtpHost,
+      servername: net.isIP(env.smtpHost) ? undefined : env.smtpHost,
+      resolvedFamily: net.isIP(env.smtpHost) || null,
+    };
+  }
+
+  try {
+    const addresses = await dns.resolve4(env.smtpHost);
+    const host = addresses.find(Boolean);
+    if (host) {
+      return {
+        host,
+        servername: env.smtpHost,
+        resolvedFamily: 4,
+      };
+    }
+  } catch (error) {
+    console.warn(`[email] SMTP IPv4 lookup failed for ${env.smtpHost}. Falling back to default DNS resolution.`, error?.code || error?.message || error);
+  }
+
+  return {
+    host: env.smtpHost,
+    servername: env.smtpHost,
+    resolvedFamily: null,
+  };
+}
+
+async function createTransporter() {
+  const resolvedHost = await resolveSmtpHostForTransport();
+  const transportOptions = {
+    host: resolvedHost.host,
+    port: env.smtpPort,
+    secure: env.smtpSecure,
+    connectionTimeout: env.smtpConnectionTimeoutMs,
+    greetingTimeout: env.smtpConnectionTimeoutMs,
+    socketTimeout: Math.max(env.smtpConnectionTimeoutMs, 15000),
+    auth: env.smtpUser
+      ? {
+          user: env.smtpUser,
+          pass: env.smtpPass,
+        }
+      : undefined,
+  };
+
+  if (resolvedHost.servername) {
+    transportOptions.servername = resolvedHost.servername;
+    transportOptions.tls = {
+      servername: resolvedHost.servername,
+    };
+  }
+
+  if (resolvedHost.resolvedFamily === 4) {
+    console.info(`[email] SMTP host ${env.smtpHost} resolved to IPv4 ${resolvedHost.host}.`);
+  }
+
+  return nodemailer.createTransport(transportOptions);
+}
+
+async function getTransporter() {
+  if (!isEmailDeliveryReady()) {
+    return null;
+  }
+
+  if (transporter) {
+    return transporter;
+  }
+
+  if (!transporterPromise) {
+    transporterPromise = createTransporter()
+      .then((transport) => {
+        transporter = transport;
+        return transporter;
+      })
+      .finally(() => {
+        transporterPromise = null;
+      });
+  }
+
+  return transporterPromise;
 }
 
 function escapeHtml(value) {
@@ -689,7 +765,7 @@ async function sendNotificationDigestEmail({ user, notifications, summary, conte
   }
 
   try {
-    const transport = getTransporter();
+    const transport = await getTransporter();
     const primary = notifications[0];
 
     await transport.sendMail({
@@ -727,7 +803,7 @@ async function sendWelcomeEmail({ user }) {
   }
 
   try {
-    const transport = getTransporter();
+    const transport = await getTransporter();
 
     await transport.sendMail({
       from: env.smtpFrom,
@@ -772,7 +848,7 @@ async function sendInviteSignupAlertEmail({ user, invite }) {
   }
 
   try {
-    const transport = getTransporter();
+    const transport = await getTransporter();
 
     await transport.sendMail({
       from: env.smtpFrom,
@@ -817,7 +893,7 @@ async function sendAdminAssignmentEmail({ user, assignment }) {
   }
 
   try {
-    const transport = getTransporter();
+    const transport = await getTransporter();
 
     await transport.sendMail({
       from: env.smtpFrom,

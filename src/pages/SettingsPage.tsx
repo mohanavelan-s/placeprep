@@ -126,7 +126,22 @@ function formatDeliveryReason(reason?: string) {
     return "";
   }
 
-  const cleaned = reason.replace(/^Error:\s*/i, "").replace(/_/g, " ");
+  const normalized = reason.replace(/^Error:\s*/i, "").trim();
+  const reasonMap: Record<string, string> = {
+    sent: "sent",
+    queued: "queued for delivery",
+    smtp_ipv6_unreachable: "SMTP IPv6 route is blocked; backend is using IPv4 SMTP",
+    smtp_connection_timeout: "SMTP connection timed out",
+    smtp_auth_failed: "SMTP login failed",
+    smtp_connection_failed: "SMTP connection failed",
+    email_not_configured: "email provider is not configured",
+    email_notifications_disabled: "email notifications are disabled",
+    notifications_disabled: "notifications are disabled",
+    delivery_skipped: "email delivery skipped",
+    already_emailed: "already emailed",
+    already_queued: "already queued",
+  };
+  const cleaned = reasonMap[normalized] || normalized.replace(/_/g, " ");
   return cleaned.length > 58 ? `${cleaned.slice(0, 55)}...` : cleaned;
 }
 
@@ -270,14 +285,14 @@ export default function SettingsPage() {
       const emailCopy = result.emailSent
         ? " Email delivered."
         : result.emailAttempted
-          ? ` Email status: ${result.emailReason}.`
+          ? ` Email status: ${formatDeliveryReason(result.emailReason)}.`
           : result.emailReady
             ? ""
             : " Email provider is not configured yet.";
       toast.success(`${signalCopy}${emailCopy}`);
 
       if (payload?.deliverEmail) {
-        const detail = result.emailError || result.emailReason;
+        const detail = formatDeliveryReason(result.emailReason || result.emailError || "");
         setEmailDeliveryPopup({
           status: result.emailSent ? "sent" : result.emailAttempted ? "failed" : "queued",
           title: result.emailSent
@@ -399,7 +414,7 @@ export default function SettingsPage() {
           : emailQueued
             ? `PlacePrep queued the test email for ${user?.email || "your account email"}.`
             : "PlacePrep could not complete the email delivery test.",
-        detail: result.emailError || result.emailReason,
+        detail: formatDeliveryReason(result.emailReason || result.emailError || ""),
       });
 
       if (pushDelivered && emailDelivered) {
@@ -428,7 +443,7 @@ export default function SettingsPage() {
       }
 
       toast.error(
-        `Test notification did not deliver. Browser: ${result.reason}. Email: ${result.emailReason}.`,
+        `Test notification did not deliver. Browser: ${formatDeliveryReason(result.reason)}. Email: ${formatDeliveryReason(result.emailReason)}.`,
       );
     },
     onError: (error) => {
