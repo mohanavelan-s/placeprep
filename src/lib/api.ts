@@ -309,6 +309,7 @@ export interface NotificationSyncResult {
   emailAttempted: boolean;
   emailSent: boolean;
   emailReason: string;
+  emailError?: string | null;
   emailReady: boolean;
 }
 
@@ -323,6 +324,7 @@ export interface PushNotificationTestResult {
   emailAttempted: boolean;
   emailSent: boolean;
   emailReason: string;
+  emailError?: string | null;
   emailReady: boolean;
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BellRing, Languages, Mail, Monitor, RefreshCw, Save, Send } from "lucide-react";
+import { AlertCircle, BellRing, CheckCircle2, Languages, Mail, Monitor, RefreshCw, Save, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import AdminInvitePanel from "@/components/AdminInvitePanel";
@@ -11,6 +11,14 @@ import ResumeAnalysisPanel from "@/components/ResumeAnalysisPanel";
 import SoftSyncNotice from "@/components/SoftSyncNotice";
 import { SettingsSkeleton } from "@/components/WorkspaceSkeletons";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -106,6 +114,13 @@ type EmailTestState = {
   reason?: string;
 };
 
+type EmailDeliveryPopup = {
+  status: "sent" | "queued" | "failed";
+  title: string;
+  message: string;
+  detail?: string;
+};
+
 function formatDeliveryReason(reason?: string) {
   if (!reason) {
     return "";
@@ -144,6 +159,7 @@ export default function SettingsPage() {
   const [placementDate, setPlacementDate] = useState(user?.placementDate || "");
   const [notificationPrefs, setNotificationPrefs] = useState(getNotificationDefaults(profileQuery.data));
   const [lastEmailTest, setLastEmailTest] = useState<EmailTestState | null>(null);
+  const [emailDeliveryPopup, setEmailDeliveryPopup] = useState<EmailDeliveryPopup | null>(null);
 
   useEffect(() => {
     setName(user?.name || "");
@@ -246,7 +262,7 @@ export default function SettingsPage() {
 
   const notificationSyncMutation = useMutation({
     mutationFn: (payload?: { deliverEmail?: boolean }) => syncNotifications(payload),
-    onSuccess: (result) => {
+    onSuccess: (result, payload) => {
       void queryClient.invalidateQueries({ queryKey: ["notifications", "recent"] });
       const signalCopy = result.created.length
         ? `${result.created.length} new mentor signal${result.created.length > 1 ? "s" : ""} synced.`
@@ -259,6 +275,24 @@ export default function SettingsPage() {
             ? ""
             : " Email provider is not configured yet.";
       toast.success(`${signalCopy}${emailCopy}`);
+
+      if (payload?.deliverEmail) {
+        const detail = result.emailError || result.emailReason;
+        setEmailDeliveryPopup({
+          status: result.emailSent ? "sent" : result.emailAttempted ? "failed" : "queued",
+          title: result.emailSent
+            ? "Email notification sent"
+            : result.emailAttempted
+              ? "Email notification failed"
+              : "Email notification not sent",
+          message: result.emailSent
+            ? `PlacePrep pushed the latest notification email to ${user?.email || "your account email"}.`
+            : result.emailReady
+              ? "PlacePrep created the signal, but the email channel did not complete."
+              : "PlacePrep could not send email because SMTP is not configured on the backend.",
+          detail,
+        });
+      }
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to sync notifications.");
@@ -352,6 +386,21 @@ export default function SettingsPage() {
               ? { status: "failed", reason: result.emailReason }
               : null,
       );
+
+      setEmailDeliveryPopup({
+        status: emailDelivered ? "sent" : emailQueued ? "queued" : "failed",
+        title: emailDelivered
+          ? "Test email sent"
+          : emailQueued
+            ? "Test email queued"
+            : "Test email failed",
+        message: emailDelivered
+          ? `PlacePrep pushed the test email to ${user?.email || "your account email"}.`
+          : emailQueued
+            ? `PlacePrep queued the test email for ${user?.email || "your account email"}.`
+            : "PlacePrep could not complete the email delivery test.",
+        detail: result.emailError || result.emailReason,
+      });
 
       if (pushDelivered && emailDelivered) {
         toast.success("Test browser push and email sent.");
@@ -765,6 +814,34 @@ export default function SettingsPage() {
       <AndroidAccessPanel adminMode={user?.role === "admin"} />
 
       {user?.role === "admin" && <AdminInvitePanel />}
+
+      <Dialog open={Boolean(emailDeliveryPopup)} onOpenChange={(open) => !open && setEmailDeliveryPopup(null)}>
+        <DialogContent className="border-border/80 bg-background">
+          <DialogHeader>
+            <div className="mb-2 flex items-center gap-3">
+              {emailDeliveryPopup?.status === "failed" ? (
+                <AlertCircle className="h-5 w-5 text-destructive" />
+              ) : (
+                <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+              )}
+              <DialogTitle>{emailDeliveryPopup?.title || "Email status"}</DialogTitle>
+            </div>
+            <DialogDescription className="leading-6">
+              {emailDeliveryPopup?.message}
+            </DialogDescription>
+          </DialogHeader>
+          {emailDeliveryPopup?.detail && (
+            <div className="rounded-lg border border-border/80 bg-muted/30 p-3 text-sm text-muted-foreground">
+              {emailDeliveryPopup.detail}
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" onClick={() => setEmailDeliveryPopup(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

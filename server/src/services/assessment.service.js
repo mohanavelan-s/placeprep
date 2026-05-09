@@ -36,12 +36,12 @@ const STOP_WORDS = new Set([
 ]);
 
 const GENERIC_DISTRACTORS = [
-  'Blindly memorize the syntax and skip tradeoff analysis.',
-  'Always choose the most complex structure first.',
-  'Ignore edge cases until after the code is complete.',
-  'Start writing code before deciding on the core approach.',
-  'Prefer broad theory over one clear practical example.',
-  'Assume every problem needs recursion and dynamic programming.',
+  'A hash table always keeps keys in sorted order.',
+  'Recursion automatically makes every solution run in optimal time.',
+  'A database index removes the need for query filters.',
+  'Caching permanently removes the need for a source database.',
+  'Transactions only apply to read-only SELECT queries.',
+  'BFS gives correct weighted shortest paths without checking edge weights.',
 ];
 
 const GENERIC_TOPIC_TOKENS = new Set([
@@ -252,33 +252,93 @@ function normalizeChoiceFingerprint(value) {
   return normalizeText(value).replace(/\s+/g, ' ').trim();
 }
 
+function buildKnowledgeAnswer(source, flashcard) {
+  const topic = String(source.topic || source.referenceLabel || source.taskTitle || flashcard?.topic || 'this topic').trim();
+  const label = source.referenceLabel || source.taskTitle || topic;
+  const normalizedTopic = normalizeText(`${topic} ${label} ${source.taskType || ''}`);
+
+  if (normalizedTopic.includes('two sum')) {
+    return 'Two Sum is solved efficiently by storing seen values in a hash map and checking each number for its needed complement in O(n) time.';
+  }
+  if (normalizedTopic.includes('binary search')) {
+    return 'Binary search works on a sorted search space by comparing the middle value and discarding half of the remaining range each step.';
+  }
+  if (normalizedTopic.includes('sliding window')) {
+    return 'Sliding window maintains a moving range over an array or string so repeated work is avoided while constraints are checked incrementally.';
+  }
+  if (normalizedTopic.includes('array') || normalizedTopic.includes('string')) {
+    return 'Array and string problems often depend on indexing, hash maps, two pointers, or sliding windows to reduce brute-force comparisons.';
+  }
+  if (normalizedTopic.includes('tree')) {
+    return 'Tree traversal visits nodes systematically with DFS using recursion or a stack, or BFS using a queue for level-order processing.';
+  }
+  if (normalizedTopic.includes('graph')) {
+    return 'Graph traversal uses BFS or DFS with a visited set; the standard traversal cost is O(V + E) for vertices and edges.';
+  }
+  if (normalizedTopic.includes('dynamic') || normalizedTopic === 'dp') {
+    return 'Dynamic programming defines state, transition, and base cases, then uses memoization or tabulation to avoid recomputing overlapping subproblems.';
+  }
+  if (normalizedTopic.includes('sql') || normalizedTopic.includes('dbms') || normalizedTopic.includes('database')) {
+    return 'Database queries should use correct filtering, joins, grouping, and indexes while balancing read speed against write and storage overhead.';
+  }
+  if (normalizedTopic.includes('normalization')) {
+    return 'Normalization reduces redundancy and update anomalies by decomposing data into related tables with clear keys and relationships.';
+  }
+  if (normalizedTopic.includes('transaction') || normalizedTopic.includes('acid')) {
+    return 'ACID transactions preserve correctness by guaranteeing atomicity, consistency, isolation, and durability around database changes.';
+  }
+  if (normalizedTopic.includes('operating') || normalizedTopic === 'os' || normalizedTopic.includes('paging')) {
+    return 'Operating systems manage processes, memory, files, and devices; paging maps virtual pages to physical frames for isolation and flexible memory use.';
+  }
+  if (normalizedTopic.includes('scheduling') || normalizedTopic.includes('process')) {
+    return 'CPU scheduling chooses which ready process or thread runs next according to a policy such as priority, round-robin, or shortest job first.';
+  }
+  if (normalizedTopic.includes('system') || normalizedTopic.includes('cache') || normalizedTopic.includes('scalability')) {
+    return 'System design answers should connect requirements to capacity, data model, caching, queues, consistency, bottlenecks, and failure handling.';
+  }
+  if (normalizedTopic.includes('api') || normalizedTopic.includes('backend') || normalizedTopic.includes('auth')) {
+    return 'A backend API should validate input, authenticate the caller, enforce business rules, persist data safely, and return a clear status response.';
+  }
+  if (flashcard?.answer && !/your|you|react|respond|approach/i.test(String(flashcard.answer))) {
+    return String(flashcard.answer).trim();
+  }
+
+  return `A correct answer should define ${topic}, name its main use case, and explain one practical tradeoff or edge case.`;
+}
+
 function getTopicDistractors(source, correctText) {
   const topic = String(source.topic || source.referenceLabel || source.taskTitle || 'this topic').trim();
   const normalizedTopic = normalizeText(topic);
   const distractors = [
-    `Treat ${topic} as a memorized definition and skip the tradeoff.`,
-    `Choose the most complex approach for ${topic} before checking constraints.`,
-    `Explain ${topic} without a concrete example, edge case, or practical use case.`,
-    `Start coding ${topic} immediately without naming the core pattern first.`,
+    'A hash table stores all elements in sorted order by default.',
+    'Recursion is always faster than iteration for interview problems.',
+    'Time complexity only matters after the code is fully written.',
+    'Edge cases are handled automatically by the programming language.',
   ];
 
   if (normalizedTopic.includes('dbms') || normalizedTopic.includes('sql') || normalizedTopic.includes('database')) {
-    distractors.push('Pick joins, indexes, and transactions randomly without checking the query goal.');
+    distractors.push('A primary key encrypts every row in the table automatically.');
+    distractors.push('Indexes always improve both read speed and write speed with no storage cost.');
   }
   if (normalizedTopic.includes('operating') || normalizedTopic === 'os') {
-    distractors.push('List OS terms broadly without naming the process, memory, or scheduling tradeoff.');
+    distractors.push('A process scheduler is responsible for choosing disk block locations.');
+    distractors.push('Virtual memory requires every process to share the same physical addresses.');
   }
   if (normalizedTopic.includes('system')) {
-    distractors.push('Jump into tools before clarifying traffic, bottlenecks, consistency, and failure modes.');
+    distractors.push('Caching removes every consistency and invalidation problem.');
+    distractors.push('A load balancer stores the permanent source of truth for user data.');
   }
   if (normalizedTopic.includes('dynamic') || normalizedTopic === 'dp') {
-    distractors.push('Force recursion without defining state, transition, base cases, and overlapping subproblems.');
+    distractors.push('Dynamic programming means sorting the input before every recursive call.');
+    distractors.push('A DP transition is optional when memoization is used.');
   }
   if (normalizedTopic.includes('graph')) {
-    distractors.push('Traverse nodes without tracking visited state, queue or stack behavior, and complexity.');
+    distractors.push('DFS always returns the shortest weighted path in any graph.');
+    distractors.push('Visited sets are unnecessary because graphs cannot contain cycles.');
   }
   if (normalizedTopic.includes('array') || normalizedTopic.includes('string')) {
-    distractors.push('Brute-force every pair before checking whether a hash map, window, or pointer pattern fits.');
+    distractors.push('Two pointers require the input to be randomly shuffled first.');
+    distractors.push('Sliding window recomputes every subarray from scratch.');
   }
 
   const correctFingerprint = normalizeChoiceFingerprint(correctText);
@@ -303,7 +363,7 @@ function buildMcqOptions(questionId, correctText, distractors = []) {
 
   const selectedTexts = optionTexts.slice(0, 4);
   while (selectedTexts.length < 4) {
-    selectedTexts.push(`Use one concrete example and tradeoff before moving forward. Checkpoint ${selectedTexts.length + 1}.`);
+    selectedTexts.push(`Incorrect statement ${selectedTexts.length + 1}: ${GENERIC_DISTRACTORS[selectedTexts.length % GENERIC_DISTRACTORS.length]}`);
   }
 
   const options = shuffle(selectedTexts).map((text, optionIndex) => ({
@@ -666,24 +726,16 @@ function findFlashcardForSource(plan, source) {
 }
 
 function buildContextualAnswer(source, flashcard) {
-  if (flashcard?.answer) {
-    return String(flashcard.answer).trim();
-  }
+  return buildKnowledgeAnswer(source, flashcard);
+}
 
+function buildAssessmentMcqPrompt(source) {
+  const topic = source.referenceLabel || source.taskTitle || source.topic || 'this topic';
   if (source.kind === 'task') {
-    const normalizedTaskType = normalizeText(source.taskType);
-    if (normalizedTaskType.includes('project')) {
-      return `For ${source.referenceLabel || source.taskTitle || source.topic}, tie the work to one implementation step, one measurable outcome, and one clear takeaway.`;
-    }
-
-    if (normalizedTaskType.includes('revision') || normalizedTaskType.includes('core')) {
-      return `${source.topic} becomes interview-ready when you define it clearly, explain one tradeoff, and connect it to one practical use case.`;
-    }
-
-    return `For ${source.referenceLabel || source.taskTitle || source.topic}, identify the core pattern, the main data structure, and the time complexity before coding.`;
+    return `Which statement correctly explains the core concept behind ${topic}?`;
   }
 
-  return `${source.topic} becomes solid when you can explain the core idea, the main tradeoff, and one example without looking at notes.`;
+  return `Which statement is correct about ${topic}?`;
 }
 
 function buildBlankPromptLabel(source, assessmentScope) {
@@ -731,11 +783,7 @@ function buildMcqQuestions(plan, sources, durationMinutes) {
       id: questionId,
       type: 'mcq',
       topic: source.topic,
-      prompt: flashcard?.question
-        ? String(flashcard.question).trim()
-        : source.kind === 'task'
-          ? `Which explanation best matches ${source.referenceLabel || source.taskTitle || source.topic}?`
-          : `Which explanation best matches ${source.topic} in your current prep plan?`,
+      prompt: buildAssessmentMcqPrompt(source),
       averageTimeMinutes: clamp(Math.floor(durationMinutes / Math.max(fallbackSources.length, 1)), 3, 8),
       referenceLabel: source.referenceLabel || null,
       referenceUrl: source.referenceUrl || null,

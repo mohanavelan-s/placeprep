@@ -563,27 +563,96 @@ function normalizeChoiceText(value: string) {
     .trim();
 }
 
+function buildDemoKnowledgeAnswer(topic: string, referenceLabel?: string | null, taskTitle?: string | null, cardAnswer?: string) {
+  const topicLabel = String(topic || referenceLabel || taskTitle || "this topic").trim() || "this topic";
+  const normalizedTopic = normalizeChoiceText(`${topicLabel} ${referenceLabel || ""} ${taskTitle || ""}`);
+
+  if (normalizedTopic.includes("two sum")) {
+    return "Two Sum is solved efficiently by storing seen values in a hash map and checking each number for its needed complement in O(n) time.";
+  }
+  if (normalizedTopic.includes("binary search")) {
+    return "Binary search works on a sorted search space by comparing the middle value and discarding half of the remaining range each step.";
+  }
+  if (normalizedTopic.includes("sliding window")) {
+    return "Sliding window maintains a moving range over an array or string so repeated work is avoided while constraints are checked incrementally.";
+  }
+  if (normalizedTopic.includes("array") || normalizedTopic.includes("string")) {
+    return "Array and string problems often depend on indexing, hash maps, two pointers, or sliding windows to reduce brute-force comparisons.";
+  }
+  if (normalizedTopic.includes("tree")) {
+    return "Tree traversal visits nodes systematically with DFS using recursion or a stack, or BFS using a queue for level-order processing.";
+  }
+  if (normalizedTopic.includes("graph")) {
+    return "Graph traversal uses BFS or DFS with a visited set; the standard traversal cost is O(V + E) for vertices and edges.";
+  }
+  if (normalizedTopic.includes("dynamic") || normalizedTopic === "dp") {
+    return "Dynamic programming defines state, transition, and base cases, then uses memoization or tabulation to avoid recomputing overlapping subproblems.";
+  }
+  if (normalizedTopic.includes("sql") || normalizedTopic.includes("dbms") || normalizedTopic.includes("database")) {
+    return "Database queries should use correct filtering, joins, grouping, and indexes while balancing read speed against write and storage overhead.";
+  }
+  if (normalizedTopic.includes("normalization")) {
+    return "Normalization reduces redundancy and update anomalies by decomposing data into related tables with clear keys and relationships.";
+  }
+  if (normalizedTopic.includes("transaction") || normalizedTopic.includes("acid")) {
+    return "ACID transactions preserve correctness by guaranteeing atomicity, consistency, isolation, and durability around database changes.";
+  }
+  if (normalizedTopic.includes("operating") || normalizedTopic === "os" || normalizedTopic.includes("paging")) {
+    return "Operating systems manage processes, memory, files, and devices; paging maps virtual pages to physical frames for isolation and flexible memory use.";
+  }
+  if (normalizedTopic.includes("scheduling") || normalizedTopic.includes("process")) {
+    return "CPU scheduling chooses which ready process or thread runs next according to a policy such as priority, round-robin, or shortest job first.";
+  }
+  if (normalizedTopic.includes("system") || normalizedTopic.includes("cache") || normalizedTopic.includes("scalability")) {
+    return "System design answers should connect requirements to capacity, data model, caching, queues, consistency, bottlenecks, and failure handling.";
+  }
+  if (normalizedTopic.includes("api") || normalizedTopic.includes("backend") || normalizedTopic.includes("auth")) {
+    return "A backend API should validate input, authenticate the caller, enforce business rules, persist data safely, and return a clear status response.";
+  }
+  if (cardAnswer && !/your|you|react|respond|approach/i.test(cardAnswer)) {
+    return cardAnswer.trim();
+  }
+
+  return `A correct answer should define ${topicLabel}, name its main use case, and explain one practical tradeoff or edge case.`;
+}
+
+function buildMcqPrompt(topic: string, referenceLabel?: string | null, taskTitle?: string | null) {
+  const label = referenceLabel || taskTitle || topic || "this topic";
+  return `Which statement is correct about ${label}?`;
+}
+
 function buildTopicDistractors(topic: string, correctText: string) {
   const normalizedTopic = normalizeChoiceText(topic);
-  const topicLabel = String(topic || "this topic").trim() || "this topic";
   const options = [
-    `Treat ${topicLabel} as a memorized definition and skip the tradeoff.`,
-    `Pick the most complex approach for ${topicLabel} before checking constraints.`,
-    `Explain ${topicLabel} without an example, edge case, or practical use case.`,
-    `Start coding ${topicLabel} immediately without naming the core pattern.`,
+    "A hash table stores all elements in sorted order by default.",
+    "Recursion is always faster than iteration for interview problems.",
+    "Time complexity only matters after the code is fully written.",
+    "Edge cases are handled automatically by the programming language.",
   ];
 
   if (normalizedTopic.includes("dbms") || normalizedTopic.includes("sql") || normalizedTopic.includes("database")) {
-    options.push("Choose joins, indexes, and transactions randomly without checking query intent.");
+    options.push("A primary key encrypts every row in the table automatically.");
+    options.push("Indexes always improve both read speed and write speed with no storage cost.");
   }
   if (normalizedTopic.includes("operating") || normalizedTopic === "os") {
-    options.push("Discuss OS terms broadly without naming the process, memory, or scheduling tradeoff.");
+    options.push("A process scheduler is responsible for choosing disk block locations.");
+    options.push("Virtual memory requires every process to share the same physical addresses.");
   }
   if (normalizedTopic.includes("system")) {
-    options.push("Jump into tools before clarifying traffic, bottlenecks, and consistency needs.");
+    options.push("Caching removes every consistency and invalidation problem.");
+    options.push("A load balancer stores the permanent source of truth for user data.");
   }
   if (normalizedTopic.includes("dynamic") || normalizedTopic === "dp") {
-    options.push("Force recursion without defining state, transition, and base cases.");
+    options.push("Dynamic programming means sorting the input before every recursive call.");
+    options.push("A DP transition is optional when memoization is used.");
+  }
+  if (normalizedTopic.includes("graph")) {
+    options.push("DFS always returns the shortest weighted path in any graph.");
+    options.push("Visited sets are unnecessary because graphs cannot contain cycles.");
+  }
+  if (normalizedTopic.includes("array") || normalizedTopic.includes("string")) {
+    options.push("Two pointers require the input to be randomly shuffled first.");
+    options.push("Sliding window recomputes every subarray from scratch.");
   }
 
   const correctFingerprint = normalizeChoiceText(correctText);
@@ -605,7 +674,12 @@ function buildMcqChoices(questionId: string, correctText: string, distractors: s
     .slice(0, 4);
 
   while (optionTexts.length < 4) {
-    optionTexts.push(`Use a concrete example and tradeoff before moving on. Checkpoint ${optionTexts.length + 1}.`);
+    optionTexts.push([
+      "A database index removes the need for query filters.",
+      "Caching permanently removes the need for a source database.",
+      "BFS gives correct weighted shortest paths without checking edge weights.",
+      "Transactions only apply to read-only SELECT queries.",
+    ][optionTexts.length % 4]);
   }
 
   const shuffled = shuffle(optionTexts).map((text, optionIndex) => ({
@@ -675,7 +749,12 @@ function buildAssessmentQuestions(
 
   return relevantCards.map(({ source, card }, index) => {
     const questionId = `mcq-${index + 1}`;
-    const correctText = String(card.answer || "").trim();
+    const correctText = buildDemoKnowledgeAnswer(
+      source.promptTopic,
+      source.referenceLabel,
+      source.taskTitle,
+      String(card.answer || ""),
+    );
     const { choices, correctOptionId } = buildMcqChoices(
       questionId,
       correctText,
@@ -685,7 +764,7 @@ function buildAssessmentQuestions(
     return {
       id: questionId,
       topic: source.promptTopic,
-      prompt: card.question,
+      prompt: buildMcqPrompt(source.promptTopic, source.referenceLabel, source.taskTitle),
       type: "mcq",
       averageTimeMinutes: clamp(Math.round(durationMinutes / Math.max(relevantCards.length, 1)), 3, 8),
       referenceLabel: source.referenceLabel,
@@ -1720,7 +1799,7 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
   if (pathname === "/notifications/sync" && method === "POST") {
     const nextNotification = { id: createId("notif"), userId: "demo-user", type: "motivation", message: "Demo mode generated a fresh signal: finish one concrete problem before switching tabs.", sentAt: new Date().toISOString(), read: false, readAt: null, deliveryChannels: ["in-app"], metadata: { route: "/dashboard" }, dedupeKey: createId("notif-dedupe"), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     updateState((current) => ({ ...current, notifications: [nextNotification, ...(current.notifications as unknown[])] }));
-    return { created: [nextNotification], emailAttempted: false, emailSent: false, emailReason: "disabled in demo mode", emailReady: false } as T;
+    return { created: [nextNotification], emailAttempted: false, emailSent: false, emailReason: "disabled in demo mode", emailError: "Email delivery is disabled in demo mode.", emailReady: false } as T;
   }
   if (pathname === "/notifications/read-all" && method === "POST") {
     const updated = state.notifications.filter((item: Record<string, unknown>) => !item.read).length;

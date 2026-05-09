@@ -31,6 +31,7 @@ function getTransporter() {
     host: env.smtpHost,
     port: env.smtpPort,
     secure: env.smtpSecure,
+    family: 4,
     connectionTimeout: 10000,
     greetingTimeout: 10000,
     socketTimeout: 15000,
@@ -43,6 +44,23 @@ function getTransporter() {
   });
 
   return transporter;
+}
+
+function normalizeEmailError(error, fallback = 'email_failed') {
+  const message = compactText(error?.message || fallback);
+  const code = compactText(error?.code || '');
+  const syscall = compactText(error?.syscall || '');
+  const address = compactText(error?.address || '');
+  const detailParts = [
+    code,
+    syscall,
+    address,
+  ].filter(Boolean);
+
+  return {
+    reason: message || fallback,
+    error: detailParts.length ? `${message} (${detailParts.join(', ')})` : message,
+  };
 }
 
 function escapeHtml(value) {
@@ -689,10 +707,12 @@ async function sendNotificationDigestEmail({ user, notifications, summary, conte
     };
   } catch (error) {
     console.error('[notifications] Failed to send email digest.', error);
+    const normalizedError = normalizeEmailError(error);
     return {
       attempted: true,
       sent: false,
-      reason: error?.message || 'email_failed',
+      reason: normalizedError.reason,
+      error: normalizedError.error,
     };
   }
 }
@@ -724,10 +744,12 @@ async function sendWelcomeEmail({ user }) {
     };
   } catch (error) {
     console.error('[auth] Failed to send welcome email.', error);
+    const normalizedError = normalizeEmailError(error, 'welcome_email_failed');
     return {
       attempted: true,
       sent: false,
-      reason: error?.message || 'welcome_email_failed',
+      reason: normalizedError.reason,
+      error: normalizedError.error,
     };
   }
 }
@@ -767,10 +789,12 @@ async function sendInviteSignupAlertEmail({ user, invite }) {
     };
   } catch (error) {
     console.error('[auth] Failed to send invite signup alert email.', error);
+    const normalizedError = normalizeEmailError(error, 'invite_signup_alert_failed');
     return {
       attempted: true,
       sent: false,
-      reason: error?.message || 'invite_signup_alert_failed',
+      reason: normalizedError.reason,
+      error: normalizedError.error,
     };
   }
 }
@@ -810,10 +834,12 @@ async function sendAdminAssignmentEmail({ user, assignment }) {
     };
   } catch (error) {
     console.error('[coach] Failed to send admin assignment email.', error);
+    const normalizedError = normalizeEmailError(error, 'admin_assignment_email_failed');
     return {
       attempted: true,
       sent: false,
-      reason: error?.message || 'admin_assignment_email_failed',
+      reason: normalizedError.reason,
+      error: normalizedError.error,
     };
   }
 }

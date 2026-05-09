@@ -783,6 +783,7 @@ async function syncNotificationsForUser(userOrId, options = {}) {
       emailAttempted: false,
       emailSent: false,
       emailReason: 'notifications_disabled',
+      emailError: null,
       emailReady: isEmailDeliveryReady(),
       usedAiTailoring: false,
     };
@@ -805,6 +806,7 @@ async function syncNotificationsForUser(userOrId, options = {}) {
       emailAttempted: false,
       emailSent: false,
       emailReason: profile.notificationEmailEnabled ? 'outside_window' : 'email_disabled',
+      emailError: null,
       emailReady: isEmailDeliveryReady(),
       usedAiTailoring: false,
       skippedReason: 'outside_window',
@@ -914,6 +916,7 @@ async function syncNotificationsForUser(userOrId, options = {}) {
       attempted: false,
       sent: false,
       reason: profile.notificationEmailEnabled ? 'delivery_skipped' : 'email_disabled',
+      error: null,
     };
 
     if (previewNotifications.length && options.deliverEmail && profile.notificationEmailEnabled) {
@@ -934,6 +937,7 @@ async function syncNotificationsForUser(userOrId, options = {}) {
       emailAttempted: previewEmailResult.attempted,
       emailSent: previewEmailResult.sent,
       emailReason: previewEmailResult.reason,
+      emailError: previewEmailResult.error || null,
       emailReady: isEmailDeliveryReady(),
       usedAiTailoring: !personalization.usedFallback,
       previewOnly: true,
@@ -1010,6 +1014,7 @@ async function syncNotificationsForUser(userOrId, options = {}) {
     attempted: false,
     sent: false,
     reason: profile.notificationEmailEnabled ? 'delivery_skipped' : 'email_disabled',
+    error: null,
   };
 
   if (notificationsForEmail.length && options.deliverEmail && profile.notificationEmailEnabled) {
@@ -1042,6 +1047,7 @@ async function syncNotificationsForUser(userOrId, options = {}) {
     emailAttempted: emailResult.attempted,
     emailSent: emailResult.sent,
     emailReason: emailResult.reason,
+    emailError: emailResult.error || null,
     emailReady: isEmailDeliveryReady(),
     usedAiTailoring: !personalization.usedFallback,
   };
@@ -1073,6 +1079,7 @@ async function sendTestPushNotification(userOrId) {
       emailAttempted: false,
       emailSent: false,
       emailReason: 'notifications_disabled',
+      emailError: null,
       emailReady,
     };
   }
@@ -1091,6 +1098,7 @@ async function sendTestPushNotification(userOrId) {
       emailAttempted: false,
       emailSent: false,
       emailReason: 'email_notifications_disabled',
+      emailError: null,
       emailReady,
     };
   }
@@ -1139,6 +1147,7 @@ async function sendTestPushNotification(userOrId) {
     attempted: false,
     sent: false,
     reason: profile.notificationEmailEnabled ? 'email_not_configured' : 'email_notifications_disabled',
+    error: null,
   };
 
   if (profile.notificationEmailEnabled) {
@@ -1147,6 +1156,7 @@ async function sendTestPushNotification(userOrId) {
         attempted: false,
         sent: false,
         reason: 'email_not_configured',
+        error: null,
       };
     } else {
       try {
@@ -1183,6 +1193,7 @@ async function sendTestPushNotification(userOrId) {
           attempted: true,
           sent: false,
           reason: error?.message || 'email_failed',
+          error: error?.message || 'email_failed',
         };
       }
     }
@@ -1199,6 +1210,7 @@ async function sendTestPushNotification(userOrId) {
     emailAttempted: emailResult.attempted,
     emailSent: emailResult.sent,
     emailReason: emailResult.reason,
+    emailError: emailResult.error || null,
     emailReady,
   };
 }
