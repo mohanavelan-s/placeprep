@@ -40,7 +40,7 @@ interface AuthContextValue {
   isDemoMode: boolean;
   login: (payload: { identifier: string; password: string }) => Promise<AuthResult>;
   register: (payload: RegisterInput) => Promise<AuthResult>;
-  enterDemoMode: () => AuthResult;
+  enterDemoMode: (role?: "admin" | "user") => AuthResult;
   logout: () => void;
   refreshProfile: () => Promise<User>;
 }
@@ -122,8 +122,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsDemoMode(false);
       return session;
     },
-    enterDemoMode() {
-      const session = activateDemoMode();
+    enterDemoMode(role = "user") {
+      const session = activateDemoMode(role);
       queryClient.clear();
       applySession(session, setToken, setUser);
       setIsDemoMode(true);

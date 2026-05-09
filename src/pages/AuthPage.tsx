@@ -15,7 +15,7 @@ interface AuthPageProps {
     placementDate?: string;
     weakAreas?: string[];
   }) => Promise<unknown>;
-  onEnterDemo: () => void;
+  onEnterDemo: (role: "admin" | "user") => void;
 }
 
 export default function AuthPage({ onLogin, onRegister, onEnterDemo }: AuthPageProps) {

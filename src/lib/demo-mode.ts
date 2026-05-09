@@ -1,9 +1,11 @@
 import type { AuthResult } from "@/lib/api";
 
 const DEMO_MODE_STORAGE_KEY = "placeprep.demo-mode";
+const DEMO_ROLE_STORAGE_KEY = "placeprep.demo-role";
 const DEMO_STATE_STORAGE_KEY = "placeprep.demo-state";
 export const DEMO_SESSION_TOKEN = "demo-session-token";
 const DEMO_DELAY_MS = 180;
+type DemoRole = "admin" | "user";
 
 const topicBank = [
   {
@@ -133,6 +135,31 @@ function createId(prefix: string) {
     ? crypto.randomUUID().slice(0, 8)
     : Math.random().toString(36).slice(2, 10);
   return `${prefix}-${random}`;
+}
+
+function addDaysIso(days: number) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function buildInviteRecord(role: "admin" | "user", label = "Demo invite", used = false) {
+  const code = `${role.toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  const now = new Date().toISOString();
+
+  return {
+    id: createId("invite"),
+    code,
+    role,
+    createdBy: "demo-admin",
+    expiresAt: addDaysIso(7),
+    used,
+    usedBy: used ? "demo-student-1" : null,
+    usedAt: used ? now : null,
+    metadata: { label, source: "demo-mode" },
+    createdAt: now,
+    updatedAt: now,
+    status: used ? "used" : "valid",
+    inviteLink: `${window.location.origin}/invite?code=${encodeURIComponent(code)}`,
+  };
 }
 
 function cleanTopics(topics: string[] = [], limit = 8) {
@@ -528,6 +555,71 @@ function buildDemoAssessmentSources(
   return interleaved;
 }
 
+function normalizeChoiceText(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildTopicDistractors(topic: string, correctText: string) {
+  const normalizedTopic = normalizeChoiceText(topic);
+  const topicLabel = String(topic || "this topic").trim() || "this topic";
+  const options = [
+    `Treat ${topicLabel} as a memorized definition and skip the tradeoff.`,
+    `Pick the most complex approach for ${topicLabel} before checking constraints.`,
+    `Explain ${topicLabel} without an example, edge case, or practical use case.`,
+    `Start coding ${topicLabel} immediately without naming the core pattern.`,
+  ];
+
+  if (normalizedTopic.includes("dbms") || normalizedTopic.includes("sql") || normalizedTopic.includes("database")) {
+    options.push("Choose joins, indexes, and transactions randomly without checking query intent.");
+  }
+  if (normalizedTopic.includes("operating") || normalizedTopic === "os") {
+    options.push("Discuss OS terms broadly without naming the process, memory, or scheduling tradeoff.");
+  }
+  if (normalizedTopic.includes("system")) {
+    options.push("Jump into tools before clarifying traffic, bottlenecks, and consistency needs.");
+  }
+  if (normalizedTopic.includes("dynamic") || normalizedTopic === "dp") {
+    options.push("Force recursion without defining state, transition, and base cases.");
+  }
+
+  const correctFingerprint = normalizeChoiceText(correctText);
+  return options.filter((option) => normalizeChoiceText(option) !== correctFingerprint);
+}
+
+function buildMcqChoices(questionId: string, correctText: string, distractors: string[]) {
+  const seen = new Set<string>();
+  const optionTexts = [correctText, ...distractors]
+    .map((text) => String(text || "").trim())
+    .filter((text) => {
+      const fingerprint = normalizeChoiceText(text);
+      if (!fingerprint || seen.has(fingerprint)) {
+        return false;
+      }
+      seen.add(fingerprint);
+      return true;
+    })
+    .slice(0, 4);
+
+  while (optionTexts.length < 4) {
+    optionTexts.push(`Use a concrete example and tradeoff before moving on. Checkpoint ${optionTexts.length + 1}.`);
+  }
+
+  const shuffled = shuffle(optionTexts).map((text, optionIndex) => ({
+    id: `${questionId}-option-${optionIndex + 1}`,
+    label: String.fromCharCode(65 + optionIndex),
+    text,
+  }));
+
+  return {
+    choices: shuffled,
+    correctOptionId: shuffled.find((choice) => normalizeChoiceText(choice.text) === normalizeChoiceText(correctText))?.id || shuffled[0].id,
+  };
+}
+
 function buildAssessmentQuestions(
   plan: ReturnType<typeof buildPlan>,
   assessmentType: "mcq" | "fill_blank" | "coding",
@@ -582,23 +674,16 @@ function buildAssessmentQuestions(
   }
 
   return relevantCards.map(({ source, card }, index) => {
+    const questionId = `mcq-${index + 1}`;
     const correctText = String(card.answer || "").trim();
-    const distractors = [
-      "Skip the edge case and move straight to coding.",
-      "Memorize the term without connecting it to the task.",
-      "Choose the most complex approach by default.",
-    ];
-    const choices = shuffle([
-      { id: `mcq-${index + 1}-a`, label: "A", text: correctText },
-      ...distractors.map((text, distractorIndex) => ({
-        id: `mcq-${index + 1}-${String.fromCharCode(98 + distractorIndex)}`,
-        label: String.fromCharCode(66 + distractorIndex),
-        text,
-      })),
-    ]);
-    const correctChoice = choices.find((choice) => choice.text === correctText) || choices[0];
+    const { choices, correctOptionId } = buildMcqChoices(
+      questionId,
+      correctText,
+      buildTopicDistractors(source.promptTopic, correctText),
+    );
+
     return {
-      id: `mcq-${index + 1}`,
+      id: questionId,
       topic: source.promptTopic,
       prompt: card.question,
       type: "mcq",
@@ -606,7 +691,7 @@ function buildAssessmentQuestions(
       referenceLabel: source.referenceLabel,
       referenceUrl: source.referenceUrl,
       choices,
-      correctOptionId: correctChoice.id,
+      correctOptionId,
     };
   });
 }
@@ -688,7 +773,159 @@ function buildDemoAssessmentRecommendations(plan: ReturnType<typeof buildPlan>, 
   });
 }
 
-function buildInitialState() {
+function buildDemoCoachStudents(now: string) {
+  return [
+    {
+      id: "demo-student-1",
+      name: "Asha Raman",
+      username: "asha_backend",
+      email: "asha.demo@placeprep.app",
+      targetRole: "Backend Engineer Intern",
+      readinessScore: 74,
+      consistencyScore: 81,
+      currentStreak: 9,
+      solvedProblems: 132,
+      weakAreas: ["Operating Systems", "DBMS", "System Design"],
+      strongTopics: ["Arrays", "Strings"],
+    },
+    {
+      id: "demo-student-2",
+      name: "Vikram Sen",
+      username: "vikram_data",
+      email: "vikram.demo@placeprep.app",
+      targetRole: "Data Analyst Intern",
+      readinessScore: 68,
+      consistencyScore: 73,
+      currentStreak: 5,
+      solvedProblems: 97,
+      weakAreas: ["SQL", "Statistics", "Data Visualization"],
+      strongTopics: ["Python", "Spreadsheets"],
+    },
+  ].map((student, index) => {
+    const weeklyProgress = Array.from({ length: 7 }, (_, dayIndex) => ({
+      date: new Date(Date.now() - (6 - dayIndex) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      day: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dayIndex],
+      missions: Math.max(1, 2 + ((dayIndex + index) % 4)),
+      hours: Number((1.5 + ((dayIndex + index) % 3) * 0.7).toFixed(1)),
+    }));
+    const progressHistory = weeklyProgress.map((entry, historyIndex) => ({
+      id: `demo-progress-${student.id}-${historyIndex + 1}`,
+      userId: student.id,
+      statDate: entry.date,
+      streak: student.currentStreak - (6 - historyIndex),
+      bonusStreak: historyIndex > 4 ? 1 : 0,
+      consistencyScore: student.consistencyScore - (6 - historyIndex),
+      readinessScore: student.readinessScore - (6 - historyIndex),
+      executionRate: 65 + historyIndex * 4,
+      totalHours: entry.hours,
+      tasksCompleted: entry.missions,
+      powerPocketMinutes: 25 + historyIndex * 5,
+      metadata: { source: "demo-mode" },
+      createdAt: now,
+      updatedAt: now,
+    }));
+    const practiceCapsules = [{
+      bundleId: `demo-capsule-${student.id}`,
+      title: index === 0 ? "OS + DBMS recovery block" : "SQL dashboard drill",
+      note: "Demo admin assignment created to show the oversight workflow.",
+      studentUserId: student.id,
+      assignedById: "demo-admin",
+      assignedByName: "Demo Admin",
+      assignmentId: `demo-assignment-${student.id}`,
+      dueAt: addDaysIso(1),
+      scheduledFor: new Date().toISOString().slice(0, 10),
+      createdAt: now,
+      items: [{
+        taskId: `demo-capsule-task-${student.id}`,
+        title: index === 0 ? "Explain paging and indexing tradeoffs" : "Build a SQL insight summary",
+        description: "Complete the linked practice and upload a short proof note.",
+        category: index === 0 ? "Core" : "SQL",
+        status: "pending",
+        referenceLabel: index === 0 ? "OS and DBMS revision" : "SQL analytics practice",
+        referenceUrl: "https://www.geeksforgeeks.org/",
+        capsuleType: "admin-assignment",
+        dueAt: addDaysIso(1),
+        scheduledFor: new Date().toISOString().slice(0, 10),
+        createdAt: now,
+      }],
+    }];
+
+    return {
+      student: {
+        id: student.id,
+        name: student.name,
+        username: student.username,
+        role: "user",
+        accessTier: "standard",
+        email: student.email,
+        weakAreas: student.weakAreas,
+        strongTopics: student.strongTopics,
+        targetRole: student.targetRole,
+        placementDate: "2026-06-15",
+        timezone: "Asia/Calcutta",
+        solvedProblems: student.solvedProblems,
+        averageTimePerProblem: 31 + index * 4,
+        failedAttempts: 12 + index * 3,
+        mistakeCount: 15 + index * 4,
+        consistencyScore: student.consistencyScore,
+        currentStreak: student.currentStreak,
+        readinessScore: student.readinessScore,
+        preferredLanguage: "english",
+        coachMetadata: { invitedBy: "demo-admin", demo: true },
+        createdAt: now,
+        updatedAt: now,
+      },
+      invitedBy: {
+        id: "demo-admin",
+        name: "Demo Admin",
+        username: "admin-demo",
+        inviteCode: index === 0 ? "USER-DEMO" : "USER-DEMO-2",
+        invitedAt: now,
+      },
+      progress: {
+        streak: student.currentStreak,
+        consistencyScore: student.consistencyScore,
+        readinessScore: student.readinessScore,
+        solvedProblems: student.solvedProblems,
+        averageTimePerProblem: 31 + index * 4,
+        failedAttempts: 12 + index * 3,
+        totalHours: weeklyProgress.reduce((sum, entry) => sum + entry.hours, 0),
+        tasksCompleted: weeklyProgress.reduce((sum, entry) => sum + entry.missions, 0),
+        statDate: new Date().toISOString().slice(0, 10),
+        weeklyProgress,
+        topicStrength: student.strongTopics.concat(student.weakAreas).slice(0, 5).map((topic, topicIndex) => ({
+          topic,
+          strength: topicIndex < 2 ? 82 - topicIndex * 5 : 54 + topicIndex * 4,
+        })),
+      },
+      taskSummary: {
+        userId: student.id,
+        total: 8 + index,
+        pending: 3,
+        inProgress: 2,
+        completed: 3 + index,
+        skipped: 0,
+        overdue: index,
+      },
+      recentProofs: [{
+        id: `demo-proof-${student.id}`,
+        userId: student.id,
+        secureUrl: createDemoSvgDataUrl(index === 0 ? "OS Notes" : "SQL Proof"),
+        publicId: `demo-proof-${student.id}`,
+        mimeType: "image/svg+xml",
+        storageProvider: "demo-local",
+        proofDate: new Date().toISOString().slice(0, 10),
+        caption: index === 0 ? "Paging notes and indexing comparison." : "Dashboard metric sketch.",
+        createdAt: now,
+        updatedAt: now,
+      }],
+      progressHistory,
+      practiceCapsules,
+    };
+  });
+}
+
+function buildInitialState(role: DemoRole = "user") {
   const activePlan = buildPlan({
     knownTopics: ["Arrays", "Strings"],
     targetTopics: ["Operating Systems", "DBMS", "System Design"],
@@ -707,31 +944,65 @@ function buildInitialState() {
   const tasks = buildTasksFromPlan(activePlan);
   const progressSummary = buildProgressSummary(tasks, activePlan);
   const now = new Date().toISOString();
+  const isAdminDemo = role === "admin";
+  const demoUser = {
+    id: isAdminDemo ? "demo-admin" : "demo-user",
+    name: isAdminDemo ? "Demo Admin" : "Demo Operator",
+    username: isAdminDemo ? "admin-demo" : "demo",
+    role,
+    accessTier: "standard",
+    email: isAdminDemo ? "admin.demo@placeprep.app" : "demo@placeprep.app",
+    weakAreas: activePlan.targetTopics,
+    strongTopics: activePlan.knownTopics,
+    targetRole: isAdminDemo ? "Placement Coach" : activePlan.targetRole,
+    placementDate: "2026-05-30",
+    timezone: "Asia/Calcutta",
+    solvedProblems: isAdminDemo ? 0 : 148,
+    averageTimePerProblem: isAdminDemo ? 0 : 32,
+    failedAttempts: isAdminDemo ? 0 : 19,
+    mistakeCount: isAdminDemo ? 0 : 23,
+    consistencyScore: progressSummary.consistencyScore,
+    currentStreak: progressSummary.streak,
+    readinessScore: progressSummary.readinessScore,
+    preferredLanguage: "english",
+    coachMetadata: {
+      prepArchitectPlanId: activePlan.id,
+      prepArchitectPlanTitle: activePlan.title,
+      demoRole: role,
+    },
+    createdAt: now,
+    updatedAt: now,
+  };
+  const demoStudents = buildDemoCoachStudents(now);
+  const demoGroups = [{
+    id: "demo-group-core",
+    name: "Backend sprint cohort",
+    description: "Demo students preparing for backend internship rounds.",
+    createdBy: "demo-admin",
+    createdByName: "Demo Admin",
+    metadata: { source: "demo-mode" },
+    createdAt: now,
+    updatedAt: now,
+    memberCount: 2,
+    assignmentRecipientCount: 2,
+    members: demoStudents.map((entry) => ({
+      groupId: "demo-group-core",
+      userId: entry.student.id,
+      name: entry.student.name,
+      username: entry.student.username,
+      role: entry.student.role,
+      email: entry.student.email,
+      targetRole: entry.student.targetRole,
+      readinessScore: entry.student.readinessScore,
+      accessTier: entry.student.accessTier,
+      addedBy: "demo-admin",
+      addedByName: "Demo Admin",
+      createdAt: now,
+    })),
+  }];
 
   return {
-    user: {
-      id: "demo-user",
-      name: "Demo Operator",
-      username: "demo",
-      role: "user",
-      accessTier: "standard",
-      email: "demo@placeprep.app",
-      weakAreas: activePlan.targetTopics,
-      strongTopics: activePlan.knownTopics,
-      targetRole: activePlan.targetRole,
-      placementDate: "2026-05-30",
-      timezone: "Asia/Calcutta",
-      solvedProblems: 148,
-      averageTimePerProblem: 32,
-      failedAttempts: 19,
-      mistakeCount: 23,
-      consistencyScore: progressSummary.consistencyScore,
-      currentStreak: progressSummary.streak,
-      readinessScore: progressSummary.readinessScore,
-      coachMetadata: { prepArchitectPlanId: activePlan.id, prepArchitectPlanTitle: activePlan.title },
-      createdAt: now,
-      updatedAt: now,
-    },
+    user: demoUser,
     profile: {
       id: "demo-profile",
       userId: "demo-user",
@@ -789,6 +1060,22 @@ function buildInitialState() {
     ],
     powerPocketSession: null,
     apkVersions: [],
+    invites: [
+      buildInviteRecord("user", "Demo user invite"),
+      buildInviteRecord("admin", "Demo admin invite"),
+      buildInviteRecord("user", "Already used demo invite", true),
+    ],
+    coachStudents: demoStudents,
+    coachGroups: demoGroups,
+    groupCandidates: demoStudents.map((entry) => ({
+      id: entry.student.id,
+      name: entry.student.name,
+      username: entry.student.username,
+      role: entry.student.role,
+      email: entry.student.email,
+      targetRole: entry.student.targetRole,
+      accessTier: entry.student.accessTier,
+    })),
   };
 }
 
@@ -803,7 +1090,8 @@ function safeParse(value: string, fallback: Record<string, unknown> | null) {
 function readState() {
   const stored = window.localStorage.getItem(DEMO_STATE_STORAGE_KEY);
   const state = stored ? safeParse(stored, null) : null;
-  const resolved = state || buildInitialState();
+  const role = window.localStorage.getItem(DEMO_ROLE_STORAGE_KEY) === "admin" ? "admin" : "user";
+  const resolved = state || buildInitialState(role);
   window.localStorage.setItem(DEMO_STATE_STORAGE_KEY, JSON.stringify(resolved));
   return resolved;
 }
@@ -886,14 +1174,17 @@ export function isDemoModeEnabled() {
   return window.localStorage.getItem(DEMO_MODE_STORAGE_KEY) === "true";
 }
 
-export function activateDemoMode(): AuthResult {
+export function activateDemoMode(role: DemoRole = "user"): AuthResult {
   window.localStorage.setItem(DEMO_MODE_STORAGE_KEY, "true");
-  const state = readState();
+  window.localStorage.setItem(DEMO_ROLE_STORAGE_KEY, role);
+  const state = buildInitialState(role);
+  window.localStorage.setItem(DEMO_STATE_STORAGE_KEY, JSON.stringify(state));
   return { token: DEMO_SESSION_TOKEN, user: state.user as AuthResult["user"] };
 }
 
 export function clearDemoMode() {
   window.localStorage.removeItem(DEMO_MODE_STORAGE_KEY);
+  window.localStorage.removeItem(DEMO_ROLE_STORAGE_KEY);
   window.localStorage.removeItem(DEMO_STATE_STORAGE_KEY);
 }
 
@@ -983,6 +1274,13 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
   if (pathname === "/uploads/images" && method === "GET") return state.uploads as T;
   if (pathname === "/apk/latest" && method === "GET") return (state.apkVersions[0] || null) as T;
   if (pathname === "/apk/versions" && method === "GET") return state.apkVersions as T;
+  if (pathname === "/invites" && method === "GET") {
+    const limit = Number(url.searchParams.get("limit") || 25);
+    return ((state.invites as Array<Record<string, unknown>>) || []).slice(0, limit) as T;
+  }
+  if (pathname === "/coach/students" && method === "GET") return ((state.coachStudents as unknown[]) || []) as T;
+  if (pathname === "/coach/groups" && method === "GET") return ((state.coachGroups as unknown[]) || []) as T;
+  if (pathname === "/coach/group-candidates" && method === "GET") return ((state.groupCandidates as unknown[]) || []) as T;
   if (pathname === "/power-pocket/active" && method === "GET") return state.powerPocketSession as T;
   if (pathname === "/ai/chat" && method === "GET") return state.mentorHistory as T;
   if (pathname === "/ai/prep-architect/latest" && method === "GET") return (state.prepPlans.find((plan: Record<string, unknown>) => plan.isActive) || null) as T;
@@ -1015,6 +1313,163 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
         updatedAt: new Date().toISOString(),
       },
     })).profile as T;
+  }
+
+  if (pathname === "/invites" && method === "POST") {
+    const invite = buildInviteRecord(body.role === "admin" ? "admin" : "user", String(body.label || "Demo invite"));
+    return updateState((current) => ({
+      ...current,
+      invites: [invite, ...((current.invites as Array<Record<string, unknown>>) || [])],
+    })).invites[0] as T;
+  }
+
+  if (pathname === "/invites/bulk" && method === "POST") {
+    const quantity = clamp(Number(body.quantity || 1), 1, 100);
+    const invites = Array.from({ length: quantity }, (_, index) =>
+      buildInviteRecord(
+        body.role === "admin" ? "admin" : "user",
+        String(body.label || "Demo invite") + (quantity > 1 ? ` #${index + 1}` : ""),
+      )
+    );
+    updateState((current) => ({
+      ...current,
+      invites: [...invites, ...((current.invites as Array<Record<string, unknown>>) || [])],
+    }));
+    return invites as T;
+  }
+
+  if (pathname === "/invites/history" && method === "DELETE") {
+    const inactive = ((state.invites as Array<Record<string, unknown>>) || []).filter((invite) => invite.status !== "valid");
+    updateState((current) => ({
+      ...current,
+      invites: ((current.invites as Array<Record<string, unknown>>) || []).filter((invite) => invite.status === "valid"),
+    }));
+    return { deleted: inactive.length, clearedAt: new Date().toISOString() } as T;
+  }
+
+  if (pathname === "/coach/groups" && method === "POST") {
+    const group = {
+      id: createId("group"),
+      name: String(body.name || "Demo group"),
+      description: typeof body.description === "string" ? body.description : null,
+      createdBy: "demo-admin",
+      createdByName: "Demo Admin",
+      metadata: { source: "demo-mode" },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      memberCount: 0,
+      assignmentRecipientCount: 0,
+      members: [],
+    };
+    return updateState((current) => ({
+      ...current,
+      coachGroups: [group, ...((current.coachGroups as Array<Record<string, unknown>>) || [])],
+    })).coachGroups[0] as T;
+  }
+
+  const groupMembersMatch = pathname.match(/^\/coach\/groups\/([^/]+)\/members$/);
+  if (groupMembersMatch && method === "POST") {
+    const groupId = groupMembersMatch[1];
+    const studentIds = Array.isArray(body.studentUserIds) ? body.studentUserIds.map(String) : [];
+    const candidates = ((state.groupCandidates as Array<Record<string, unknown>>) || []);
+    const nextGroups = ((state.coachGroups as Array<Record<string, unknown>>) || []).map((group) => {
+      if (group.id !== groupId) {
+        return group;
+      }
+      const existingMembers = (group.members as Array<Record<string, unknown>>) || [];
+      const members = [
+        ...existingMembers,
+        ...studentIds
+          .filter((id) => !existingMembers.some((member) => member.userId === id))
+          .map((id) => {
+            const candidate = candidates.find((entry) => entry.id === id);
+            return {
+              groupId,
+              userId: id,
+              name: candidate?.name || "Demo student",
+              username: candidate?.username || null,
+              role: candidate?.role || "user",
+              email: candidate?.email || "student.demo@placeprep.app",
+              targetRole: candidate?.targetRole || null,
+              readinessScore: candidate?.readinessScore || 70,
+              accessTier: candidate?.accessTier || "standard",
+              addedBy: "demo-admin",
+              addedByName: "Demo Admin",
+              createdAt: new Date().toISOString(),
+            };
+          }),
+      ];
+      return { ...group, members, memberCount: members.length, assignmentRecipientCount: members.filter((member) => member.role === "user").length, updatedAt: new Date().toISOString() };
+    });
+    const updated = nextGroups.find((group) => group.id === groupId) || null;
+    updateState((current) => ({ ...current, coachGroups: nextGroups }));
+    return updated as T;
+  }
+
+  const groupMemberDeleteMatch = pathname.match(/^\/coach\/groups\/([^/]+)\/members\/([^/]+)$/);
+  if (groupMemberDeleteMatch && method === "DELETE") {
+    const [, groupId, studentUserId] = groupMemberDeleteMatch;
+    const nextGroups = ((state.coachGroups as Array<Record<string, unknown>>) || []).map((group) => {
+      if (group.id !== groupId) {
+        return group;
+      }
+      const members = ((group.members as Array<Record<string, unknown>>) || []).filter((member) => member.userId !== studentUserId);
+      return { ...group, members, memberCount: members.length, assignmentRecipientCount: members.filter((member) => member.role === "user").length, updatedAt: new Date().toISOString() };
+    });
+    const updated = nextGroups.find((group) => group.id === groupId) || null;
+    updateState((current) => ({ ...current, coachGroups: nextGroups }));
+    return updated as T;
+  }
+
+  if (pathname === "/coach/practice-capsules" && method === "POST") {
+    const students = ((state.coachStudents as Array<Record<string, unknown>>) || []);
+    const groups = ((state.coachGroups as Array<Record<string, unknown>>) || []);
+    const targetStudentIds = typeof body.studentUserId === "string"
+      ? [body.studentUserId]
+      : typeof body.groupId === "string"
+        ? (((groups.find((group) => group.id === body.groupId)?.members as Array<Record<string, unknown>>) || [])
+          .filter((member) => member.role === "user")
+          .map((member) => String(member.userId)))
+        : [];
+    const items = Array.isArray(body.items) && body.items.length ? body.items : [{ title: "Demo admin practice", category: "Core" }];
+    const capsules = targetStudentIds.map((studentId) => ({
+      bundleId: createId("capsule"),
+      title: String(body.title || "Demo admin bundle"),
+      note: typeof body.note === "string" ? body.note : null,
+      studentUserId: studentId,
+      assignedById: "demo-admin",
+      assignedByName: "Demo Admin",
+      assignmentId: createId("assignment"),
+      dueAt: typeof body.deadlineAt === "string" ? body.deadlineAt : addDaysIso(1),
+      scheduledFor: typeof body.scheduledFor === "string" ? body.scheduledFor : new Date().toISOString().slice(0, 10),
+      createdAt: new Date().toISOString(),
+      items: items.map((item: Record<string, unknown>, index: number) => ({
+        taskId: createId("capsule-task"),
+        title: String(item.title || `Demo assignment ${index + 1}`),
+        description: typeof item.description === "string" ? item.description : null,
+        category: typeof item.category === "string" ? item.category : "Core",
+        status: "pending",
+        referenceLabel: typeof item.referenceLabel === "string" ? item.referenceLabel : String(item.title || "Demo assignment"),
+        referenceUrl: typeof item.referenceUrl === "string" ? item.referenceUrl : null,
+        capsuleType: "admin-assignment",
+        dueAt: typeof body.deadlineAt === "string" ? body.deadlineAt : addDaysIso(1),
+        scheduledFor: typeof body.scheduledFor === "string" ? body.scheduledFor : new Date().toISOString().slice(0, 10),
+        createdAt: new Date().toISOString(),
+      })),
+    }));
+    const nextStudents = students.map((entry) => targetStudentIds.includes(String((entry.student as Record<string, unknown>)?.id))
+      ? { ...entry, practiceCapsules: [...capsules.filter((capsule) => capsule.studentUserId === (entry.student as Record<string, unknown>)?.id), ...((entry.practiceCapsules as unknown[]) || [])] }
+      : entry);
+    updateState((current) => ({ ...current, coachStudents: nextStudents }));
+    return {
+      dispatchId: createId("dispatch"),
+      targetKind: typeof body.groupId === "string" ? "group" : "student",
+      targetId: String(body.groupId || body.studentUserId || ""),
+      targetLabel: typeof body.groupId === "string" ? "Demo group" : "Demo student",
+      recipientsCount: targetStudentIds.length,
+      notificationsCreated: targetStudentIds.length,
+      capsules,
+    } as T;
   }
 
   if (pathname === "/tasks" && method === "POST") {
@@ -1370,6 +1825,17 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
       });
     });
     return { deleted, clearedAt: new Date().toISOString() } as T;
+  }
+
+  if (/^\/coach\/students\/[^/]+\/proofs$/.test(pathname) && method === "DELETE") {
+    return { deleted: 1, clearedAt: new Date().toISOString() } as T;
+  }
+  if (pathname === "/coach/progress/history" && method === "DELETE") {
+    return { deleted: 3, clearedAt: new Date().toISOString(), affectedUsers: 1, scope: body.scope || "selected" } as T;
+  }
+  if (pathname === "/coach/practice-capsules/history" && method === "DELETE") {
+    const requestedIds = Array.isArray(body.assignmentIds) ? body.assignmentIds.length : 0;
+    return { deleted: requestedIds || 1, clearedAt: new Date().toISOString(), affectedUsers: 1, scope: body.groupId ? "group" : "student" } as T;
   }
 
   if (pathname.endsWith("/history") && method === "DELETE") return { deleted: 0, clearedAt: new Date().toISOString() } as T;

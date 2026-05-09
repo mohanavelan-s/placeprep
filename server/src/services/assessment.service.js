@@ -248,6 +248,74 @@ function shuffle(values = []) {
   return next;
 }
 
+function normalizeChoiceFingerprint(value) {
+  return normalizeText(value).replace(/\s+/g, ' ').trim();
+}
+
+function getTopicDistractors(source, correctText) {
+  const topic = String(source.topic || source.referenceLabel || source.taskTitle || 'this topic').trim();
+  const normalizedTopic = normalizeText(topic);
+  const distractors = [
+    `Treat ${topic} as a memorized definition and skip the tradeoff.`,
+    `Choose the most complex approach for ${topic} before checking constraints.`,
+    `Explain ${topic} without a concrete example, edge case, or practical use case.`,
+    `Start coding ${topic} immediately without naming the core pattern first.`,
+  ];
+
+  if (normalizedTopic.includes('dbms') || normalizedTopic.includes('sql') || normalizedTopic.includes('database')) {
+    distractors.push('Pick joins, indexes, and transactions randomly without checking the query goal.');
+  }
+  if (normalizedTopic.includes('operating') || normalizedTopic === 'os') {
+    distractors.push('List OS terms broadly without naming the process, memory, or scheduling tradeoff.');
+  }
+  if (normalizedTopic.includes('system')) {
+    distractors.push('Jump into tools before clarifying traffic, bottlenecks, consistency, and failure modes.');
+  }
+  if (normalizedTopic.includes('dynamic') || normalizedTopic === 'dp') {
+    distractors.push('Force recursion without defining state, transition, base cases, and overlapping subproblems.');
+  }
+  if (normalizedTopic.includes('graph')) {
+    distractors.push('Traverse nodes without tracking visited state, queue or stack behavior, and complexity.');
+  }
+  if (normalizedTopic.includes('array') || normalizedTopic.includes('string')) {
+    distractors.push('Brute-force every pair before checking whether a hash map, window, or pointer pattern fits.');
+  }
+
+  const correctFingerprint = normalizeChoiceFingerprint(correctText);
+  return distractors.filter((text) => normalizeChoiceFingerprint(text) !== correctFingerprint);
+}
+
+function buildMcqOptions(questionId, correctText, distractors = []) {
+  const seen = new Set();
+  const optionTexts = [correctText, ...distractors]
+    .map((text) => String(text || '').trim())
+    .filter((text) => {
+      const fingerprint = normalizeChoiceFingerprint(text);
+      if (!fingerprint || seen.has(fingerprint)) {
+        return false;
+      }
+      seen.add(fingerprint);
+      return true;
+    });
+
+  const fallbackDistractors = GENERIC_DISTRACTORS.filter((text) => !seen.has(normalizeChoiceFingerprint(text)));
+  optionTexts.push(...fallbackDistractors);
+
+  const selectedTexts = optionTexts.slice(0, 4);
+  while (selectedTexts.length < 4) {
+    selectedTexts.push(`Use one concrete example and tradeoff before moving forward. Checkpoint ${selectedTexts.length + 1}.`);
+  }
+
+  const options = shuffle(selectedTexts).map((text, optionIndex) => ({
+    id: `${questionId}-option-${optionIndex + 1}`,
+    label: String.fromCharCode(65 + optionIndex),
+    text,
+  }));
+  const correctOption = options.find((option) => normalizeChoiceFingerprint(option.text) === normalizeChoiceFingerprint(correctText)) || options[0];
+
+  return { options, correctOption };
+}
+
 function extractKeywords(value, fallback = []) {
   const normalized = normalizeText(value);
   const keywords = normalized
@@ -652,18 +720,12 @@ function buildMcqQuestions(plan, sources, durationMinutes) {
     const questionId = `mcq-${index + 1}-${slugify(source.referenceLabel || source.topic || `topic-${index + 1}`)}`;
     const correctText = buildContextualAnswer(source, flashcard);
     const distractors = uniqueStrings([
+      ...getTopicDistractors(source, correctText),
       ...answersBySource
         .map((entry) => buildContextualAnswer(entry.source, entry.flashcard))
-        .filter((entry) => entry && normalizeText(entry) !== normalizeText(correctText)),
-      ...GENERIC_DISTRACTORS,
+        .filter((entry) => entry && normalizeChoiceFingerprint(entry) !== normalizeChoiceFingerprint(correctText)),
     ], 10);
-    const optionTexts = shuffle([correctText, ...distractors.slice(0, 3)]).slice(0, 4);
-    const options = optionTexts.map((text, optionIndex) => ({
-      id: `${questionId}-option-${optionIndex + 1}`,
-      label: String.fromCharCode(65 + optionIndex),
-      text,
-    }));
-    const correctOption = options.find((option) => normalizeText(option.text) === normalizeText(correctText)) || options[0];
+    const { options, correctOption } = buildMcqOptions(questionId, correctText, distractors);
 
     return {
       id: questionId,

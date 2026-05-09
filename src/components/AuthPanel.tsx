@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { KeyRound, Lock, UserPlus } from "lucide-react";
+import { KeyRound, Lock, ShieldCheck, UserPlus, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
@@ -22,7 +22,7 @@ interface AuthPanelProps {
     placementDate?: string;
     weakAreas?: string[];
   }) => Promise<unknown>;
-  onEnterDemo: () => void;
+  onEnterDemo: (role: "admin" | "user") => void;
   initialMode?: "login" | "register";
   initialInviteCode?: string;
 }
@@ -434,8 +434,13 @@ export default function AuthPanel({
                   when you return.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <Button type="button" variant="outline" className="border-border/80 bg-background/60" onClick={onEnterDemo}>
-                    Explore demo workspace
+                  <Button type="button" variant="outline" className="gap-2 border-border/80 bg-background/60" onClick={() => onEnterDemo("user")}>
+                    <UserRound className="h-4 w-4" />
+                    User demo
+                  </Button>
+                  <Button type="button" variant="outline" className="gap-2 border-border/80 bg-background/60" onClick={() => onEnterDemo("admin")}>
+                    <ShieldCheck className="h-4 w-4" />
+                    Admin demo
                   </Button>
                 </div>
               </div>
