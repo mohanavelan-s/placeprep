@@ -27,6 +27,18 @@ interface AuthPanelProps {
   initialInviteCode?: string;
 }
 
+function getErrorTitle(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function getErrorDetail(error: unknown) {
+  if (error instanceof Error && "detail" in error && typeof error.detail === "string") {
+    return error.detail;
+  }
+
+  return undefined;
+}
+
 export default function AuthPanel({
   onLogin,
   onRegister,
@@ -76,7 +88,9 @@ export default function AuthPanel({
       await onLogin(loginForm);
       toast.success("Signed in to PlacePrep.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to sign in.");
+      toast.error(getErrorTitle(error, "Unable to sign in."), {
+        description: getErrorDetail(error),
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -102,7 +116,9 @@ export default function AuthPanel({
       });
       toast.success("Account created and signed in.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to create account.");
+      toast.error(getErrorTitle(error, "Unable to create account."), {
+        description: getErrorDetail(error),
+      });
     } finally {
       setIsSubmitting(false);
     }

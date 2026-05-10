@@ -4,6 +4,7 @@
 
 - Deploy the React app on Vercel.
 - Set `VITE_API_URL=https://your-backend-domain/api`.
+- Optionally set `VITE_API_FALLBACK_URLS` to comma-separated backup API origins for faster diagnosis if the primary URL stops resolving.
 
 ## Backend
 

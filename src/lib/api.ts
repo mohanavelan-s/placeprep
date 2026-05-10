@@ -712,6 +712,9 @@ interface RegisterPayload {
 }
 
 const DEFAULT_API_BASE_URL = "/api";
+const PRODUCTION_API_FALLBACK_URLS = [
+  "https://placeprep-api-production-3670.up.railway.app/api",
+] as const;
 const KNOWN_ENDPOINT_SUFFIXES = [
   "/api/health",
   "/health",
@@ -810,16 +813,53 @@ function normalizeConfiguredApiBaseUrl(rawValue?: string) {
   return normalizeRelativeApiBaseUrl(configuredValue);
 }
 
-function resolveApiBaseUrl() {
-  return normalizeConfiguredApiBaseUrl(import.meta.env.VITE_API_URL);
+function splitConfiguredApiUrls(rawValue?: string) {
+  return String(rawValue || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map(normalizeConfiguredApiBaseUrl);
 }
 
-const API_BASE_URL = resolveApiBaseUrl();
+function isLocalApiBaseUrl(value: string) {
+  return /^\/(?!\/)/.test(value)
+    || /^https?:\/\/(?:localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)(?::\d+)?(?:\/|$)/i.test(value);
+}
+
+function shouldIncludeProductionApiFallback(primaryUrl: string) {
+  if (isLocalApiBaseUrl(primaryUrl)) {
+    return false;
+  }
+
+  if (typeof window !== "undefined") {
+    return /(?:^|\.)vercel\.app$/i.test(window.location.hostname)
+      || /placeprep/i.test(window.location.hostname);
+  }
+
+  return true;
+}
+
+function resolveApiBaseUrls() {
+  const primaryUrl = normalizeConfiguredApiBaseUrl(import.meta.env.VITE_API_URL);
+  const fallbackUrls = splitConfiguredApiUrls(import.meta.env.VITE_API_FALLBACK_URLS);
+  const productionFallbackUrls = shouldIncludeProductionApiFallback(primaryUrl)
+    ? PRODUCTION_API_FALLBACK_URLS
+    : [];
+
+  return Array.from(new Set([
+    primaryUrl,
+    ...fallbackUrls,
+    ...productionFallbackUrls,
+  ].filter(Boolean)));
+}
+
+const API_BASE_URLS = resolveApiBaseUrls();
+const API_BASE_URL = API_BASE_URLS[0] || DEFAULT_API_BASE_URL;
 const TOKEN_STORAGE_KEY = "placeprep.token";
 const USER_STORAGE_KEY = "placeprep.user";
 
-function shouldAttachNgrokBypassHeader() {
-  return /ngrok-free\.(app|dev)/i.test(API_BASE_URL);
+function shouldAttachNgrokBypassHeader(apiBaseUrl: string) {
+  return /ngrok-free\.(app|dev)/i.test(apiBaseUrl);
 }
 
 type RequestOptions = RequestInit & {
@@ -832,7 +872,7 @@ interface Envelope<T> {
   message?: string;
 }
 
-function buildHeaders(options: RequestOptions, token: string | null) {
+function buildHeaders(options: RequestOptions, token: string | null, apiBaseUrl: string) {
   const headers = new Headers(options.headers || {});
 
   if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
@@ -843,11 +883,62 @@ function buildHeaders(options: RequestOptions, token: string | null) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  if (shouldAttachNgrokBypassHeader()) {
+  if (shouldAttachNgrokBypassHeader(apiBaseUrl)) {
     headers.set("ngrok-skip-browser-warning", "1");
   }
 
   return headers;
+}
+
+type ApiRequestError = Error & {
+  detail?: string;
+  status?: number;
+  url?: string;
+  method?: string;
+};
+
+function createApiRequestError(
+  message: string,
+  detail: string,
+  extras: Partial<Pick<ApiRequestError, "status" | "url" | "method">> = {},
+) {
+  const error = new Error(message) as ApiRequestError;
+  error.detail = detail;
+  Object.assign(error, extras);
+  return error;
+}
+
+function isApiRequestError(error: unknown): error is ApiRequestError {
+  return error instanceof Error && "detail" in error;
+}
+
+function isLikelyNetworkError(error: unknown) {
+  return error instanceof TypeError
+    || /failed to fetch|networkerror|load failed|cors|fetch/i.test(String((error as Error | undefined)?.message || error || ""));
+}
+
+function describePayloadMessage(payload: Envelope<unknown> | { message?: string } | null) {
+  return (payload && "message" in payload && payload.message) || "";
+}
+
+function buildAttemptDetail({
+  method,
+  path,
+  attempts,
+  lastError,
+}: {
+  method: string;
+  path: string;
+  attempts: string[];
+  lastError?: unknown;
+}) {
+  const lastMessage = lastError instanceof Error ? lastError.message : String(lastError || "unknown");
+  return [
+    `Method: ${method} ${path}`,
+    `Tried: ${attempts.join(" -> ")}`,
+    `Last error: ${lastMessage}`,
+    "Likely causes: backend URL is down, DNS failed, CORS blocked the request, or the backend deployment is still starting.",
+  ].join("\n");
 }
 
 async function request<T>(path: string, options: RequestOptions = {}) {
@@ -856,42 +947,104 @@ async function request<T>(path: string, options: RequestOptions = {}) {
       return await handleDemoRequest<T>(path, options);
     }
 
+    const method = options.method || "GET";
     const token = getStoredToken();
-    const response = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
-      headers: buildHeaders(options, token),
-    });
+    const attempts: string[] = [];
+    let lastNetworkError: unknown = null;
 
-    const contentType = response.headers.get("content-type") || "";
-    let payload: Envelope<T> | { message?: string } | null = null;
+    for (const apiBaseUrl of API_BASE_URLS) {
+      const requestUrl = `${apiBaseUrl}${path}`;
+      attempts.push(requestUrl);
 
-    if (contentType.includes("application/json")) {
       try {
-        payload = (await response.json()) as Envelope<T> | { message?: string };
+        const response = await fetch(requestUrl, {
+          ...options,
+          headers: buildHeaders(options, token, apiBaseUrl),
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        let payload: Envelope<T> | { message?: string } | null = null;
+
+        if (contentType.includes("application/json")) {
+          try {
+            payload = (await response.json()) as Envelope<T> | { message?: string };
+          } catch (error) {
+            console.error(`[API] Failed to parse JSON for ${method} ${path}.`, error);
+          }
+        }
+
+        if (!response.ok) {
+          const serverMessage = describePayloadMessage(payload);
+          const errorMessage = serverMessage
+            ? `HTTP ${response.status}: ${serverMessage}`
+            : `HTTP ${response.status}: ${response.statusText || "Request failed"}`;
+          const detail = [
+            `Method: ${method} ${path}`,
+            `URL: ${requestUrl}`,
+            `Status: ${response.status} ${response.statusText || ""}`.trim(),
+            serverMessage ? `Server message: ${serverMessage}` : null,
+          ].filter(Boolean).join("\n");
+          const error = createApiRequestError(errorMessage, detail, {
+            method,
+            status: response.status,
+            url: requestUrl,
+          });
+          console.error(`[API] ${method} ${path} failed with ${response.status}.`, {
+            status: response.status,
+            url: requestUrl,
+            payload,
+          });
+          throw error;
+        }
+
+        if (!payload || !("data" in payload)) {
+          const detail = [
+            `Method: ${method} ${path}`,
+            `URL: ${requestUrl}`,
+            `Status: ${response.status} ${response.statusText || ""}`.trim(),
+            `Content-Type: ${contentType || "unknown"}`,
+          ].join("\n");
+          const error = createApiRequestError("Unexpected response from server.", detail, {
+            method,
+            status: response.status,
+            url: requestUrl,
+          });
+          console.error(`[API] ${method} ${path} returned an unexpected payload.`, {
+            url: requestUrl,
+            payload,
+          });
+          throw error;
+        }
+
+        return payload.data;
       } catch (error) {
-        console.error(`[API] Failed to parse JSON for ${options.method || "GET"} ${path}.`, error);
+        if (isApiRequestError(error)) {
+          throw error;
+        }
+
+        if (isLikelyNetworkError(error)) {
+          lastNetworkError = error;
+          console.warn(`[API] ${method} ${path} could not reach ${requestUrl}. Trying next API base if available.`, error);
+          continue;
+        }
+
+        throw error;
       }
     }
 
-    if (!response.ok) {
-      const errorMessage =
-        (payload && "message" in payload && payload.message) ||
-        `Request failed with status ${response.status}`;
-      const error = new Error(errorMessage);
-      console.error(`[API] ${options.method || "GET"} ${path} failed with ${response.status}.`, {
-        status: response.status,
-        payload,
-      });
-      throw error;
-    }
-
-    if (!payload || !("data" in payload)) {
-      const error = new Error("Unexpected response from server.");
-      console.error(`[API] ${options.method || "GET"} ${path} returned an unexpected payload.`, payload);
-      throw error;
-    }
-
-    return payload.data;
+    throw createApiRequestError(
+      "Network error: API did not respond.",
+      buildAttemptDetail({
+        method,
+        path,
+        attempts,
+        lastError: lastNetworkError,
+      }),
+      {
+        method,
+        url: attempts[attempts.length - 1],
+      },
+    );
   } catch (error) {
     console.error(`[API] ${options.method || "GET"} ${path} threw an exception.`, error);
     throw error instanceof Error ? error : new Error("Network request failed.");
