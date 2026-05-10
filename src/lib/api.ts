@@ -839,6 +839,15 @@ function shouldIncludeProductionApiFallback(primaryUrl: string) {
   return true;
 }
 
+function shouldPreferSameOriginApi() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return /(?:^|\.)vercel\.app$/i.test(window.location.hostname)
+    || /placeprep/i.test(window.location.hostname);
+}
+
 function resolveApiBaseUrls() {
   const primaryUrl = normalizeConfiguredApiBaseUrl(import.meta.env.VITE_API_URL);
   const fallbackUrls = splitConfiguredApiUrls(import.meta.env.VITE_API_FALLBACK_URLS);
@@ -847,6 +856,7 @@ function resolveApiBaseUrls() {
     : [];
 
   return Array.from(new Set([
+    ...(shouldPreferSameOriginApi() ? [DEFAULT_API_BASE_URL] : []),
     primaryUrl,
     ...fallbackUrls,
     ...productionFallbackUrls,
