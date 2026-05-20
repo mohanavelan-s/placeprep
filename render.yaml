@@ -24,7 +24,7 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
-        value: gpt-4o-mini
+        value: openai/gpt-5.5-pro
       - key: AI_PROVIDER
         value: openrouter
       - key: SMTP_HOST
