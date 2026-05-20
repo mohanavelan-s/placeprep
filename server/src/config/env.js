@@ -93,6 +93,23 @@ function normalizeWebPushSubject(value, fallbackEmail = '') {
   return 'mailto:support@placeprep.app';
 }
 
+const LEGACY_DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+const OPENROUTER_DEFAULT_MODEL = 'openai/gpt-5.5-pro';
+
+function resolveAIModel(provider, configuredModel) {
+  const model = String(configuredModel || '').trim();
+
+  if (provider === 'openrouter') {
+    if (!model || model === LEGACY_DEFAULT_OPENAI_MODEL) {
+      return OPENROUTER_DEFAULT_MODEL;
+    }
+
+    return model.includes('/') ? model : `openai/${model}`;
+  }
+
+  return model || LEGACY_DEFAULT_OPENAI_MODEL;
+}
+
 const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT || 5000),
@@ -108,7 +125,7 @@ const env = {
   jwtSecret: process.env.JWT_SECRET || 'change-this-in-production',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   openaiApiKey: process.env.OPENAI_API_KEY || '',
-  openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+  openaiModel: process.env.OPENAI_MODEL || LEGACY_DEFAULT_OPENAI_MODEL,
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || '',
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || '',
@@ -158,9 +175,7 @@ env.openaiEnabled = Boolean(env.openaiApiKey);
 env.aiProvider = process.env.AI_PROVIDER || detectAIProvider(env.openaiApiKey);
 env.aiBaseUrl = process.env.AI_BASE_URL
   || (env.aiProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' : undefined);
-env.aiModel = env.aiProvider === 'openrouter' && !env.openaiModel.includes('/')
-  ? `openai/${env.openaiModel}`
-  : env.openaiModel;
+env.aiModel = resolveAIModel(env.aiProvider, env.openaiModel);
 env.cloudinaryEnabled = Boolean(
   env.cloudinaryCloudName && env.cloudinaryApiKey && env.cloudinaryApiSecret
 );
