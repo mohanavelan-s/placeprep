@@ -163,7 +163,7 @@ const env = {
   deliveryWorkerCron: process.env.DELIVERY_WORKER_CRON || '*/1 * * * *',
   deliveryWorkerBatchSize: Number(process.env.DELIVERY_WORKER_BATCH_SIZE || 12),
   publicSignupEnabled: process.env.INVITE_ONLY_ACCESS !== 'true',
-  judge0Enabled: process.env.JUDGE0_ENABLED === 'true',
+  judge0Enabled: process.env.JUDGE0_ENABLED !== 'false',
   judge0BaseUrl: process.env.JUDGE0_BASE_URL || 'https://ce.judge0.com',
   judge0ApiKey: process.env.JUDGE0_API_KEY || '',
   judge0AuthHeader: process.env.JUDGE0_AUTH_HEADER || 'X-Auth-Token',
