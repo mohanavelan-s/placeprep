@@ -60,6 +60,11 @@ async function listTasks(user, filters = {}) {
     ? getTodayInTimezone(user.timezone)
     : (filters.date ? normalizeDate(filters.date, user.timezone) : undefined);
 
+  if (dateFilter === getTodayInTimezone(user.timezone) && !filters.status && !filters.category) {
+    const prepArchitectService = require('./prepArchitect.service');
+    await prepArchitectService.ensureTodayTasksForActivePlan(user);
+  }
+
   const tasks = await taskRepository.listByUser(user.id, {
     date: dateFilter,
     status: filters.status,

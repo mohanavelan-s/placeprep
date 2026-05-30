@@ -1,4 +1,4 @@
-import { Code2, Github, Globe2, Linkedin } from "lucide-react";
+import { Github, Globe2, Linkedin } from "lucide-react";
 
 import ResumeSigilIcon from "@/components/ResumeSigilIcon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -16,10 +16,29 @@ interface PrepIdentityDockProps {
 const iconMap = {
   linkedin: Linkedin,
   github: Github,
-  leetcode: Code2,
+  leetcode: LeetCodeGlyph,
   portfolio: Globe2,
   resume: ResumeSigilIcon,
 } as const;
+
+function LeetCodeGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2.2"
+    >
+      <path d="M15.8 4.2 8.2 11.8a3.6 3.6 0 0 0 0 5.1l1.1 1.1a3.6 3.6 0 0 0 5.1 0l1.4-1.4" />
+      <path d="M10.3 9.7 7.8 7.2" />
+      <path d="M12.1 12h7.1" />
+    </svg>
+  );
+}
 
 const accentMap = {
   linkedin: "hover:border-sky-400/35 hover:bg-sky-400/10 hover:text-sky-100",

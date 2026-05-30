@@ -12,9 +12,11 @@ import { LanguageProvider, useLanguage } from "@/context/LanguageContext";
 import { canAccessAppPath } from "@/lib/access";
 
 const AppShell = lazy(() => import("@/components/AppShell"));
+const AdminConsolePage = lazy(() => import("./pages/AdminConsolePage.tsx"));
 const AssessmentsPage = lazy(() => import("./pages/AssessmentsPage.tsx"));
 const AiMentorPage = lazy(() => import("./pages/AiMentorPage.tsx"));
 const AuthPage = lazy(() => import("./pages/AuthPage.tsx"));
+const CodingLabPage = lazy(() => import("./pages/CodingLabPage.tsx"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage.tsx"));
 const LandingPage = lazy(() => import("./pages/LandingPage.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
@@ -64,13 +66,17 @@ function TitleUpdater() {
       "/dashboard": "Command Chamber",
       "/prep-architect": "Prep Architect",
       "/assessments": "Assessments",
+      "/coding-lab": "Coding Lab",
+      "/admin-console": "Admin Console",
       "/tasks": "Mission Control",
       "/progress": "Progress Intel",
       "/profile": "Profile",
       "/settings": "Settings",
       "/ai-mentor": "Nocturne Mentor",
     };
-    const pageName = pageNameMap[location.pathname] || "PlacePrep";
+    const pageName = location.pathname.startsWith("/coding-lab")
+      ? pageNameMap["/coding-lab"]
+      : pageNameMap[location.pathname] || "PlacePrep";
 
     document.title = `${t(pageName)} | PlacePrep`;
   }, [location.pathname, t]);
@@ -94,7 +100,7 @@ function ProtectedWorkspaceLayout() {
 }
 
 function AppRoutes() {
-  const { isAuthenticated, isInitializing, login, register, enterDemoMode } = useAuth();
+  const { isAuthenticated, isInitializing, login, register, enterDemoMode, user } = useAuth();
 
   if (isInitializing) {
     return <LoadingState />;
@@ -113,7 +119,10 @@ function AppRoutes() {
             <Route path="/dashboard" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/prep-architect" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/tasks" element={<Navigate to="/auth?mode=login" replace />} />
+            <Route path="/coding-lab" element={<Navigate to="/auth?mode=login" replace />} />
+            <Route path="/coding-lab/:taskId" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/assessments" element={<Navigate to="/auth?mode=login" replace />} />
+            <Route path="/admin-console" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/progress" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/profile" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/settings" element={<Navigate to="/auth?mode=login" replace />} />
@@ -139,7 +148,13 @@ function AppRoutes() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/prep-architect" element={<PrepArchitectPage />} />
             <Route path="/assessments" element={<AssessmentsPage />} />
+            <Route path="/coding-lab" element={<CodingLabPage />} />
+            <Route path="/coding-lab/:taskId" element={<CodingLabPage />} />
             <Route path="/tasks" element={<TasksPage />} />
+            <Route
+              path="/admin-console"
+              element={user?.role === "admin" ? <AdminConsolePage /> : <Navigate to="/dashboard" replace />}
+            />
             <Route path="/progress" element={<ProgressPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/settings" element={<SettingsPage />} />

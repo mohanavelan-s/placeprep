@@ -7,7 +7,6 @@ import { toast } from "sonner";
 
 import CoachProfilePanel from "@/components/CoachProfilePanel";
 import CountdownTimer from "@/components/CountdownTimer";
-import AndroidAccessPanel from "@/components/AndroidAccessPanel";
 import DashboardCoachPanel from "@/components/DashboardCoachPanel";
 import DashboardDailyTasks from "@/components/DashboardDailyTasks";
 import DashboardPowerPocket from "@/components/DashboardPowerPocket";
@@ -376,7 +375,6 @@ export default function DashboardPage() {
           />
         </div>
 
-        <AndroidAccessPanel />
       </div>
     </div>
   );

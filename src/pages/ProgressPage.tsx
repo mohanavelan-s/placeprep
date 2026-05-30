@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import AdminStudentOversightPanel from "@/components/AdminStudentOversightPanel";
 import ClearHistoryButton from "@/components/ClearHistoryButton";
 import DashboardProgressCharts from "@/components/DashboardProgressCharts";
 import SoftSyncNotice from "@/components/SoftSyncNotice";
@@ -11,13 +10,11 @@ import { ProgressSkeleton } from "@/components/WorkspaceSkeletons";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import XPBar from "@/components/XPBar";
-import { useAuth } from "@/context/AuthContext";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import { clearProgressHistory, fetchProgressHistory, fetchProgressSummary } from "@/lib/api";
 
 export default function ProgressPage() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
   const [selectedHistoryIds, setSelectedHistoryIds] = useState<string[]>([]);
   const summaryQuery = useQuery({
     queryKey: ["progress-summary"],
@@ -54,7 +51,10 @@ export default function ProgressPage() {
   });
 
   const summary = summaryQuery.data ?? null;
-  const history = Array.isArray(historyQuery.data) ? historyQuery.data : [];
+  const history = useMemo(
+    () => (Array.isArray(historyQuery.data) ? historyQuery.data : []),
+    [historyQuery.data],
+  );
   const isBooting = summaryQuery.isPending && !summary;
   const hasError = summaryQuery.isError;
   const hasHistorySyncIssue = historyQuery.isError;
@@ -226,8 +226,6 @@ export default function ProgressPage() {
           )}
         </div>
       </section>
-
-      {user?.role === "admin" && <AdminStudentOversightPanel />}
     </div>
   );
 }

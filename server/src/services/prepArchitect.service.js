@@ -1659,6 +1659,55 @@ function buildPriorPlanTaskLookup(previousTasks = []) {
   return { byIndex, byTitle };
 }
 
+function extractProblemSlug(value) {
+  const text = String(value || '').trim();
+  const leetCodeMatch = text.match(/leetcode\.com\/problems\/([^/?#]+)/i);
+  if (leetCodeMatch?.[1]) {
+    return leetCodeMatch[1].trim().toLowerCase();
+  }
+
+  if (/^[a-z0-9-]+$/i.test(text) && text.includes('-')) {
+    return text.toLowerCase();
+  }
+
+  return '';
+}
+
+function inferProblemPlatform(item = {}) {
+  const combined = [
+    item.referenceUrl,
+    item.referenceLabel,
+    item.title,
+  ].join(' ');
+
+  if (/leetcode/i.test(combined)) {
+    return 'leetcode';
+  }
+  if (/hackerrank/i.test(combined)) {
+    return 'hackerrank';
+  }
+  if (/codechef/i.test(combined)) {
+    return 'codechef';
+  }
+  if (/sql|dbms|database/i.test(combined)) {
+    return 'sql';
+  }
+
+  return 'custom';
+}
+
+function isCodingLabCandidate(item = {}) {
+  const combined = [
+    item.type,
+    item.title,
+    item.referenceLabel,
+    item.referenceUrl,
+    item.summary,
+  ].join(' ');
+
+  return /dsa|coding|leetcode|hackerrank|codechef|algorithm|sql|dbms|database|array|string|tree|graph|stack|queue|dynamic|recursion|backtracking/i.test(combined);
+}
+
 function planTasksForSync(plan, planId, previousTasks = []) {
   const firstDay = plan.tasks[0];
   if (!firstDay?.items?.length) {
@@ -1671,6 +1720,9 @@ function planTasksForSync(plan, planId, previousTasks = []) {
     const matchedTask = lookup.byIndex.get(index)
       || lookup.byTitle.get(String(item.title || '').trim().toLowerCase())
       || null;
+    const platform = inferProblemPlatform(item);
+    const codingLabEnabled = isCodingLabCandidate(item);
+    const problemSlug = extractProblemSlug(item.referenceUrl || item.referenceLabel || item.title);
 
     return {
       title: item.title,
@@ -1691,9 +1743,16 @@ function planTasksForSync(plan, planId, previousTasks = []) {
         source: 'prep-architect',
         planId,
         day: firstDay.day,
+        planDay: firstDay.day,
         theme: firstDay.theme,
         itemIndex: index,
         summary: item.summary || null,
+        bundleTitle: `${firstDay.day || 'Day 1'} Tasks`,
+        codingLabEnabled,
+        problemPlatform: platform,
+        problemSlug: problemSlug || null,
+        problemTitle: item.referenceLabel || item.title,
+        problemUrl: item.referenceUrl || null,
       },
       completedAt: matchedTask?.completedAt || null,
     };
@@ -1723,6 +1782,22 @@ async function syncTodayTasks(user, plan) {
         scheduledFor,
       })
     )
+  );
+}
+
+async function ensureTodayTasksForActivePlan(user) {
+  const activePlan = await prepPlanRepository.findLatestActiveByUser(user.id);
+  const hydratedPlan = hydrateStoredPlan(activePlan);
+
+  if (!hydratedPlan) {
+    return [];
+  }
+
+  const existingTasks = await syncTodayTasks(user, hydratedPlan);
+  return existingTasks || taskRepository.listPrepArchitectTasksByPlanAndDate(
+    user.id,
+    hydratedPlan.id,
+    getTodayInTimezone(user.timezone),
   );
 }
 
@@ -2085,4 +2160,5 @@ module.exports = {
   activatePlan,
   renamePlan,
   clearPlanHistory,
+  ensureTodayTasksForActivePlan,
 };

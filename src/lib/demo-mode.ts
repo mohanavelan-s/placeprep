@@ -418,11 +418,150 @@ function buildTasksFromPlan(plan: ReturnType<typeof buildPlan>) {
     difficulty: /easy/i.test(item.difficulty) ? 2 : /hard/i.test(item.difficulty) ? 4 : 3,
     weakArea: plan.tasks[0].theme,
     aiGenerated: true,
-    metadata: { source: "demo-mode", planId: plan.id, itemIndex: index, summary: item.summary || null },
+    metadata: {
+      source: "demo-mode",
+      planId: plan.id,
+      itemIndex: index,
+      summary: item.summary || null,
+      codingLabEnabled: /dsa|coding|leetcode|hackerrank|codechef|algorithm|sql|dbms|database|array|string|tree|graph|stack|queue|dynamic|recursion|backtracking/i.test([
+        item.type,
+        item.title,
+        item.referenceLabel,
+        item.referenceUrl,
+        item.summary,
+      ].join(" ")),
+      problemPlatform: /leetcode/i.test(`${item.referenceLabel} ${item.referenceUrl}`) ? "leetcode" : /sql|dbms|database/i.test(`${item.title} ${item.summary}`) ? "sql" : "custom",
+      problemTitle: item.referenceLabel || item.title,
+      problemUrl: item.referenceUrl || null,
+    },
     completedAt: index === 0 ? new Date().toISOString() : null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }));
+}
+
+const demoCodingLanguages = [
+  { key: "python", label: "Python", enabled: true, id: 71, providerName: "Python 3 demo", unavailableReason: null, setupWarning: null },
+  { key: "c", label: "C", enabled: true, id: 50, providerName: "GCC demo", unavailableReason: null, setupWarning: null },
+  { key: "cpp", label: "C++", enabled: true, id: 54, providerName: "G++ demo", unavailableReason: null, setupWarning: null },
+  { key: "java", label: "Java", enabled: true, id: 62, providerName: "OpenJDK demo", unavailableReason: null, setupWarning: null },
+  { key: "mysql", label: "MySQL", enabled: false, id: null, providerName: null, unavailableReason: "SQL execution is not connected in demo mode.", setupWarning: "Static SQL analysis is available in demo mode." },
+  { key: "postgresql", label: "PostgreSQL", enabled: false, id: null, providerName: null, unavailableReason: "SQL execution is not connected in demo mode.", setupWarning: "Static SQL analysis is available in demo mode." },
+];
+
+function normalizeDemoProblemInput(input: Record<string, unknown> = {}, task?: Record<string, unknown> | null) {
+  const metadata = (task?.metadata as Record<string, unknown>) || {};
+  const sourceUrl = String(input.url || metadata.problemUrl || task?.referenceUrl || "");
+  const leetCodeMatch = sourceUrl.match(/leetcode\.com\/problems\/([^/?#]+)/i);
+  const slug = String(input.slug || metadata.problemSlug || leetCodeMatch?.[1] || input.title || task?.title || "demo-practice-problem")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const title = String(input.title || input.problemTitle || metadata.problemTitle || task?.referenceLabel || task?.title || "Demo practice problem");
+  const platform = String(input.platform || metadata.problemPlatform || (leetCodeMatch ? "leetcode" : /sql|dbms|database/i.test(title) ? "sql" : "custom"));
+
+  return {
+    platform,
+    number: null,
+    slug,
+    title,
+    url: sourceUrl || null,
+    description: String(input.description || task?.description || metadata.summary || "Solve the problem and compare the result against the expected behavior."),
+    difficulty: String(input.difficulty || (Number(task?.difficulty || 3) >= 4 ? "Hard" : Number(task?.difficulty || 3) <= 2 ? "Easy" : "Medium")),
+    examples: ["Input: 2 7 11 15, target 9\nOutput: 0 1"],
+    constraints: ["Handle empty inputs.", "Explain time and space complexity."],
+    starterCode: {
+      python: "# Write your solution here\n",
+      c: "#include <stdio.h>\n\nint main(void) {\n  return 0;\n}\n",
+      cpp: "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n  return 0;\n}\n",
+      java: "class Main {\n  public static void main(String[] args) {\n  }\n}\n",
+      mysql: "-- Write your MySQL query here\n",
+      postgresql: "-- Write your PostgreSQL query here\n",
+    },
+    extractionStatus: sourceUrl ? "resolved" : "manual",
+    extractionMessage: sourceUrl ? "Demo mode prepared this workspace from the supplied problem link." : null,
+  };
+}
+
+function buildDemoCodingSubmission(
+  body: Record<string, unknown>,
+  task: Record<string, unknown> | null,
+  final = false,
+) {
+  const sourceCode = String(body.sourceCode || body.source || "");
+  const language = String(body.language || "python");
+  const isSql = ["mysql", "postgresql"].includes(language);
+  const hasImplementation = sourceCode.trim().length > 40 || /\b(return|print|select|join|where|def|class|int main)\b/i.test(sourceCode);
+  const status = isSql
+    ? "analysis_only"
+    : /compile\s*error|syntax\s*error/i.test(sourceCode)
+      ? "compile_error"
+      : hasImplementation
+        ? "accepted"
+        : "wrong_answer";
+  const outputMatched = String(body.expectedOutput || "").trim() ? status === "accepted" : null;
+  const score = status === "accepted" ? 86 : status === "analysis_only" ? 64 : status === "compile_error" ? 24 : 42;
+  const problem = normalizeDemoProblemInput((body.problem as Record<string, unknown>) || {}, task);
+  const now = new Date().toISOString();
+
+  return {
+    id: createId("code-run"),
+    userId: "demo-user",
+    taskId: task?.id || body.taskId || null,
+    problem,
+    language,
+    sourceCode,
+    stdin: typeof body.stdin === "string" ? body.stdin : null,
+    expectedOutput: typeof body.expectedOutput === "string" ? body.expectedOutput : null,
+    status,
+    stdout: status === "accepted" ? String(body.expectedOutput || "Demo output accepted.").trim() : null,
+    stderr: status === "compile_error" ? "Demo compiler found a syntax issue near the marked line." : null,
+    compileOutput: status === "compile_error" ? "Compilation failed in demo mode." : null,
+    judgeToken: createId("judge-token"),
+    time: status === "accepted" ? 0.04 : null,
+    memory: status === "accepted" ? 9600 : null,
+    testResults: [{
+      name: body.expectedOutput ? "Expected output" : "Sandbox run",
+      passed: status === "accepted",
+      status,
+      expectedOutput: body.expectedOutput || null,
+      actualOutput: status === "accepted" ? String(body.expectedOutput || "Demo output accepted.").trim() : null,
+      message: final ? "Final demo submission recorded." : "Demo run complete.",
+    }],
+    analysis: {
+      problemTitle: problem.title,
+      language,
+      status,
+      summary: status === "accepted"
+        ? "The demo sandbox marked this solution as strong enough to submit."
+        : status === "analysis_only"
+          ? "SQL execution is not configured in demo mode, so static analysis was recorded."
+          : "The demo sandbox found issues. Improve the implementation and rerun.",
+      weakSpots: status === "accepted" ? [] : ["Correctness", "Edge cases"],
+      recommendations: status === "accepted"
+        ? ["State complexity clearly before copying the answer to the original platform."]
+        : ["Add a complete implementation and dry-run one edge case before submitting."],
+      detectedComplexity: /o\s*\(/i.test(sourceCode) ? sourceCode.match(/o\s*\([^)]*\)/i)?.[0] : "not stated",
+      executionUnavailable: status === "analysis_only",
+      finalized: final,
+    },
+    rubric: {
+      correctnessScore: status === "accepted" ? 90 : outputMatched === false ? 20 : 45,
+      executionScore: status === "accepted" ? 100 : status === "analysis_only" ? 30 : 35,
+      complexityScore: /o\s*\(/i.test(sourceCode) ? 78 : 52,
+      logicScore: hasImplementation ? 80 : 40,
+      readabilityScore: sourceCode.split("\n").length > 3 ? 80 : 58,
+      finalScore: score,
+      outputMatched,
+      detectedComplexity: /o\s*\(/i.test(sourceCode) ? sourceCode.match(/o\s*\([^)]*\)/i)?.[0] : "not stated",
+      recommendations: status === "accepted"
+        ? ["Good submission. Copy the final code when you are ready to reuse it on the original platform."]
+        : ["Improve correctness, then rerun before submitting final."],
+    },
+    score,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 function buildCoachProfile(tasks: Array<Record<string, unknown>>, plan: Record<string, unknown> | null) {
@@ -1145,6 +1284,7 @@ function buildInitialState(role: DemoRole = "user") {
     },
     prepPlans: [activePlan, previousPlan],
     assessmentSessions: [],
+    codingSubmissions: [],
     tasks,
     progressSummary,
     progressHistory: buildProgressHistory(progressSummary),
@@ -1322,6 +1462,17 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
   const state = readState();
 
   if (pathname === "/auth/me" && method === "GET") return state.user as T;
+  if (pathname === "/health" && method === "GET") {
+    return {
+      status: "ok",
+      service: "placeprep-demo",
+      version: "demo",
+      timestamp: new Date().toISOString(),
+      emailEnabled: true,
+      notificationSchedulerEnabled: true,
+      appUrl: window.location.origin,
+    } as T;
+  }
   if (pathname === "/profile" && method === "GET") return state.profile as T;
   if (pathname === "/profile/web-push/config" && method === "GET") return { enabled: false, publicKey: "" } as T;
   if (pathname === "/profile/push-subscriptions") return {} as T;
@@ -1415,6 +1566,129 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
     const status = url.searchParams.get("status");
     const category = url.searchParams.get("category");
     return state.tasks.filter((task: Record<string, unknown>) => (!status || task.status === status) && (!category || task.category === category)) as T;
+  }
+
+  if (pathname === "/coding/languages" && method === "GET") {
+    return demoCodingLanguages as T;
+  }
+
+  if (pathname === "/coding/problem/resolve" && method === "POST") {
+    return normalizeDemoProblemInput(body as Record<string, unknown>) as T;
+  }
+
+  const codingTaskMatch = pathname.match(/^\/coding\/task\/([^/]+)$/);
+  if (codingTaskMatch && method === "GET") {
+    const taskId = codingTaskMatch[1];
+    const task = (state.tasks as Array<Record<string, unknown>>).find((item) => item.id === taskId);
+    if (!task) {
+      throw new Error("Coding task not found.");
+    }
+    const submissions = ((state.codingSubmissions as Array<Record<string, unknown>>) || [])
+      .filter((submission) => submission.taskId === taskId)
+      .slice(0, 8);
+    return {
+      task,
+      problem: normalizeDemoProblemInput({}, task),
+      languages: demoCodingLanguages,
+      submissions,
+    } as T;
+  }
+
+  const codingRunMatch = pathname.match(/^\/coding\/runs\/([^/]+)$/);
+  if (codingRunMatch && method === "GET") {
+    const runId = codingRunMatch[1];
+    return (((state.codingSubmissions as Array<Record<string, unknown>>) || []).find((submission) => submission.id === runId) || null) as T;
+  }
+
+  if (pathname === "/coding/submissions" && method === "GET") {
+    const limit = clamp(Number(url.searchParams.get("limit") || 20), 1, 50);
+    return (((state.codingSubmissions as Array<Record<string, unknown>>) || []).slice(0, limit)) as T;
+  }
+
+  if ((pathname === "/coding/runs" || pathname === "/coding/submissions") && method === "POST") {
+    const taskId = typeof body.taskId === "string" ? body.taskId : "";
+    const task = taskId
+      ? ((state.tasks as Array<Record<string, unknown>>) || []).find((item) => item.id === taskId) || null
+      : null;
+    const final = pathname === "/coding/submissions" || Boolean(body.final);
+    const submission = buildDemoCodingSubmission(body as Record<string, unknown>, task, final);
+    const nextSubmissions = [submission, ...(((state.codingSubmissions as Array<Record<string, unknown>>) || []))];
+    const nextTasks = final && task
+      ? ((state.tasks as Array<Record<string, unknown>>) || []).map((item) => item.id === task.id ? {
+        ...item,
+        status: Number(submission.score || 0) >= 75 ? "completed" : item.status === "pending" ? "in_progress" : item.status,
+        completedAt: Number(submission.score || 0) >= 75 ? new Date().toISOString() : item.completedAt,
+        metadata: {
+          ...((item.metadata as Record<string, unknown>) || {}),
+          codingLabEnabled: true,
+          codingLabLastSubmissionId: submission.id,
+          codingLabLastScore: submission.score,
+          codingLabLastStatus: submission.status,
+          codingLabLastSubmittedAt: submission.createdAt,
+        },
+        updatedAt: new Date().toISOString(),
+      } : item)
+      : (state.tasks as Array<Record<string, unknown>>) || [];
+    const assessmentEntry = final ? {
+      id: createId("assessment"),
+      userId: "demo-user",
+      planId: state.prepPlans?.[0]?.id || null,
+      status: "completed",
+      assessmentType: "coding_lab",
+      assessmentScope: "daily",
+      durationMinutes: 20,
+      weakSpots: ((submission.analysis as Record<string, unknown>).weakSpots as string[]) || [],
+      recommendations: (((submission.rubric as Record<string, unknown>).recommendations as string[]) || []).map((recommendation) => ({
+        topic: submission.problem.title,
+        reason: `${submission.language} submission scored ${Math.round(Number(submission.score || 0))}%.`,
+        action: recommendation,
+        problemLabel: submission.problem.title,
+        problemUrl: submission.problem.url,
+      })),
+      questions: [{
+        id: `coding-lab-${submission.id}`,
+        type: "coding",
+        topic: submission.problem.title,
+        prompt: `Solve ${submission.problem.title} in ${submission.language}.`,
+        difficulty: submission.problem.difficulty || "medium",
+        averageTimeMinutes: 20,
+        referenceLabel: submission.problem.platform,
+        referenceUrl: submission.problem.url,
+        taskTitle: submission.problem.title,
+        approachHint: "Use the sandbox feedback and submit once correctness and complexity are defensible.",
+      }],
+      submission: {
+        answers: { [`coding-lab-${submission.id}`]: submission.sourceCode },
+        questionResults: [{
+          questionId: `coding-lab-${submission.id}`,
+          topic: submission.problem.title,
+          score: Number(submission.score || 0) / 100,
+          correct: Number(submission.score || 0) >= 75,
+          feedback: String((submission.analysis as Record<string, unknown>).summary || "Coding Lab submission recorded."),
+          rubric: submission.rubric,
+          analysis: submission.analysis,
+          codingSubmissionId: submission.id,
+        }],
+        codingSubmissionId: submission.id,
+        submittedAt: submission.createdAt,
+      },
+      score: submission.score,
+      metadata: { source: "coding_lab", codingSubmissionId: submission.id, taskId: submission.taskId || null },
+      startedAt: submission.createdAt,
+      submittedAt: submission.createdAt,
+      createdAt: submission.createdAt,
+      updatedAt: submission.updatedAt,
+    } : null;
+
+    updateState((current) => refreshState({
+      ...current,
+      tasks: nextTasks,
+      codingSubmissions: nextSubmissions,
+      assessmentSessions: assessmentEntry
+        ? [assessmentEntry, ...(((current.assessmentSessions as Array<Record<string, unknown>>) || []))]
+        : ((current.assessmentSessions as Array<Record<string, unknown>>) || []),
+    }));
+    return submission as T;
   }
 
   if (pathname === "/auth/me" && method === "PATCH") {
@@ -1617,7 +1891,13 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
       difficulty: Number(body.difficulty || 3),
       weakArea: typeof body.weakArea === "string" ? body.weakArea : null,
       aiGenerated: false,
-      metadata: { source: "demo-mode" },
+      metadata: {
+        source: "demo-mode",
+        codingLabEnabled: /dsa|coding|leetcode|hackerrank|codechef|algorithm|sql|dbms|database|array|string|tree|graph|stack|queue|dynamic|recursion|backtracking/i.test(`${body.category || ""} ${body.title || ""} ${body.referenceLabel || ""} ${body.referenceUrl || ""}`),
+        problemPlatform: /leetcode/i.test(String(body.referenceUrl || body.referenceLabel || "")) ? "leetcode" : "custom",
+        problemTitle: String(body.referenceLabel || body.title || "Demo task"),
+        problemUrl: typeof body.referenceUrl === "string" ? body.referenceUrl : null,
+      },
       completedAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

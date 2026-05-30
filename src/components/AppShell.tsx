@@ -3,6 +3,7 @@ import {
   ClipboardList,
   ChevronRight,
   BrainCircuit,
+  Code2,
   LayoutDashboard,
   LineChart,
   ListTodo,
@@ -10,6 +11,7 @@ import {
   Menu,
   MessageSquareText,
   Settings,
+  ShieldCheck,
   UserCircle2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -41,8 +43,10 @@ const navItems = [
   { to: "/dashboard", label: "Command Chamber", icon: LayoutDashboard, observerVisible: true },
   { to: "/prep-architect", label: "Prep Architect", icon: BrainCircuit, observerVisible: false },
   { to: "/assessments", label: "Assessments", icon: ClipboardList, observerVisible: false },
+  { to: "/coding-lab", label: "Coding Lab", icon: Code2, observerVisible: false },
   { to: "/tasks", label: "Tasks", icon: ListTodo, observerVisible: true },
   { to: "/progress", label: "Progress", icon: LineChart, observerVisible: false },
+  { to: "/admin-console", label: "Admin Console", icon: ShieldCheck, observerVisible: false, adminOnly: true },
   { to: "/ai-mentor", label: "Nocturne Mentor", icon: MessageSquareText, observerVisible: true },
   { to: "/settings", label: "Settings", icon: Settings, observerVisible: false },
   { to: "/profile", label: "Profile", icon: UserCircle2, observerVisible: false },
@@ -67,9 +71,17 @@ const pageMeta: Record<string, { title: string; description: string }> = {
     title: "Assessments",
     description: "Probe. Measure. Adapt.",
   },
+  "/coding-lab": {
+    title: "Coding Lab",
+    description: "Run. Score. Submit.",
+  },
   "/progress": {
     title: "Progress Intel",
     description: "Signal. Drift. Recover.",
+  },
+  "/admin-console": {
+    title: "Admin Console",
+    description: "Invite. Group. Assign.",
   },
   "/profile": {
     title: "Profile",
@@ -86,6 +98,10 @@ const pageMeta: Record<string, { title: string; description: string }> = {
 };
 
 function resolveMeta(pathname: string) {
+  if (pathname.startsWith("/coding-lab")) {
+    return pageMeta["/coding-lab"];
+  }
+
   return pageMeta[pathname] || pageMeta["/dashboard"];
 }
 
@@ -120,7 +136,7 @@ function ShellSidebar({
           <nav className="mt-3 space-y-1">
             {visibleNavItems.map((item) => {
               const Icon = item.icon;
-              const isActive = currentPath === item.to;
+              const isActive = currentPath === item.to || (item.to === "/coding-lab" && currentPath.startsWith("/coding-lab"));
 
               return (
                 <RouterNavLink
@@ -207,7 +223,8 @@ export default function AppShell() {
   const latestPlan = prepPlanQuery.data;
   const observerMode = isObserverUser(user);
   const avatarFallback = getAvatarFallbackLabel(user?.name, user?.username);
-  const visibleNavItems = observerMode ? navItems.filter((item) => item.observerVisible) : navItems;
+  const visibleNavItems = (observerMode ? navItems.filter((item) => item.observerVisible) : navItems)
+    .filter((item) => !item.adminOnly || user?.role === "admin");
   const identityLinks = [
     { href: profile?.linkedinUrl, label: "LinkedIn", kind: "linkedin" },
     { href: profile?.githubUrl, label: "GitHub", kind: "github" },

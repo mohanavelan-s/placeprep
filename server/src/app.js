@@ -18,6 +18,7 @@ const resumeRoutes = require('./routes/resume.routes');
 const aiRoutes = require('./routes/ai.routes');
 const assessmentRoutes = require('./routes/assessment.routes');
 const coachRoutes = require('./routes/coach.routes');
+const codingRoutes = require('./routes/coding.routes');
 const { getAIStatus } = require('./config/openai');
 const errorHandler = require('./middleware/errorHandler');
 const notFound = require('./middleware/notFound');
@@ -28,6 +29,7 @@ const {
   uploadLimiter,
   aiLimiter,
   adminLimiter,
+  codeRunLimiter,
 } = require('./middleware/rateLimit');
 
 const app = express();
@@ -137,6 +139,7 @@ app.use('/api/resume', uploadLimiter, resumeRoutes);
 app.use('/api/ai', aiLimiter, aiRoutes);
 app.use('/api/assessments', standardApiLimiter, assessmentRoutes);
 app.use('/api/coach', adminLimiter, coachRoutes);
+app.use('/api/coding', codeRunLimiter, codingRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

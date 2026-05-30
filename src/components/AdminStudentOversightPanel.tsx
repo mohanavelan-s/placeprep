@@ -484,9 +484,9 @@ export default function AdminStudentOversightPanel() {
   useQueryErrorLogger("AdminStudentOversightPanel:groups", groupsQuery.error);
   useQueryErrorLogger("AdminStudentOversightPanel:group-candidates", groupCandidatesQuery.error);
 
-  const students = studentsQuery.data || [];
-  const groups = groupsQuery.data || [];
-  const groupCandidates = groupCandidatesQuery.data || [];
+  const students = useMemo(() => studentsQuery.data || [], [studentsQuery.data]);
+  const groups = useMemo(() => groupsQuery.data || [], [groupsQuery.data]);
+  const groupCandidates = useMemo(() => groupCandidatesQuery.data || [], [groupCandidatesQuery.data]);
   const isBooting = studentsQuery.isPending && !students.length;
   const hasPrimarySyncError = studentsQuery.isError;
   const hasSecondarySyncIssue = groupsQuery.isError || groupCandidatesQuery.isError;

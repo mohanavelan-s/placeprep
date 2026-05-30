@@ -76,6 +76,12 @@ const adminLimiter = createLimiter({
   message: 'Admin request limit reached. Please pause briefly and try again.',
 });
 
+const codeRunLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: 'Coding Lab execution limit reached. Pause briefly, then run again.',
+});
+
 module.exports = {
   attachRateLimitIdentity,
   authLimiter,
@@ -83,4 +89,5 @@ module.exports = {
   uploadLimiter,
   aiLimiter,
   adminLimiter,
+  codeRunLimiter,
 };

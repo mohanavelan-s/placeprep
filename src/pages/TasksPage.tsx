@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { Code2, Plus, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import HoursInput from "@/components/HoursInput";
@@ -217,7 +218,25 @@ function formatTaskDueLabel(value?: string | null) {
   }
 }
 
+function supportsCodingLab(task: Task) {
+  const metadata = task.metadata || {};
+  const searchable = [
+    task.category,
+    task.subcategory,
+    task.title,
+    task.referenceLabel,
+    task.referenceUrl,
+    metadata.problemPlatform,
+    metadata.problemSlug,
+    metadata.problemTitle,
+  ].join(" ");
+
+  return Boolean(metadata.codingLabEnabled)
+    || /dsa|coding|leetcode|hackerrank|codechef|algorithm|sql|dbms|database|array|string|tree|graph|stack|queue|dynamic|recursion|backtracking/i.test(searchable);
+}
+
 export default function TasksPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { language, t } = useLanguage();
@@ -472,6 +491,18 @@ export default function TasksPage() {
                     </p>
                   )}
                 </div>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2 text-muted-foreground"
+                  onClick={() => navigate(`/coding-lab/${task.id}`)}
+                  disabled={!supportsCodingLab(task)}
+                >
+                  <Code2 className="h-4 w-4" />
+                  Lab
+                </Button>
 
                 <Button
                   type="button"

@@ -41,14 +41,14 @@ import {
   fetchAssessmentOverview,
   generateAssessment,
   submitAssessment,
+  type AssessmentGeneratorType,
   type AssessmentQuestion,
   type AssessmentScope,
   type AssessmentSession,
-  type AssessmentType,
 } from "@/lib/api";
 
 const ASSESSMENT_OPTIONS: Array<{
-  type: AssessmentType;
+  type: AssessmentGeneratorType;
   title: string;
   description: string;
   icon: typeof ClipboardList;
@@ -364,7 +364,7 @@ function QuestionCard({
 export default function AssessmentsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [selectedType, setSelectedType] = useState<AssessmentType>("mcq");
+  const [selectedType, setSelectedType] = useState<AssessmentGeneratorType>("mcq");
   const [assessmentScope, setAssessmentScope] = useState<AssessmentScope>("daily");
   const [durationMinutes, setDurationMinutes] = useState("20");
   const [answers, setAnswers] = useState<Record<string, string>>({});

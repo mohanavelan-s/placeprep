@@ -630,7 +630,7 @@ CREATE TABLE IF NOT EXISTS assessment_sessions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT assessment_sessions_status_check CHECK (status IN ('draft', 'started', 'completed', 'skipped')),
-  CONSTRAINT assessment_sessions_type_check CHECK (assessment_type IN ('mcq', 'fill_blank', 'coding', 'ordering'))
+  CONSTRAINT assessment_sessions_type_check CHECK (assessment_type IN ('mcq', 'fill_blank', 'coding', 'ordering', 'coding_lab'))
 );
 
 ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS plan_id UUID REFERENCES prep_plans(id) ON DELETE SET NULL;
@@ -654,11 +654,64 @@ ADD CONSTRAINT assessment_sessions_status_check CHECK (status IN ('draft', 'star
 
 ALTER TABLE assessment_sessions DROP CONSTRAINT IF EXISTS assessment_sessions_type_check;
 ALTER TABLE assessment_sessions
-ADD CONSTRAINT assessment_sessions_type_check CHECK (assessment_type IN ('mcq', 'fill_blank', 'coding', 'ordering'));
+ADD CONSTRAINT assessment_sessions_type_check CHECK (assessment_type IN ('mcq', 'fill_blank', 'coding', 'ordering', 'coding_lab'));
 
 CREATE INDEX IF NOT EXISTS idx_assessment_sessions_user_created_at ON assessment_sessions(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_assessment_sessions_user_status ON assessment_sessions(user_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_assessment_sessions_plan_id ON assessment_sessions(plan_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS coding_submissions (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+  problem JSONB NOT NULL DEFAULT '{}'::JSONB,
+  language VARCHAR(40) NOT NULL,
+  source_code TEXT NOT NULL,
+  stdin TEXT,
+  expected_output TEXT,
+  status VARCHAR(40) NOT NULL DEFAULT 'queued',
+  stdout TEXT,
+  stderr TEXT,
+  compile_output TEXT,
+  judge_token TEXT,
+  time NUMERIC(8, 3),
+  memory INTEGER,
+  test_results JSONB NOT NULL DEFAULT '[]'::JSONB,
+  analysis JSONB NOT NULL DEFAULT '{}'::JSONB,
+  rubric JSONB NOT NULL DEFAULT '{}'::JSONB,
+  score NUMERIC(5, 2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT coding_submissions_status_check CHECK (status IN ('queued', 'processing', 'accepted', 'wrong_answer', 'compile_error', 'runtime_error', 'timeout', 'failed', 'analysis_only'))
+);
+
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS task_id UUID REFERENCES tasks(id) ON DELETE SET NULL;
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS problem JSONB NOT NULL DEFAULT '{}'::JSONB;
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS language VARCHAR(40) NOT NULL DEFAULT 'python';
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS source_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS stdin TEXT;
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS expected_output TEXT;
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS status VARCHAR(40) NOT NULL DEFAULT 'queued';
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS stdout TEXT;
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS stderr TEXT;
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS compile_output TEXT;
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS judge_token TEXT;
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS time NUMERIC(8, 3);
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS memory INTEGER;
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS test_results JSONB NOT NULL DEFAULT '[]'::JSONB;
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS analysis JSONB NOT NULL DEFAULT '{}'::JSONB;
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS rubric JSONB NOT NULL DEFAULT '{}'::JSONB;
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS score NUMERIC(5, 2) NOT NULL DEFAULT 0;
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE coding_submissions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE coding_submissions DROP CONSTRAINT IF EXISTS coding_submissions_status_check;
+ALTER TABLE coding_submissions
+ADD CONSTRAINT coding_submissions_status_check CHECK (status IN ('queued', 'processing', 'accepted', 'wrong_answer', 'compile_error', 'runtime_error', 'timeout', 'failed', 'analysis_only'));
+
+CREATE INDEX IF NOT EXISTS idx_coding_submissions_user_created_at ON coding_submissions(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_coding_submissions_task_created_at ON coding_submissions(task_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_coding_submissions_status_created_at ON coding_submissions(status, created_at DESC);
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -720,5 +773,8 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'assessment_sessions_set_updated_at') THEN
     CREATE TRIGGER assessment_sessions_set_updated_at BEFORE UPDATE ON assessment_sessions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'coding_submissions_set_updated_at') THEN
+    CREATE TRIGGER coding_submissions_set_updated_at BEFORE UPDATE ON coding_submissions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
   END IF;
 END $$;

@@ -4,6 +4,13 @@ const taskRepository = require('../repositories/task.repository');
 const prepArchitectService = require('./prepArchitect.service');
 const { getTodayInTimezone } = require('../utils/date');
 const AppError = require('../utils/appError');
+const {
+  getAIStatus,
+  getOpenAIClient,
+  markAIUnavailable,
+  markAIWorking,
+  normalizeErrorReason,
+} = require('../config/openai');
 
 const STOP_WORDS = new Set([
   'a',
@@ -125,6 +132,31 @@ function normalizeRecord(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function safeJsonParse(content) {
+  try {
+    return JSON.parse(content);
+  } catch {
+    const match = String(content || '').match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        return {};
+      }
+    }
+    return {};
+  }
+}
+
+function withTimeout(promise, timeoutMs) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Assessment hint generation timed out.')), timeoutMs);
+    }),
+  ]);
+}
+
 function normalizePlanShape(plan) {
   if (!plan) {
     return null;
@@ -212,6 +244,7 @@ function normalizeSessionShape(session) {
       })).filter((item) => item.text),
       placeholder: question?.placeholder ? String(question.placeholder).trim() : null,
       taskTitle: question?.taskTitle ? String(question.taskTitle).trim() : null,
+      approachHint: question?.approachHint ? String(question.approachHint).trim() : null,
     })).filter((question) => question.id && question.prompt),
     submission: {
       ...normalizedSubmission,
@@ -225,6 +258,8 @@ function normalizeSessionShape(session) {
         score: Number(result?.score || 0),
         correct: Boolean(result?.correct),
         feedback: String(result?.feedback || '').trim(),
+        rubric: normalizeRecord(result?.rubric),
+        analysis: normalizeRecord(result?.analysis),
       })).filter((result) => result.questionId),
       submittedAt: normalizedSubmission.submittedAt || session.submittedAt || null,
     },

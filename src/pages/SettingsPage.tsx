@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, BellRing, CheckCircle2, Languages, Mail, Monitor, RefreshCw, Save, Send } from "lucide-react";
 import { toast } from "sonner";
 
-import AdminInvitePanel from "@/components/AdminInvitePanel";
 import AndroidAccessPanel from "@/components/AndroidAccessPanel";
 import ClearHistoryButton from "@/components/ClearHistoryButton";
 import PersonalProfilePanel from "@/components/PersonalProfilePanel";
@@ -827,9 +826,6 @@ export default function SettingsPage() {
       <ResumeAnalysisPanel defaultTargetRole={targetRole || user?.targetRole || ""} />
 
       <AndroidAccessPanel adminMode={user?.role === "admin"} />
-
-      {user?.role === "admin" && <AdminInvitePanel />}
-
       <Dialog open={Boolean(emailDeliveryPopup)} onOpenChange={(open) => !open && setEmailDeliveryPopup(null)}>
         <DialogContent className="border-border/80 bg-background">
           <DialogHeader>

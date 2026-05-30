@@ -577,7 +577,8 @@ export interface PrepPlan {
   usedFallback?: boolean;
 }
 
-export type AssessmentType = "mcq" | "fill_blank" | "coding" | "ordering";
+export type AssessmentType = "mcq" | "fill_blank" | "coding" | "ordering" | "coding_lab";
+export type AssessmentGeneratorType = Exclude<AssessmentType, "coding_lab">;
 export type AssessmentScope = "daily" | "weekly";
 
 export interface AssessmentQuestionChoice {
@@ -602,6 +603,7 @@ export interface AssessmentQuestion {
   }>;
   placeholder?: string | null;
   taskTitle?: string | null;
+  approachHint?: string | null;
 }
 
 export interface AssessmentQuestionResult {
@@ -610,6 +612,9 @@ export interface AssessmentQuestionResult {
   score: number;
   correct: boolean;
   feedback: string;
+  rubric?: Record<string, unknown>;
+  analysis?: Record<string, unknown>;
+  codingSubmissionId?: string;
 }
 
 export interface AssessmentRecommendation {
@@ -675,6 +680,89 @@ export interface AssessmentGenerationResult {
 export interface AssessmentPlanUpdateResult {
   session: AssessmentSession;
   updatedPlan: PrepPlan;
+}
+
+export interface CodingLanguage {
+  key: string;
+  label: string;
+  enabled: boolean;
+  id?: number | null;
+  providerName?: string | null;
+  unavailableReason?: string | null;
+  setupWarning?: string | null;
+}
+
+export interface CodingProblem {
+  platform: string;
+  number?: string | null;
+  slug: string;
+  title: string;
+  url?: string | null;
+  description?: string;
+  difficulty?: string | null;
+  examples: string[];
+  constraints: string[];
+  starterCode?: Record<string, string>;
+  extractionStatus?: "resolved" | "fallback" | "provided" | "manual" | string;
+  extractionMessage?: string | null;
+}
+
+export type CodingRunStatus =
+  | "queued"
+  | "processing"
+  | "accepted"
+  | "wrong_answer"
+  | "compile_error"
+  | "runtime_error"
+  | "timeout"
+  | "failed"
+  | "analysis_only";
+
+export interface CodingSubmission {
+  id: string;
+  userId: string;
+  taskId?: string | null;
+  problem: CodingProblem;
+  language: string;
+  sourceCode: string;
+  stdin?: string | null;
+  expectedOutput?: string | null;
+  status: CodingRunStatus;
+  stdout?: string | null;
+  stderr?: string | null;
+  compileOutput?: string | null;
+  judgeToken?: string | null;
+  time?: number | null;
+  memory?: number | null;
+  testResults: Array<Record<string, unknown>>;
+  analysis: Record<string, unknown>;
+  rubric: Record<string, unknown>;
+  score: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CodingTaskWorkspace {
+  task: Task;
+  problem: CodingProblem;
+  languages: CodingLanguage[];
+  submissions: CodingSubmission[];
+}
+
+export interface CodingRunPayload {
+  taskId?: string;
+  language: string;
+  sourceCode: string;
+  stdin?: string;
+  expectedOutput?: string;
+  problem?: Partial<CodingProblem> & {
+    url?: string;
+    title?: string;
+    slug?: string;
+    description?: string;
+  };
+  problemTitle?: string;
+  problemUrl?: string;
 }
 
 export interface ResumeJobMatchResult {
@@ -1401,6 +1489,7 @@ function normalizeAssessmentQuestion(question: AssessmentQuestion): AssessmentQu
     })).filter((item) => item.text),
     placeholder: question?.placeholder ? String(question.placeholder).trim() : null,
     taskTitle: question?.taskTitle ? String(question.taskTitle).trim() : null,
+    approachHint: question?.approachHint ? String(question.approachHint).trim() : null,
   };
 }
 
@@ -1464,11 +1553,81 @@ function normalizeAssessmentSession(session: AssessmentSession | null): Assessme
         score: Number(result?.score || 0),
         correct: Boolean(result?.correct),
         feedback: String(result?.feedback || "").trim(),
+        rubric: normalizeRecord(result?.rubric),
+        analysis: normalizeRecord(result?.analysis),
+        codingSubmissionId: result?.codingSubmissionId ? String(result.codingSubmissionId).trim() : undefined,
       })).filter((result) => result.questionId),
       submittedAt: submission.submittedAt ? String(submission.submittedAt) : (session.submittedAt || null),
     },
     score: Number(session.score || 0),
     metadata: normalizeRecord(session.metadata),
+  };
+}
+
+function normalizeCodingLanguage(language: CodingLanguage): CodingLanguage {
+  return {
+    key: String(language?.key || "").trim(),
+    label: String(language?.label || language?.key || "").trim(),
+    enabled: Boolean(language?.enabled),
+    id: language?.id === null || language?.id === undefined ? null : Number(language.id),
+    providerName: language?.providerName ? String(language.providerName).trim() : null,
+    unavailableReason: language?.unavailableReason ? String(language.unavailableReason).trim() : null,
+    setupWarning: language?.setupWarning ? String(language.setupWarning).trim() : null,
+  };
+}
+
+function normalizeCodingProblem(problem: CodingProblem | Partial<CodingProblem> | null | undefined): CodingProblem {
+  const starterCode = normalizeRecord(problem?.starterCode) as Record<string, string>;
+
+  return {
+    platform: String(problem?.platform || "custom").trim(),
+    number: problem?.number ? String(problem.number).trim() : null,
+    slug: String(problem?.slug || problem?.title || "practice-problem").trim(),
+    title: String(problem?.title || "Practice problem").trim(),
+    url: problem?.url ? String(problem.url).trim() : null,
+    description: problem?.description ? String(problem.description).trim() : "",
+    difficulty: problem?.difficulty ? String(problem.difficulty).trim() : null,
+    examples: normalizeStringList(problem?.examples, 6),
+    constraints: normalizeStringList(problem?.constraints, 10),
+    starterCode,
+    extractionStatus: problem?.extractionStatus ? String(problem.extractionStatus).trim() : undefined,
+    extractionMessage: problem?.extractionMessage ? String(problem.extractionMessage).trim() : null,
+  };
+}
+
+function normalizeCodingSubmission(submission: CodingSubmission): CodingSubmission {
+  return {
+    ...submission,
+    id: String(submission?.id || "").trim(),
+    userId: String(submission?.userId || "").trim(),
+    taskId: submission?.taskId ? String(submission.taskId).trim() : null,
+    problem: normalizeCodingProblem(submission?.problem),
+    language: String(submission?.language || "python").trim(),
+    sourceCode: String(submission?.sourceCode || ""),
+    stdin: submission?.stdin ? String(submission.stdin) : null,
+    expectedOutput: submission?.expectedOutput ? String(submission.expectedOutput) : null,
+    status: String(submission?.status || "failed").trim() as CodingRunStatus,
+    stdout: submission?.stdout ? String(submission.stdout) : null,
+    stderr: submission?.stderr ? String(submission.stderr) : null,
+    compileOutput: submission?.compileOutput ? String(submission.compileOutput) : null,
+    judgeToken: submission?.judgeToken ? String(submission.judgeToken) : null,
+    time: submission?.time === null || submission?.time === undefined ? null : Number(submission.time),
+    memory: submission?.memory === null || submission?.memory === undefined ? null : Number(submission.memory),
+    testResults: toArray<Record<string, unknown>>(submission?.testResults),
+    analysis: normalizeRecord(submission?.analysis),
+    rubric: normalizeRecord(submission?.rubric),
+    score: Number(submission?.score || 0),
+    createdAt: String(submission?.createdAt || ""),
+    updatedAt: String(submission?.updatedAt || ""),
+  };
+}
+
+function normalizeCodingTaskWorkspace(workspace: CodingTaskWorkspace): CodingTaskWorkspace {
+  return {
+    ...workspace,
+    problem: normalizeCodingProblem(workspace?.problem),
+    languages: toArray<CodingLanguage>(workspace?.languages).map(normalizeCodingLanguage),
+    submissions: toArray<CodingSubmission>(workspace?.submissions).map(normalizeCodingSubmission),
   };
 }
 
@@ -1863,6 +2022,52 @@ export async function deleteTask(taskId: string) {
   });
 }
 
+export async function fetchCodingLanguages() {
+  const languages = await request<CodingLanguage[]>("/coding/languages");
+  return languages.map(normalizeCodingLanguage);
+}
+
+export async function resolveCodingProblem(payload: Partial<CodingProblem> & {
+  url?: string;
+  title?: string;
+  slug?: string;
+  problemTitle?: string;
+  description?: string;
+}) {
+  return normalizeCodingProblem(await request<CodingProblem>("/coding/problem/resolve", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }));
+}
+
+export async function fetchCodingTask(taskId: string) {
+  return normalizeCodingTaskWorkspace(await request<CodingTaskWorkspace>(`/coding/task/${taskId}`));
+}
+
+export async function runCodingCode(payload: CodingRunPayload & { final?: boolean }) {
+  return normalizeCodingSubmission(await request<CodingSubmission>("/coding/runs", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }));
+}
+
+export async function fetchCodingRun(runId: string) {
+  return normalizeCodingSubmission(await request<CodingSubmission>(`/coding/runs/${runId}`));
+}
+
+export async function submitCodingCode(payload: CodingRunPayload) {
+  return normalizeCodingSubmission(await request<CodingSubmission>("/coding/submissions", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }));
+}
+
+export async function fetchCodingSubmissions(filters: { limit?: number } = {}) {
+  const limit = Math.max(1, Math.min(50, Number(filters.limit || 20)));
+  const submissions = await request<CodingSubmission[]>(`/coding/submissions?limit=${limit}`);
+  return submissions.map(normalizeCodingSubmission);
+}
+
 export async function generateAiTasks(payload: {
   availableMinutes?: number;
   weakTopics?: string[];
@@ -2034,7 +2239,7 @@ export async function fetchAssessmentOverview() {
 }
 
 export async function generateAssessment(payload: {
-  assessmentType: AssessmentType;
+  assessmentType: AssessmentGeneratorType;
   durationMinutes?: number;
   assessmentScope?: AssessmentScope;
 }) {
