@@ -143,8 +143,8 @@ const env = {
   smtpPass: process.env.SMTP_PASS || process.env.SMPT_PASS || '',
   smtpFrom: process.env.SMTP_FROM || process.env.SMPT_FROM || process.env.SMTP_USER || process.env.SMPT_USER || '',
   resendApiKey: process.env.RESEND_API_KEY || '',
-  resendFrom: process.env.RESEND_FROM || process.env.SMTP_FROM || process.env.SMPT_FROM || '',
-  emailProvider: process.env.EMAIL_PROVIDER || '',
+  resendFrom: process.env.RESEND_FROM || process.env.EMAIL_FROM || '',
+  emailProvider: process.env.EMAIL_PROVIDER || 'resend',
   webPushPublicKey: process.env.WEB_PUSH_PUBLIC_KEY || '',
   webPushPrivateKey: process.env.WEB_PUSH_PRIVATE_KEY || '',
   webPushSubject: normalizeWebPushSubject(
@@ -203,11 +203,7 @@ env.smtpEnabled = Boolean(
 env.resendEnabled = Boolean(env.resendApiKey && env.resendFrom);
 
 const requestedEmailProvider = String(env.emailProvider || '').trim().toLowerCase();
-if (requestedEmailProvider === 'resend' || requestedEmailProvider === 'smtp') {
-  env.emailProvider = requestedEmailProvider;
-} else {
-  env.emailProvider = env.resendEnabled ? 'resend' : 'smtp';
-}
+env.emailProvider = requestedEmailProvider === 'smtp' ? 'smtp' : 'resend';
 
 env.emailFrom = env.emailProvider === 'resend' ? env.resendFrom : env.smtpFrom;
 env.emailEnabled = env.emailProvider === 'resend' ? env.resendEnabled : env.smtpEnabled;

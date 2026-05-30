@@ -32,6 +32,8 @@ function isIpv6NetworkFailure(error) {
 function normalizeEmailError(error, fallback = 'email_failed') {
   const reason = isIpv6NetworkFailure(error)
     ? 'smtp_ipv6_unreachable'
+    : error?.code === 'RESEND_NOT_CONFIGURED'
+      ? 'resend_not_configured'
     : /^RESEND_/i.test(error?.code || '')
       ? 'resend_delivery_failed'
     : error?.code === 'ETIMEDOUT' || /timed out|timeout/i.test(error?.message || '')

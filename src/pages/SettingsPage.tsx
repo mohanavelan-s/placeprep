@@ -219,6 +219,10 @@ export default function SettingsPage() {
       return "Checking";
     }
 
+    if (healthQuery.data?.emailProvider === "resend") {
+      return "Needs Resend";
+    }
+
     return "Needs provider";
   }, [
     healthQuery.data?.emailEnabled,
