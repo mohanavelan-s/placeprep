@@ -133,6 +133,8 @@ function formatDeliveryReason(reason?: string) {
     smtp_connection_timeout: "SMTP connection timed out",
     smtp_auth_failed: "SMTP login failed",
     smtp_connection_failed: "SMTP connection failed",
+    resend_not_configured: "Resend API key or sender is missing",
+    resend_delivery_failed: "Resend delivery failed",
     email_not_configured: "email provider is not configured",
     email_notifications_disabled: "email notifications are disabled",
     notifications_disabled: "notifications are disabled",
