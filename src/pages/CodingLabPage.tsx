@@ -44,6 +44,11 @@ const FALLBACK_STARTER_CODE: Record<string, string> = {
   c: "#include <stdio.h>\n\nint main(void) {\n  return 0;\n}\n",
   cpp: "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n  return 0;\n}\n",
   java: "class Main {\n  public static void main(String[] args) {\n  }\n}\n",
+  javascript: "function solve() {\n  // Write your solution here\n}\n\nsolve();\n",
+  typescript: "function solve(): void {\n  // Write your solution here\n}\n\nsolve();\n",
+  go: "package main\n\nimport \"fmt\"\n\nfunc main() {\n  fmt.Println(\"Hello, PlacePrep\")\n}\n",
+  rust: "fn main() {\n    println!(\"Hello, PlacePrep\");\n}\n",
+  csharp: "using System;\n\nclass Program {\n  static void Main() {\n  }\n}\n",
   mysql: "-- Write your MySQL query here\n",
   postgresql: "-- Write your PostgreSQL query here\n",
 };
@@ -78,15 +83,172 @@ function compactProblemSource(problem?: CodingProblem | null) {
   return parts.length ? parts.join(" / ") : "Practice problem";
 }
 
-function getStarterCode(problem: CodingProblem | null, language: string) {
-  const starter = problem?.starterCode?.[language];
-  return starter || FALLBACK_STARTER_CODE[language] || FALLBACK_STARTER_CODE.python;
-}
-
 function stringList(value: unknown) {
   return Array.isArray(value)
     ? value.map((entry) => String(entry || "").trim()).filter(Boolean)
     : [];
+}
+
+function inferStarterLanguageKey(language: string, languageInfo?: CodingLanguage | null) {
+  const hint = [
+    language,
+    languageInfo?.label,
+    languageInfo?.providerName,
+  ].join(" ").toLowerCase();
+
+  if (hint.includes("python")) return "python";
+  if (hint.includes("javascript") || hint.includes("node.js") || hint.includes("nodejs")) return "javascript";
+  if (hint.includes("typescript")) return "typescript";
+  if (hint.includes("golang") || /\bgo\b/.test(hint)) return "go";
+  if (hint.includes("rust")) return "rust";
+  if (hint.includes("c#") || hint.includes("csharp")) return "csharp";
+  if (hint.includes("c++") || hint.includes("g++") || hint.includes("cpp")) return "cpp";
+  if (/\bc\b/.test(hint) || hint.includes("gcc")) return "c";
+  if (hint.includes("java")) return "java";
+  if (hint.includes("mysql")) return "mysql";
+  if (hint.includes("postgres")) return "postgresql";
+
+  return FALLBACK_STARTER_CODE[language] ? language : "python";
+}
+
+function getStarterCodeForLanguage(problem: CodingProblem | null, language: string, languageInfo?: CodingLanguage | null) {
+  const starterKey = inferStarterLanguageKey(language, languageInfo);
+  const starter = problem?.starterCode?.[language] || problem?.starterCode?.[starterKey];
+  return starter || FALLBACK_STARTER_CODE[starterKey] || FALLBACK_STARTER_CODE.python;
+}
+
+function looksLikeLeetCodeNumber(value: string) {
+  return /^\s*(?:leetcode|lc)?\s*#?\s*\d{1,5}\s*$/i.test(value);
+}
+
+function looksLikeUrl(value: string) {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+function looksLikeLeetCodeSlug(value: string) {
+  return /^[a-z0-9]+(?:-[a-z0-9]+)+$/i.test(value.trim());
+}
+
+function extractLeetCodeNumber(value: string) {
+  return value.match(/\d{1,5}/)?.[0] || "";
+}
+
+function buildManualProblemPayload({
+  title,
+  url,
+  description,
+}: {
+  title: string;
+  url: string;
+  description: string;
+}) {
+  const lookup = title.trim();
+  const sourceUrl = url.trim() || (looksLikeUrl(lookup) ? lookup : "");
+  const number = looksLikeLeetCodeNumber(lookup) ? extractLeetCodeNumber(lookup) : "";
+  const slug = !sourceUrl && looksLikeLeetCodeSlug(lookup) ? lookup.toLowerCase() : "";
+  const shouldTreatAsLeetCode = Boolean(number || slug || /leetcode\.com/i.test(sourceUrl));
+
+  return {
+    platform: shouldTreatAsLeetCode ? "leetcode" : undefined,
+    title: !number && !slug && !looksLikeUrl(lookup) ? lookup : undefined,
+    problemTitle: !number && !slug && !looksLikeUrl(lookup) ? lookup : undefined,
+    problemNumber: number || undefined,
+    slug: slug || undefined,
+    url: sourceUrl || undefined,
+    description,
+  };
+}
+
+function formatProblemDescription(value: string) {
+  return String(value || "")
+    .replace(/\s+(Example\s+\d+:)/gi, "\n\n$1\n")
+    .replace(/\s+(Input:|Output:|Explanation:|Constraints:)/gi, "\n$1")
+    .replace(/\s+(Table:\s*)/gi, "\n\n$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function ProblemBrief({ problem }: { problem: CodingProblem | null }) {
+  if (!problem) {
+    return (
+      <div className="mt-5 rounded-[1rem] border border-border/70 bg-background/45 p-5">
+        <p className="text-sm leading-7 text-muted-foreground">
+          Resolve a LeetCode number, slug, or link to load a structured problem statement here.
+        </p>
+      </div>
+    );
+  }
+
+  const description = formatProblemDescription(problem.description || "");
+  const examples = stringList(problem.examples).filter((example) => !description.includes(example));
+  const topics = stringList(problem.constraints);
+
+  return (
+    <div className="mt-5 rounded-[1rem] border border-border/70 bg-background/45 p-5">
+      <div className="flex flex-wrap items-center gap-2">
+        {problem.number && (
+          <span className="rounded-full border border-border/70 bg-card/70 px-3 py-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+            #{problem.number}
+          </span>
+        )}
+        {problem.difficulty && (
+          <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs uppercase tracking-[0.14em] text-primary">
+            {problem.difficulty}
+          </span>
+        )}
+        {problem.platform && (
+          <span className="rounded-full border border-border/70 bg-card/70 px-3 py-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+            {problem.platform}
+          </span>
+        )}
+      </div>
+
+      {problem.extractionMessage && (
+        <div className="mt-4 rounded-[0.85rem] border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
+          {problem.extractionMessage}
+        </div>
+      )}
+
+      {description ? (
+        <div className="mt-4 max-h-[34rem] overflow-auto rounded-[0.85rem] border border-border/60 bg-card/45 p-4">
+          <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7 text-foreground/86">
+            {description}
+          </pre>
+        </div>
+      ) : (
+        <p className="mt-4 text-sm leading-7 text-muted-foreground">
+          No statement text is loaded yet. Paste the prompt into the notes box if the original platform blocks extraction.
+        </p>
+      )}
+
+      {!!examples.length && (
+        <div className="mt-4 grid gap-3">
+          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Examples</p>
+          {examples.map((example, index) => (
+            <pre
+              key={`${example}-${index}`}
+              className="whitespace-pre-wrap break-words rounded-[0.85rem] border border-border/60 bg-card/55 p-3 font-mono text-xs leading-6 text-foreground/82"
+            >
+              {example}
+            </pre>
+          ))}
+        </div>
+      )}
+
+      {!!topics.length && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {topics.map((topic) => (
+            <span
+              key={topic}
+              className="rounded-full border border-border/70 bg-card/70 px-3 py-1 text-xs text-muted-foreground"
+            >
+              {topic}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ResultPanel({ result }: { result: CodingSubmission | null }) {
@@ -212,7 +374,6 @@ export default function CodingLabPage() {
   const selectedLanguageInfo = languages.find((language) => language.key === selectedLanguage);
   const submissions = taskWorkspace?.submissions || submissionsQuery.data || [];
   const isLoading = (taskId && taskQuery.isPending) || languagesQuery.isPending;
-  const canRunDisabledLanguage = isSqlLanguage(selectedLanguage);
 
   useEffect(() => {
     const firstEnabled = languages.find((language) => language.enabled)?.key || languages[0]?.key;
@@ -223,9 +384,9 @@ export default function CodingLabPage() {
 
   useEffect(() => {
     if (!sourceTouched && !sourceCode.trim()) {
-      setSourceCode(getStarterCode(problem, selectedLanguage));
+      setSourceCode(getStarterCodeForLanguage(problem, selectedLanguage, selectedLanguageInfo));
     }
-  }, [problem, selectedLanguage, sourceCode, sourceTouched]);
+  }, [problem, selectedLanguage, selectedLanguageInfo, sourceCode, sourceTouched]);
 
   useEffect(() => {
     if (taskWorkspace?.submissions?.[0]) {
@@ -235,16 +396,18 @@ export default function CodingLabPage() {
 
   const resolveProblemMutation = useMutation({
     mutationFn: () =>
-      resolveCodingProblem({
+      resolveCodingProblem(buildManualProblemPayload({
         title: manualTitle,
         url: manualUrl,
         description: manualDescription,
-      }),
+      })),
     onSuccess: (nextProblem) => {
       setResolvedProblem(nextProblem);
       if (!sourceTouched) {
-        setSourceCode(getStarterCode(nextProblem, selectedLanguage));
+        setSourceCode(getStarterCodeForLanguage(nextProblem, selectedLanguage, selectedLanguageInfo));
       }
+      setManualTitle(nextProblem.number ? `${nextProblem.number}. ${nextProblem.title}` : nextProblem.title);
+      setManualUrl(nextProblem.url || "");
       toast.success("Problem workspace prepared.");
     },
     onError: (error) => {
@@ -261,9 +424,12 @@ export default function CodingLabPage() {
         stdin,
         expectedOutput,
         problem: problem || {
+          ...buildManualProblemPayload({
+            title: manualTitle || "Manual Coding Lab problem",
+            url: manualUrl,
+            description: manualDescription,
+          }),
           title: manualTitle || "Manual Coding Lab problem",
-          url: manualUrl,
-          description: manualDescription,
         },
       }),
     onSuccess: async (result) => {
@@ -286,9 +452,12 @@ export default function CodingLabPage() {
         stdin,
         expectedOutput,
         problem: problem || {
+          ...buildManualProblemPayload({
+            title: manualTitle || "Manual Coding Lab problem",
+            url: manualUrl,
+            description: manualDescription,
+          }),
           title: manualTitle || "Manual Coding Lab problem",
-          url: manualUrl,
-          description: manualDescription,
         },
       }),
     onSuccess: async (result) => {
@@ -310,8 +479,7 @@ export default function CodingLabPage() {
 
   const runDisabled = !sourceCode.trim()
     || runMutation.isPending
-    || submitMutation.isPending
-    || (selectedLanguageInfo ? !selectedLanguageInfo.enabled && !canRunDisabledLanguage : false);
+    || submitMutation.isPending;
 
   if (isLoading) {
     return (
@@ -385,19 +553,19 @@ export default function CodingLabPage() {
             <Input
               value={manualTitle}
               onChange={(event) => setManualTitle(event.target.value)}
-              placeholder="Problem title"
+              placeholder="LeetCode #, slug, title, or URL"
               className="h-11 border-border/80 bg-background/70"
             />
             <Input
               value={manualUrl}
               onChange={(event) => setManualUrl(event.target.value)}
-              placeholder="LeetCode, HackerRank, or problem URL"
+              placeholder="Optional problem URL"
               className="h-11 border-border/80 bg-background/70"
             />
             <Button
               type="button"
               className="h-11 gap-2"
-              disabled={resolveProblemMutation.isPending || (!manualTitle.trim() && !manualUrl.trim())}
+              disabled={resolveProblemMutation.isPending || (!manualTitle.trim() && !manualUrl.trim() && !manualDescription.trim())}
               onClick={() => resolveProblemMutation.mutate()}
             >
               {resolveProblemMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
@@ -435,9 +603,10 @@ export default function CodingLabPage() {
             </div>
 
             <Select value={selectedLanguage} onValueChange={(value) => {
+              const nextLanguageInfo = languages.find((language) => language.key === value);
               setSelectedLanguage(value);
               if (!sourceTouched) {
-                setSourceCode(getStarterCode(problem, value));
+                setSourceCode(getStarterCodeForLanguage(problem, value, nextLanguageInfo));
               }
             }}>
               <SelectTrigger className="h-11 w-full border-border/80 bg-background/70 md:w-[220px]">
@@ -446,7 +615,7 @@ export default function CodingLabPage() {
               <SelectContent>
                 {languages.map((language: CodingLanguage) => (
                   <SelectItem key={language.key} value={language.key}>
-                    {language.label}{language.enabled ? "" : " (limited)"}
+                    {language.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -458,17 +627,13 @@ export default function CodingLabPage() {
               {selectedLanguageInfo.setupWarning}
             </div>
           )}
-          {selectedLanguageInfo?.unavailableReason && !selectedLanguageInfo.enabled && !isSqlLanguage(selectedLanguage) && (
-            <div className="mt-4 rounded-[1rem] border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm leading-6 text-rose-100">
+          {selectedLanguageInfo?.unavailableReason && !selectedLanguageInfo.setupWarning && (
+            <div className="mt-4 rounded-[1rem] border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
               {selectedLanguageInfo.unavailableReason}
             </div>
           )}
 
-          {problem?.description && (
-            <div className="mt-5 max-h-56 overflow-auto rounded-[1rem] border border-border/70 bg-background/45 p-4 text-sm leading-6 text-foreground/82">
-              {problem.description}
-            </div>
-          )}
+          <ProblemBrief problem={problem} />
 
           <div className="mt-5 grid gap-4">
             <div>
@@ -541,7 +706,7 @@ export default function CodingLabPage() {
               className="h-11 gap-2 text-muted-foreground"
               onClick={() => {
                 setSourceTouched(false);
-                setSourceCode(getStarterCode(problem, selectedLanguage));
+                setSourceCode(getStarterCodeForLanguage(problem, selectedLanguage, selectedLanguageInfo));
               }}
             >
               <RefreshCcw className="h-4 w-4" />

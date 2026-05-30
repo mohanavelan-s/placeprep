@@ -6,15 +6,27 @@ const LANGUAGE_LABELS = {
   c: 'C',
   cpp: 'C++',
   java: 'Java',
+  javascript: 'JavaScript',
+  typescript: 'TypeScript',
+  go: 'Go',
+  rust: 'Rust',
+  csharp: 'C#',
   mysql: 'MySQL',
   postgresql: 'PostgreSQL',
 };
+
+const DEFAULT_LANGUAGE_KEYS = ['python', 'javascript', 'typescript', 'c', 'cpp', 'java', 'go', 'rust', 'csharp', 'mysql', 'postgresql'];
 
 const LANGUAGE_MATCHERS = {
   python: [/python/i],
   c: [/^c\s*(\(|$)/i, /\bc\s*\(gcc/i],
   cpp: [/c\+\+/i, /\bcpp\b/i],
   java: [/java/i],
+  javascript: [/javascript/i, /node\.?js/i],
+  typescript: [/typescript/i],
+  go: [/^go\s*\(/i, /\bgolang\b/i],
+  rust: [/rust/i],
+  csharp: [/c#/i, /csharp/i],
   mysql: [/mysql/i],
   postgresql: [/postgres/i, /postgresql/i],
 };
@@ -24,8 +36,23 @@ let cachedRegistry = null;
 
 function normalizeLanguageKey(value) {
   const normalized = String(value || '').trim().toLowerCase();
+  if (/^\d+$/.test(normalized)) {
+    return `judge0:${normalized}`;
+  }
   if (['py', 'python3'].includes(normalized)) {
     return 'python';
+  }
+  if (['js', 'node', 'nodejs', 'node.js'].includes(normalized)) {
+    return 'javascript';
+  }
+  if (['ts'].includes(normalized)) {
+    return 'typescript';
+  }
+  if (['golang'].includes(normalized)) {
+    return 'go';
+  }
+  if (['c#', 'cs'].includes(normalized)) {
+    return 'csharp';
   }
   if (['c++', 'cpp17', 'cpp20', 'cplusplus'].includes(normalized)) {
     return 'cpp';
@@ -37,10 +64,24 @@ function normalizeLanguageKey(value) {
   return normalized;
 }
 
-function getAllowedLanguageKeys() {
-  return env.judge0AllowedLanguages
+function getPreferredLanguageKeys() {
+  const configured = env.judge0AllowedLanguages
     .map(normalizeLanguageKey)
     .filter((language) => LANGUAGE_LABELS[language]);
+
+  return Array.from(new Set([
+    ...configured,
+    ...DEFAULT_LANGUAGE_KEYS,
+  ]));
+}
+
+function buildProviderKey(languageId) {
+  return `judge0:${Number(languageId)}`;
+}
+
+function buildProviderLabel(language) {
+  const name = String(language?.name || '').trim();
+  return name || `Judge0 language ${language?.id}`;
 }
 
 function buildHeaders() {
@@ -122,7 +163,7 @@ function providerDisabledRegistry() {
     enabled: false,
     fetchedAt: Date.now(),
     expiresAt: Date.now() + 60 * 60 * 1000,
-    languages: getAllowedLanguageKeys().map((key) => ({
+    languages: getPreferredLanguageKeys().map((key) => ({
       key,
       label: LANGUAGE_LABELS[key],
       enabled: false,
@@ -185,9 +226,14 @@ async function fetchLanguageRegistry({ force = false } = {}) {
   }
 
   const providerLanguages = (await requestJudge0('/languages')).map(normalizeProviderLanguage);
-  const allowedLanguageKeys = getAllowedLanguageKeys();
-  const languages = allowedLanguageKeys.map((key) => {
+  const preferredLanguageKeys = getPreferredLanguageKeys();
+  const preferredIds = new Set();
+  const preferredLanguages = preferredLanguageKeys.map((key) => {
     const matchedLanguage = matchProviderLanguage(key, providerLanguages);
+    if (matchedLanguage?.id) {
+      preferredIds.add(Number(matchedLanguage.id));
+    }
+
     return {
       key,
       label: LANGUAGE_LABELS[key],
@@ -199,12 +245,22 @@ async function fetchLanguageRegistry({ force = false } = {}) {
         : `${LANGUAGE_LABELS[key]} execution is not configured on this Judge0 provider.`,
     };
   });
+  const providerLanguageOptions = providerLanguages
+    .filter((language) => language.id && !language.isArchived && !preferredIds.has(Number(language.id)))
+    .map((language) => ({
+      key: buildProviderKey(language.id),
+      label: buildProviderLabel(language),
+      enabled: true,
+      id: Number(language.id),
+      providerName: buildProviderLabel(language),
+      unavailableReason: null,
+    }));
 
   cachedRegistry = {
     enabled: true,
     fetchedAt: Date.now(),
     expiresAt: Date.now() + 60 * 60 * 1000,
-    languages,
+    languages: [...preferredLanguages, ...providerLanguageOptions],
     providerLanguages,
   };
 
@@ -218,14 +274,23 @@ async function listLanguages() {
 
 async function resolveLanguage(languageKey) {
   const normalizedKey = normalizeLanguageKey(languageKey);
-  if (!getAllowedLanguageKeys().includes(normalizedKey)) {
-    throw new AppError(`${languageKey || 'Requested language'} is not enabled for PlacePrep execution.`, 400, {
-      code: 'language_not_allowed',
-    });
+  const registry = await fetchLanguageRegistry();
+  let language = registry.languages.find((entry) => entry.key === normalizedKey);
+  if (!language && normalizedKey.startsWith('judge0:')) {
+    const providerId = Number(normalizedKey.split(':')[1]);
+    const providerLanguage = registry.providerLanguages.find((entry) => Number(entry.id) === providerId && !entry.isArchived);
+    if (providerLanguage) {
+      language = {
+        key: normalizedKey,
+        label: buildProviderLabel(providerLanguage),
+        enabled: true,
+        id: providerId,
+        providerName: buildProviderLabel(providerLanguage),
+        unavailableReason: null,
+      };
+    }
   }
 
-  const registry = await fetchLanguageRegistry();
-  const language = registry.languages.find((entry) => entry.key === normalizedKey);
   if (!language?.enabled || !language.id) {
     throw new AppError(
       language?.unavailableReason || `${LANGUAGE_LABELS[normalizedKey] || normalizedKey} execution is not configured.`,

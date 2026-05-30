@@ -8,11 +8,19 @@ const judge0Service = require('./judge0.service');
 const progressService = require('./progress.service');
 
 const SQL_LANGUAGES = new Set(['mysql', 'postgresql']);
+const LEETCODE_GRAPHQL_URL = 'https://leetcode.com/graphql/';
+const LEETCODE_REFERER = 'https://leetcode.com/problemset/all/';
+const LEETCODE_USER_AGENT = 'Mozilla/5.0 PlacePrep Coding Lab';
 const DEFAULT_STARTER_CODE = {
   python: '# Write your solution here\n',
   c: '#include <stdio.h>\n\nint main(void) {\n  return 0;\n}\n',
   cpp: '#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n  return 0;\n}\n',
   java: 'class Main {\n  public static void main(String[] args) {\n  }\n}\n',
+  javascript: 'function solve() {\n  // Write your solution here\n}\n\nsolve();\n',
+  typescript: 'function solve(): void {\n  // Write your solution here\n}\n\nsolve();\n',
+  go: 'package main\n\nimport "fmt"\n\nfunc main() {\n  fmt.Println("Hello, PlacePrep")\n}\n',
+  rust: 'fn main() {\n    println!("Hello, PlacePrep");\n}\n',
+  csharp: 'using System;\n\nclass Program {\n  static void Main() {\n  }\n}\n',
   mysql: '-- Write your MySQL query here\n',
   postgresql: '-- Write your PostgreSQL query here\n',
 };
@@ -42,17 +50,45 @@ function isSqlLanguage(language) {
 }
 
 function stripHtml(value) {
-  return String(value || '')
-    .replace(/<pre>/gi, '\n')
+  const decoded = String(value || '')
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<p[^>]*>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<div[^>]*>/gi, '\n')
+    .replace(/<pre[^>]*>/gi, '\n')
+    .replace(/<\/pre>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '\n- ')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<tr[^>]*>/gi, '\n')
+    .replace(/<\/t[dh]>/gi, ' | ')
+    .replace(/<t[dh][^>]*>/gi, ' ')
+    .replace(/<\/?(strong|b|em|i|code|span|sup|sub)[^>]*>/gi, '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
-    .replace(/\s+\n/g, '\n')
-    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&le;/g, '<=')
+    .replace(/&ge;/g, '>=')
+    .replace(/&times;/g, 'x')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));
+
+  return decoded
+    .split('\n')
+    .map((line) => line
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\s+\|\s+/g, ' | ')
+      .replace(/\|\s+\|/g, '| |')
+      .trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/(Example\s+\d+:)/gi, '\n$1\n')
+    .replace(/\b(Input:|Output:|Explanation:|Constraints:)\s*/gi, '\n$1 ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -99,9 +135,95 @@ function extractLeetCodeSlug(value) {
   return '';
 }
 
+function extractLeetCodeNumber(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  const prefixedMatch = text.match(/\b(?:leetcode|lc)\s*#?\s*(\d{1,5})\b/i);
+  if (prefixedMatch?.[1]) {
+    return prefixedMatch[1];
+  }
+
+  if (/^\d{1,5}$/.test(text)) {
+    return text;
+  }
+
+  return '';
+}
+
+async function getLeetCodeSessionHeaders() {
+  try {
+    const response = await fetch(LEETCODE_REFERER, {
+      headers: {
+        Accept: 'text/html,application/xhtml+xml',
+        'User-Agent': LEETCODE_USER_AGENT,
+      },
+    });
+    const cookieHeader = response.headers.get('set-cookie') || '';
+    const csrfToken = cookieHeader.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+    if (!csrfToken) {
+      return {};
+    }
+
+    return {
+      Cookie: `csrftoken=${csrfToken}`,
+      'X-CSRFToken': csrfToken,
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function requestLeetCodeGraphql(body) {
+  const baseHeaders = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    Referer: LEETCODE_REFERER,
+    'User-Agent': LEETCODE_USER_AGENT,
+  };
+  let response = await fetch(LEETCODE_GRAPHQL_URL, {
+    method: 'POST',
+    headers: baseHeaders,
+    body: JSON.stringify(body),
+  });
+
+  if ([403, 419, 429, 499].includes(Number(response.status))) {
+    const sessionHeaders = await getLeetCodeSessionHeaders();
+    if (Object.keys(sessionHeaders).length) {
+      response = await fetch(LEETCODE_GRAPHQL_URL, {
+        method: 'POST',
+        headers: {
+          ...baseHeaders,
+          ...sessionHeaders,
+        },
+        body: JSON.stringify(body),
+      });
+    }
+  }
+
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.errors?.[0]?.message || `LeetCode responded with ${response.status}`);
+  }
+
+  return data;
+}
+
 function inferPlatform(value) {
   const text = String(value || '').trim();
   if (/leetcode\.com/i.test(text)) {
+    return 'leetcode';
+  }
+  if (extractLeetCodeNumber(text)) {
     return 'leetcode';
   }
   if (/hackerrank\.com/i.test(text)) {
@@ -115,16 +237,18 @@ function inferPlatform(value) {
 
 function normalizeProblemPayload(payload = {}) {
   const source = payload.url || payload.slug || payload.title || payload.problemTitle || payload.problemNumber || '';
+  const problemNumber = String(payload.number || payload.problemNumber || extractLeetCodeNumber(source) || '').trim() || null;
   const platform = payload.platform || inferPlatform(source);
   const leetCodeSlug = extractLeetCodeSlug(payload.url || payload.slug || payload.title);
   const title = String(payload.title || payload.problemTitle || '').trim()
     || (leetCodeSlug ? leetCodeSlug.split('-').map((part) => part[0]?.toUpperCase() + part.slice(1)).join(' ') : '')
+    || (problemNumber ? `LeetCode ${problemNumber}` : '')
     || String(payload.url || payload.slug || 'Practice problem').trim();
 
   return {
     platform,
-    number: payload.number || payload.problemNumber || null,
-    slug: leetCodeSlug || String(payload.slug || '').trim() || slugify(title),
+    number: problemNumber,
+    slug: leetCodeSlug || String(payload.slug || '').trim() || (problemNumber ? `leetcode-${problemNumber}` : slugify(title)),
     title,
     url: String(payload.url || (leetCodeSlug ? `https://leetcode.com/problems/${leetCodeSlug}/` : '')).trim() || null,
     description: String(payload.description || '').trim(),
@@ -136,13 +260,7 @@ function normalizeProblemPayload(payload = {}) {
 }
 
 async function fetchLeetCodeProblem(titleSlug) {
-  const response = await fetch('https://leetcode.com/graphql', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
+  const json = await requestLeetCodeGraphql({
       query: `
         query questionData($titleSlug: String!) {
           question(titleSlug: $titleSlug) {
@@ -153,18 +271,12 @@ async function fetchLeetCodeProblem(titleSlug) {
             difficulty
             exampleTestcases
             topicTags { name }
+            codeSnippets { langSlug code }
           }
         }
       `,
       variables: { titleSlug },
-    }),
   });
-
-  if (!response.ok) {
-    throw new Error(`LeetCode responded with ${response.status}`);
-  }
-
-  const json = await response.json();
   const question = json?.data?.question;
   if (!question) {
     throw new Error('Question was not found on LeetCode.');
@@ -184,24 +296,91 @@ async function fetchLeetCodeProblem(titleSlug) {
       .filter(Boolean)
       .slice(0, 3),
     constraints: toArray(question.topicTags).map((tag) => tag?.name).filter(Boolean).slice(0, 8),
+    starterCode: buildStarterCodeFromSnippets(question.codeSnippets),
   };
+}
+
+function buildStarterCodeFromSnippets(snippets = []) {
+  const starterCode = {};
+  const languageMap = {
+    python3: 'python',
+    python: 'python',
+    c: 'c',
+    cpp: 'cpp',
+    'c++': 'cpp',
+    java: 'java',
+    javascript: 'javascript',
+    typescript: 'typescript',
+    golang: 'go',
+    go: 'go',
+    rust: 'rust',
+    csharp: 'csharp',
+    'c#': 'csharp',
+    mysql: 'mysql',
+    postgresql: 'postgresql',
+  };
+
+  toArray(snippets).forEach((snippet) => {
+    const key = languageMap[String(snippet?.langSlug || '').toLowerCase()];
+    const code = String(snippet?.code || '').trim();
+    if (key && code) {
+      starterCode[key] = `${code}\n`;
+    }
+  });
+
+  return starterCode;
+}
+
+async function fetchLeetCodeProblemByNumber(frontendId) {
+  const json = await requestLeetCodeGraphql({
+      query: `
+        query problemsetQuestionList($categorySlug: String, $skip: Int, $limit: Int, $filters: QuestionListFilterInput) {
+          problemsetQuestionList: questionList(categorySlug: $categorySlug, skip: $skip, limit: $limit, filters: $filters) {
+            questions {
+              frontendQuestionId
+              title
+              titleSlug
+            }
+          }
+        }
+      `,
+      variables: {
+        categorySlug: '',
+        skip: 0,
+        limit: 20,
+        filters: { searchKeywords: String(frontendId) },
+      },
+  });
+  const questions = toArray(json?.data?.problemsetQuestionList?.questions);
+  const match = questions.find((question) => String(question?.frontendQuestionId) === String(frontendId))
+    || questions.find((question) => String(question?.title || '').startsWith(`${frontendId}.`));
+
+  if (!match?.titleSlug) {
+    throw new Error('Question number was not found on LeetCode.');
+  }
+
+  return fetchLeetCodeProblem(match.titleSlug);
 }
 
 async function resolveProblem(payload = {}) {
   const normalizedProblem = normalizeProblemPayload(payload);
 
-  if (normalizedProblem.platform === 'leetcode' && normalizedProblem.slug) {
+  if (normalizedProblem.platform === 'leetcode' && (normalizedProblem.slug || normalizedProblem.number)) {
     try {
+      const leetCodeProblem = normalizedProblem.slug && !/^leetcode-\d+$/.test(normalizedProblem.slug)
+        ? await fetchLeetCodeProblem(normalizedProblem.slug)
+        : await fetchLeetCodeProblemByNumber(normalizedProblem.number);
+
       return {
         ...normalizedProblem,
-        ...(await fetchLeetCodeProblem(normalizedProblem.slug)),
+        ...leetCodeProblem,
         extractionStatus: 'resolved',
       };
     } catch (error) {
       return {
         ...normalizedProblem,
         extractionStatus: 'fallback',
-        extractionMessage: 'Live LeetCode extraction was unavailable, so PlacePrep built the workspace from the provided title or URL.',
+        extractionMessage: 'Live LeetCode extraction was unavailable, so PlacePrep built the workspace from the provided number, title, or URL.',
       };
     }
   }
@@ -630,7 +809,7 @@ async function runCode(user, payload = {}, options = {}) {
     });
     finalResult = await judge0Service.poll(queued.token);
   } catch (error) {
-    if (isSqlLanguage(language) && error instanceof AppError && ['judge0_disabled', 'language_unavailable'].includes(error.details?.code)) {
+    if (error instanceof AppError && ['judge0_disabled', 'language_unavailable', 'language_not_allowed'].includes(error.details?.code)) {
       executionUnavailable = true;
       queuedSubmission = await codingSubmissionRepository.createSubmission({
         userId: user.id,

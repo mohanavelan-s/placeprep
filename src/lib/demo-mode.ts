@@ -442,31 +442,56 @@ function buildTasksFromPlan(plan: ReturnType<typeof buildPlan>) {
 
 const demoCodingLanguages = [
   { key: "python", label: "Python", enabled: true, id: 71, providerName: "Python 3 demo", unavailableReason: null, setupWarning: null },
+  { key: "javascript", label: "JavaScript", enabled: true, id: 63, providerName: "Node.js demo", unavailableReason: null, setupWarning: null },
+  { key: "typescript", label: "TypeScript", enabled: true, id: 74, providerName: "TypeScript demo", unavailableReason: null, setupWarning: null },
   { key: "c", label: "C", enabled: true, id: 50, providerName: "GCC demo", unavailableReason: null, setupWarning: null },
   { key: "cpp", label: "C++", enabled: true, id: 54, providerName: "G++ demo", unavailableReason: null, setupWarning: null },
   { key: "java", label: "Java", enabled: true, id: 62, providerName: "OpenJDK demo", unavailableReason: null, setupWarning: null },
-  { key: "mysql", label: "MySQL", enabled: false, id: null, providerName: null, unavailableReason: "SQL execution is not connected in demo mode.", setupWarning: "Static SQL analysis is available in demo mode." },
-  { key: "postgresql", label: "PostgreSQL", enabled: false, id: null, providerName: null, unavailableReason: "SQL execution is not connected in demo mode.", setupWarning: "Static SQL analysis is available in demo mode." },
+  { key: "go", label: "Go", enabled: true, id: 60, providerName: "Go demo", unavailableReason: null, setupWarning: null },
+  { key: "rust", label: "Rust", enabled: true, id: 73, providerName: "Rust demo", unavailableReason: null, setupWarning: null },
+  { key: "csharp", label: "C#", enabled: true, id: 51, providerName: "C# demo", unavailableReason: null, setupWarning: null },
+  { key: "mysql", label: "MySQL", enabled: true, id: null, providerName: null, unavailableReason: null, setupWarning: "Demo mode records static SQL review." },
+  { key: "postgresql", label: "PostgreSQL", enabled: true, id: null, providerName: null, unavailableReason: null, setupWarning: "Demo mode records static SQL review." },
 ];
 
 function normalizeDemoProblemInput(input: Record<string, unknown> = {}, task?: Record<string, unknown> | null) {
   const metadata = (task?.metadata as Record<string, unknown>) || {};
-  const sourceUrl = String(input.url || metadata.problemUrl || task?.referenceUrl || "");
+  const lookup = String(input.problemNumber || input.number || input.slug || input.title || input.problemTitle || "");
+  const sourceUrl = String(input.url || (/\bhttps?:\/\//i.test(lookup) ? lookup : "") || metadata.problemUrl || task?.referenceUrl || "");
   const leetCodeMatch = sourceUrl.match(/leetcode\.com\/problems\/([^/?#]+)/i);
-  const slug = String(input.slug || metadata.problemSlug || leetCodeMatch?.[1] || input.title || task?.title || "demo-practice-problem")
+  const numberMatch = String(input.problemNumber || input.number || lookup).match(/\d{1,5}/);
+  const slug = String(input.slug || metadata.problemSlug || leetCodeMatch?.[1] || (!numberMatch ? lookup : "") || task?.title || "demo-practice-problem")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-  const title = String(input.title || input.problemTitle || metadata.problemTitle || task?.referenceLabel || task?.title || "Demo practice problem");
-  const platform = String(input.platform || metadata.problemPlatform || (leetCodeMatch ? "leetcode" : /sql|dbms|database/i.test(title) ? "sql" : "custom"));
+  const title = String(
+    input.title
+    || input.problemTitle
+    || metadata.problemTitle
+    || task?.referenceLabel
+    || task?.title
+    || (numberMatch ? `LeetCode ${numberMatch[0]} demo problem` : "Demo practice problem")
+  );
+  const platform = String(input.platform || metadata.problemPlatform || (leetCodeMatch || numberMatch ? "leetcode" : /sql|dbms|database/i.test(title) ? "sql" : "custom"));
 
   return {
     platform,
-    number: null,
+    number: numberMatch?.[0] || null,
     slug,
     title,
-    url: sourceUrl || null,
-    description: String(input.description || task?.description || metadata.summary || "Solve the problem and compare the result against the expected behavior."),
+    url: sourceUrl || (numberMatch ? `https://leetcode.com/problems/${slug}/` : null),
+    description: String(input.description || task?.description || metadata.summary || [
+      "Solve the problem and compare the result against the expected behavior.",
+      "",
+      "Example 1:",
+      "Input: nums = [2,7,11,15], target = 9",
+      "Output: [0,1]",
+      "Explanation: nums[0] + nums[1] == 9.",
+      "",
+      "Constraints:",
+      "- Handle boundary inputs.",
+      "- Explain time and space complexity.",
+    ].join("\n")),
     difficulty: String(input.difficulty || (Number(task?.difficulty || 3) >= 4 ? "Hard" : Number(task?.difficulty || 3) <= 2 ? "Easy" : "Medium")),
     examples: ["Input: 2 7 11 15, target 9\nOutput: 0 1"],
     constraints: ["Handle empty inputs.", "Explain time and space complexity."],
@@ -475,6 +500,11 @@ function normalizeDemoProblemInput(input: Record<string, unknown> = {}, task?: R
       c: "#include <stdio.h>\n\nint main(void) {\n  return 0;\n}\n",
       cpp: "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n  return 0;\n}\n",
       java: "class Main {\n  public static void main(String[] args) {\n  }\n}\n",
+      javascript: "function solve() {\n  // Write your solution here\n}\n\nsolve();\n",
+      typescript: "function solve(): void {\n  // Write your solution here\n}\n\nsolve();\n",
+      go: "package main\n\nimport \"fmt\"\n\nfunc main() {\n  fmt.Println(\"Hello, PlacePrep\")\n}\n",
+      rust: "fn main() {\n    println!(\"Hello, PlacePrep\");\n}\n",
+      csharp: "using System;\n\nclass Program {\n  static void Main() {\n  }\n}\n",
       mysql: "-- Write your MySQL query here\n",
       postgresql: "-- Write your PostgreSQL query here\n",
     },

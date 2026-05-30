@@ -2032,6 +2032,7 @@ export async function resolveCodingProblem(payload: Partial<CodingProblem> & {
   title?: string;
   slug?: string;
   problemTitle?: string;
+  problemNumber?: string;
   description?: string;
 }) {
   return normalizeCodingProblem(await request<CodingProblem>("/coding/problem/resolve", {
