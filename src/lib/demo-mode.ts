@@ -1499,6 +1499,8 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
       version: "demo",
       timestamp: new Date().toISOString(),
       emailEnabled: true,
+      judge0Enabled: true,
+      judge0BaseUrl: "demo",
       notificationSchedulerEnabled: true,
       appUrl: window.location.origin,
     } as T;

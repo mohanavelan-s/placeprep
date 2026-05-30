@@ -101,6 +101,8 @@ function buildHealthPayload() {
       aiModel: aiStatus.model,
       cloudinaryEnabled: env.cloudinaryEnabled,
       emailEnabled: env.emailEnabled,
+      judge0Enabled: env.judge0Enabled,
+      judge0BaseUrl: env.judge0BaseUrl,
       notificationSchedulerEnabled: env.notificationSchedulerEnabled,
       notificationCron: env.notificationCron,
       notificationMorningHour: env.notificationMorningHour,

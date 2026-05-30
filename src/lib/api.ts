@@ -60,6 +60,8 @@ export interface ServiceHealth {
   version: string;
   timestamp: string;
   emailEnabled: boolean;
+  judge0Enabled?: boolean;
+  judge0BaseUrl?: string;
   notificationSchedulerEnabled: boolean;
   appUrl: string;
 }
