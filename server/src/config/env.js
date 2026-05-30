@@ -145,6 +145,7 @@ const env = {
   resendApiKey: process.env.RESEND_API_KEY || '',
   resendFrom: process.env.RESEND_FROM || process.env.EMAIL_FROM || '',
   emailProvider: process.env.EMAIL_PROVIDER || 'resend',
+  allowSmtpFallback: process.env.ALLOW_SMTP_FALLBACK === 'true',
   webPushPublicKey: process.env.WEB_PUSH_PUBLIC_KEY || '',
   webPushPrivateKey: process.env.WEB_PUSH_PRIVATE_KEY || '',
   webPushSubject: normalizeWebPushSubject(
@@ -203,7 +204,7 @@ env.smtpEnabled = Boolean(
 env.resendEnabled = Boolean(env.resendApiKey && env.resendFrom);
 
 const requestedEmailProvider = String(env.emailProvider || '').trim().toLowerCase();
-env.emailProvider = requestedEmailProvider === 'smtp' ? 'smtp' : 'resend';
+env.emailProvider = env.allowSmtpFallback && requestedEmailProvider === 'smtp' ? 'smtp' : 'resend';
 
 env.emailFrom = env.emailProvider === 'resend' ? env.resendFrom : env.smtpFrom;
 env.emailEnabled = env.emailProvider === 'resend' ? env.resendEnabled : env.smtpEnabled;
