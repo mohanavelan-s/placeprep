@@ -20,7 +20,6 @@ const CodingLabPage = lazy(() => import("./pages/CodingLabPage.tsx"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage.tsx"));
 const LandingPage = lazy(() => import("./pages/LandingPage.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
-const NotificationsPage = lazy(() => import("./pages/NotificationsPage.tsx"));
 const PrepArchitectPage = lazy(() => import("./pages/PrepArchitectPage.tsx"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage.tsx"));
 const ProgressPage = lazy(() => import("./pages/ProgressPage.tsx"));
@@ -68,7 +67,6 @@ function TitleUpdater() {
       "/prep-architect": "Prep Architect",
       "/assessments": "Assessments",
       "/coding-lab": "Coding Lab",
-      "/notifications": "Notifications",
       "/admin-console": "Admin Console",
       "/tasks": "Mission Control",
       "/progress": "Progress Intel",
@@ -123,7 +121,6 @@ function AppRoutes() {
             <Route path="/tasks" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/coding-lab" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/coding-lab/:taskId" element={<Navigate to="/auth?mode=login" replace />} />
-            <Route path="/notifications" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/assessments" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/admin-console" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/progress" element={<Navigate to="/auth?mode=login" replace />} />
@@ -153,7 +150,6 @@ function AppRoutes() {
             <Route path="/assessments" element={<AssessmentsPage />} />
             <Route path="/coding-lab" element={<CodingLabPage />} />
             <Route path="/coding-lab/:taskId" element={<CodingLabPage />} />
-            <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route
               path="/admin-console"

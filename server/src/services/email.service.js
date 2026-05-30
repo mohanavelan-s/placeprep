@@ -32,6 +32,8 @@ function isIpv6NetworkFailure(error) {
 function normalizeEmailError(error, fallback = 'email_failed') {
   const reason = isIpv6NetworkFailure(error)
     ? 'smtp_ipv6_unreachable'
+    : /^RESEND_/i.test(error?.code || '')
+      ? 'resend_delivery_failed'
     : error?.code === 'ETIMEDOUT' || /timed out|timeout/i.test(error?.message || '')
       ? 'smtp_connection_timeout'
       : error?.code === 'EAUTH' || /invalid login|authentication/i.test(error?.message || '')
@@ -139,6 +141,56 @@ async function getTransporter() {
   return transporterPromise;
 }
 
+async function sendResendMail(mailOptions) {
+  if (!env.resendEnabled) {
+    const error = new Error('Resend email delivery is not configured.');
+    error.code = 'RESEND_NOT_CONFIGURED';
+    throw error;
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.resendApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: mailOptions.from || env.emailFrom,
+      to: Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to],
+      subject: mailOptions.subject,
+      text: mailOptions.text,
+      html: mailOptions.html,
+    }),
+  });
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    const error = new Error(`Resend API ${response.status}: ${compactText(responseText).slice(0, 240)}`);
+    error.code = `RESEND_${response.status}`;
+    throw error;
+  }
+
+  return responseText;
+}
+
+async function sendMailMessage(mailOptions) {
+  if (!isEmailDeliveryReady()) {
+    return null;
+  }
+
+  const message = {
+    ...mailOptions,
+    from: mailOptions.from || env.emailFrom,
+  };
+
+  if (env.emailProvider === 'resend') {
+    return sendResendMail(message);
+  }
+
+  const transport = await getTransporter();
+  return transport.sendMail(message);
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -150,6 +202,10 @@ function escapeHtml(value) {
 
 function compactText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function getAppUrl() {
+  return compactText(env.appUrl || env.clientUrl).replace(/\/+$/, '');
 }
 
 function buildRoleLabel(context = {}) {
@@ -408,7 +464,7 @@ function buildDigestHtml(user, notifications, summary, context = {}) {
 function buildWelcomeText(user) {
   const name = user.name || user.username || 'PlacePrep user';
   const targetRole = compactText(user.targetRole || 'Placement preparation');
-  const signInUrl = `${env.clientUrl}/auth?mode=login`;
+  const signInUrl = `${getAppUrl()}/auth?mode=login`;
 
   return [
     `${name},`,
@@ -435,7 +491,7 @@ function buildWelcomeText(user) {
 function buildWelcomeHtml(user) {
   const name = user.name || user.username || 'PlacePrep user';
   const targetRole = compactText(user.targetRole || 'Placement preparation');
-  const signInUrl = `${env.clientUrl}/auth?mode=login`;
+  const signInUrl = `${getAppUrl()}/auth?mode=login`;
 
   return `
     <div style="background:#0a0a0d;padding:32px 0;font-family:Inter,Arial,sans-serif;">
@@ -507,7 +563,7 @@ function buildWelcomeHtml(user) {
 }
 
 function buildInviteSignupAlertText({ user, invite }) {
-  const signInUrl = `${env.clientUrl}/auth?mode=login`;
+  const signInUrl = `${getAppUrl()}/auth?mode=login`;
   const weakAreas = Array.isArray(user.weakAreas) ? user.weakAreas.filter(Boolean).join(', ') : '';
   const assignedRole = compactText(
     invite?.displayRole
@@ -534,7 +590,7 @@ function buildInviteSignupAlertText({ user, invite }) {
 
 function buildInviteSignupAlertHtml({ user, invite }) {
   const weakAreas = Array.isArray(user.weakAreas) ? user.weakAreas.filter(Boolean) : [];
-  const signInUrl = `${env.clientUrl}/auth?mode=login`;
+  const signInUrl = `${getAppUrl()}/auth?mode=login`;
   const assignedRole = compactText(
     invite?.displayRole
     || invite?.role
@@ -674,7 +730,7 @@ function buildAdminAssignmentText({ user, assignment }) {
     'Assigned tasks:',
     ...((assignment.tasks || []).map(buildAssignmentTaskTextRow)),
     '',
-    `Open PlacePrep: ${env.clientUrl}/tasks`,
+    `Open PlacePrep: ${getAppUrl()}/tasks`,
   ].filter(Boolean).join('\n');
 }
 
@@ -734,9 +790,177 @@ function buildAdminAssignmentHtml({ user, assignment }) {
               </tr>
               <tr>
                 <td style="padding:8px 30px 30px 30px;">
-                  <a href="${escapeHtml(`${env.clientUrl}/tasks`)}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#8b0000;color:#f5eded;text-decoration:none;font-size:13px;letter-spacing:0.18em;text-transform:uppercase;">
+                  <a href="${escapeHtml(`${getAppUrl()}/tasks`)}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#8b0000;color:#f5eded;text-decoration:none;font-size:13px;letter-spacing:0.18em;text-transform:uppercase;">
                     Open tasks
                   </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+}
+
+function collectPlanEmailTasks(plan = {}, limit = 6) {
+  const days = Array.isArray(plan.tasks) ? plan.tasks : [];
+  const tasks = [];
+
+  days.forEach((dayPlan) => {
+    const items = Array.isArray(dayPlan?.items) ? dayPlan.items : [];
+    items.forEach((item) => {
+      tasks.push({
+        day: compactText(dayPlan?.day || ''),
+        theme: compactText(dayPlan?.theme || ''),
+        title: compactText(item?.title || item?.referenceLabel || 'Focused prep task'),
+        type: compactText(item?.type || 'Practice'),
+        summary: compactText(item?.summary || ''),
+        referenceLabel: compactText(item?.referenceLabel || ''),
+        referenceUrl: compactText(item?.referenceUrl || ''),
+        estimatedMinutes: Number(item?.estimatedMinutes || 0),
+      });
+    });
+  });
+
+  return tasks.slice(0, limit);
+}
+
+function buildPlanReadyText({ user, plan }) {
+  const name = user.name || user.username || 'PlacePrep user';
+  const title = compactText(plan.title || plan.metadata?.title || 'Your Prep Architect plan');
+  const targetRole = compactText(plan.targetRole || user.targetRole || 'Placement preparation');
+  const focusTopics = cleanEmailList(plan.targetTopics || user.weakAreas, 5).join(', ');
+  const tasks = collectPlanEmailTasks(plan, 6);
+  const planUrl = `${getAppUrl()}/prep-architect`;
+  const taskUrl = `${getAppUrl()}/tasks`;
+
+  return [
+    `${name},`,
+    '',
+    `${title} is ready.`,
+    compactText(plan.coachLine || plan.metadata?.coachLine) || null,
+    '',
+    `Role focus: ${targetRole}`,
+    focusTopics ? `Focus topics: ${focusTopics}` : null,
+    plan.timePerDay ? `Daily time box: ${Number(plan.timePerDay)} minutes` : null,
+    plan.durationMonths ? `Plan duration: ${Number(plan.durationMonths)} month${Number(plan.durationMonths) === 1 ? '' : 's'}` : null,
+    '',
+    tasks.length ? 'First tasks:' : null,
+    ...tasks.map((task, index) => [
+      `${index + 1}. ${task.day ? `${task.day}: ` : ''}${task.title}`,
+      task.summary ? `   ${task.summary}` : null,
+      task.estimatedMinutes ? `   Time: ${task.estimatedMinutes} min` : null,
+      task.referenceUrl ? `   Link: ${task.referenceUrl}` : null,
+    ].filter(Boolean).join('\n')),
+    '',
+    `Open the plan: ${planUrl}`,
+    `Open tasks: ${taskUrl}`,
+  ].filter(Boolean).join('\n');
+}
+
+function cleanEmailList(values, limit = 5) {
+  return Array.from(
+    new Set(
+      (values || [])
+        .map((value) => compactText(value))
+        .filter(Boolean)
+    )
+  ).slice(0, limit);
+}
+
+function buildPlanEmailTaskRows(tasks = []) {
+  return tasks.map((task, index) => `
+    <tr>
+      <td style="padding:0 0 16px 0;">
+        <div style="padding:18px;border:1px solid rgba(255,255,255,0.06);border-radius:18px;background:rgba(255,255,255,0.02);">
+          <div style="color:#9a9a9a;font-size:11px;letter-spacing:0.24em;text-transform:uppercase;">
+            ${escapeHtml(task.day || `Task ${index + 1}`)}${task.type ? ` / ${escapeHtml(task.type)}` : ''}
+          </div>
+          <div style="margin-top:10px;color:#f2efef;font-size:18px;line-height:1.4;font-weight:600;">
+            ${escapeHtml(task.title)}
+          </div>
+          ${task.summary ? `
+            <div style="margin-top:8px;color:#d1cbcb;font-size:14px;line-height:1.7;">
+              ${escapeHtml(task.summary)}
+            </div>
+          ` : ''}
+          ${task.estimatedMinutes ? `
+            <div style="margin-top:10px;color:#9a9a9a;font-size:12px;line-height:1.5;">
+              ${escapeHtml(String(task.estimatedMinutes))} minutes
+            </div>
+          ` : ''}
+          ${task.referenceUrl ? `
+            <div style="margin-top:12px;">
+              <a href="${escapeHtml(task.referenceUrl)}" style="display:inline-block;padding:10px 14px;border-radius:999px;background:#8b0000;color:#f5eded;text-decoration:none;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;">
+                Open reference
+              </a>
+            </div>
+          ` : ''}
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function buildPlanReadyHtml({ user, plan }) {
+  const name = user.name || user.username || 'PlacePrep user';
+  const title = compactText(plan.title || plan.metadata?.title || 'Your Prep Architect plan');
+  const coachLine = compactText(plan.coachLine || plan.metadata?.coachLine || 'Your next tasks are ready.');
+  const targetRole = compactText(plan.targetRole || user.targetRole || 'Placement preparation');
+  const focusTopics = cleanEmailList(plan.targetTopics || user.weakAreas, 5);
+  const tasks = collectPlanEmailTasks(plan, 6);
+  const planUrl = `${getAppUrl()}/prep-architect`;
+  const taskUrl = `${getAppUrl()}/tasks`;
+
+  return `
+    <div style="background:#0a0a0d;padding:32px 0;font-family:Inter,Arial,sans-serif;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="100%" style="max-width:620px;background:#111116;border:1px solid rgba(255,255,255,0.07);border-radius:22px;overflow:hidden;">
+              <tr>
+                <td style="padding:30px 30px 14px 30px;">
+                  <div style="color:#9a9a9a;font-size:11px;letter-spacing:0.32em;text-transform:uppercase;">PlacePrep Plan</div>
+                  <h1 style="margin:14px 0 0 0;color:#f2efef;font-family:'Cormorant Garamond',Georgia,serif;font-size:42px;font-weight:500;line-height:1.05;">
+                    ${escapeHtml(title)}
+                  </h1>
+                  <div style="margin-top:12px;color:#c7c1c1;font-size:15px;line-height:1.7;">
+                    ${escapeHtml(coachLine)}
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:4px 30px 0 30px;">
+                  <span style="display:inline-block;margin:0 10px 10px 0;padding:9px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:#d7d2d2;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">
+                    ${escapeHtml(targetRole)}
+                  </span>
+                  ${focusTopics.map((topic) => `
+                    <span style="display:inline-block;margin:0 10px 10px 0;padding:9px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:#d7d2d2;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">
+                      ${escapeHtml(topic)}
+                    </span>
+                  `).join('')}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:18px 30px 0 30px;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                    ${buildPlanEmailTaskRows(tasks)}
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:8px 30px 30px 30px;">
+                  <a href="${escapeHtml(planUrl)}" style="display:inline-block;margin:0 10px 10px 0;padding:12px 18px;border-radius:999px;background:#8b0000;color:#f5eded;text-decoration:none;font-size:13px;letter-spacing:0.18em;text-transform:uppercase;">
+                    Open plan
+                  </a>
+                  <a href="${escapeHtml(taskUrl)}" style="display:inline-block;margin:0 10px 10px 0;padding:12px 18px;border-radius:999px;border:1px solid rgba(255,255,255,0.12);color:#f5eded;text-decoration:none;font-size:13px;letter-spacing:0.18em;text-transform:uppercase;">
+                    Open tasks
+                  </a>
+                  <div style="margin-top:18px;border-top:1px solid rgba(255,255,255,0.08);padding-top:18px;color:#9a9a9a;font-size:13px;line-height:1.8;">
+                    <div>${escapeHtml(name)}</div>
+                    <div>Role: ${escapeHtml(targetRole)}</div>
+                  </div>
                 </td>
               </tr>
             </table>
@@ -765,11 +989,9 @@ async function sendNotificationDigestEmail({ user, notifications, summary, conte
   }
 
   try {
-    const transport = await getTransporter();
     const primary = notifications[0];
 
-    await transport.sendMail({
-      from: env.smtpFrom,
+    await sendMailMessage({
       to: user.email,
       subject: primary.metadata?.subject || subjectMap[primary.type] || 'PlacePrep | Mentor notice',
       text: buildDigestText(user, notifications, summary, context),
@@ -803,10 +1025,7 @@ async function sendWelcomeEmail({ user }) {
   }
 
   try {
-    const transport = await getTransporter();
-
-    await transport.sendMail({
-      from: env.smtpFrom,
+    await sendMailMessage({
       to: user.email,
       subject: 'PlacePrep | Welcome inside',
       text: buildWelcomeText(user),
@@ -821,6 +1040,58 @@ async function sendWelcomeEmail({ user }) {
   } catch (error) {
     console.error('[auth] Failed to send welcome email.', error);
     const normalizedError = normalizeEmailError(error, 'welcome_email_failed');
+    return {
+      attempted: true,
+      sent: false,
+      reason: normalizedError.reason,
+      error: normalizedError.error,
+    };
+  }
+}
+
+async function sendPlanReadyEmail({ user, plan }) {
+  if (!plan) {
+    return {
+      attempted: false,
+      sent: false,
+      reason: 'no_plan',
+    };
+  }
+
+  if (!user?.email) {
+    return {
+      attempted: false,
+      sent: false,
+      reason: 'no_recipient',
+    };
+  }
+
+  if (!isEmailDeliveryReady()) {
+    return {
+      attempted: false,
+      sent: false,
+      reason: 'email_not_configured',
+    };
+  }
+
+  const planTitle = compactText(plan.title || plan.metadata?.title || 'Prep Architect plan');
+
+  try {
+    await sendMailMessage({
+      to: user.email,
+      subject: `PlacePrep | ${planTitle} is ready`,
+      text: buildPlanReadyText({ user, plan }),
+      html: buildPlanReadyHtml({ user, plan }),
+    });
+
+    return {
+      attempted: true,
+      sent: true,
+      reason: 'sent',
+    };
+  } catch (error) {
+    console.error('[prep-architect] Failed to send plan ready email.', error);
+    const normalizedError = normalizeEmailError(error, 'plan_ready_email_failed');
     return {
       attempted: true,
       sent: false,
@@ -848,10 +1119,7 @@ async function sendInviteSignupAlertEmail({ user, invite }) {
   }
 
   try {
-    const transport = await getTransporter();
-
-    await transport.sendMail({
-      from: env.smtpFrom,
+    await sendMailMessage({
       to: env.inviteSignupNotifyEmail,
       subject: `PlacePrep | Invite signup: ${compactText(user.name || user.email || 'new user')}`,
       text: buildInviteSignupAlertText({ user, invite }),
@@ -893,10 +1161,7 @@ async function sendAdminAssignmentEmail({ user, assignment }) {
   }
 
   try {
-    const transport = await getTransporter();
-
-    await transport.sendMail({
-      from: env.smtpFrom,
+    await sendMailMessage({
       to: user.email,
       subject: `PlacePrep | ${compactText(assignment.bundleTitle || 'Admin assignment')} assigned`,
       text: buildAdminAssignmentText({ user, assignment }),
@@ -924,6 +1189,7 @@ module.exports = {
   sendNotificationDigestEmail,
   sendAdminAssignmentEmail,
   sendWelcomeEmail,
+  sendPlanReadyEmail,
   sendInviteSignupAlertEmail,
   isEmailDeliveryReady,
 };

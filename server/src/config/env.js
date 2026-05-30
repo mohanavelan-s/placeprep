@@ -142,6 +142,9 @@ const env = {
   smtpUser: process.env.SMTP_USER || process.env.SMPT_USER || '',
   smtpPass: process.env.SMTP_PASS || process.env.SMPT_PASS || '',
   smtpFrom: process.env.SMTP_FROM || process.env.SMPT_FROM || process.env.SMTP_USER || process.env.SMPT_USER || '',
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  resendFrom: process.env.RESEND_FROM || process.env.SMTP_FROM || process.env.SMPT_FROM || '',
+  emailProvider: process.env.EMAIL_PROVIDER || '',
   webPushPublicKey: process.env.WEB_PUSH_PUBLIC_KEY || '',
   webPushPrivateKey: process.env.WEB_PUSH_PRIVATE_KEY || '',
   webPushSubject: normalizeWebPushSubject(
@@ -191,12 +194,23 @@ env.aiModel = resolveAIModel(env.aiProvider, env.openaiModel);
 env.cloudinaryEnabled = Boolean(
   env.cloudinaryCloudName && env.cloudinaryApiKey && env.cloudinaryApiSecret
 );
-env.emailEnabled = Boolean(
+env.smtpEnabled = Boolean(
   env.smtpHost
   && env.smtpPort
   && env.smtpFrom
   && (!env.smtpUser || env.smtpPass)
 );
+env.resendEnabled = Boolean(env.resendApiKey && env.resendFrom);
+
+const requestedEmailProvider = String(env.emailProvider || '').trim().toLowerCase();
+if (requestedEmailProvider === 'resend' || requestedEmailProvider === 'smtp') {
+  env.emailProvider = requestedEmailProvider;
+} else {
+  env.emailProvider = env.resendEnabled ? 'resend' : 'smtp';
+}
+
+env.emailFrom = env.emailProvider === 'resend' ? env.resendFrom : env.smtpFrom;
+env.emailEnabled = env.emailProvider === 'resend' ? env.resendEnabled : env.smtpEnabled;
 env.inviteOnlyAccess = !env.publicSignupEnabled;
 
 if (env.ngrokUrl && !env.clientUrls.includes(env.ngrokUrl)) {

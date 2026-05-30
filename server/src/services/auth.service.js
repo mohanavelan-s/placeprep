@@ -59,6 +59,23 @@ async function buildAvailableUsername(input, fallbackSeed) {
   return `${preferred}-${Date.now().toString().slice(-4)}`.slice(0, 60);
 }
 
+function triggerNotificationEmailSync(userId, source) {
+  const timer = setTimeout(() => {
+    const notificationService = require('./notification.service');
+    void notificationService.syncNotificationsForUser(userId, {
+      source,
+      deliverEmail: true,
+      processDeliveryNow: true,
+    }).catch((error) => {
+      console.error(`[auth] ${source} notification email sync failed.`, error);
+    });
+  }, 0);
+
+  if (typeof timer.unref === 'function') {
+    timer.unref();
+  }
+}
+
 async function register(payload) {
   const email = payload.email.trim().toLowerCase();
   const existingUser = await userRepository.findByEmail(email);
@@ -167,6 +184,7 @@ async function login(payload) {
 
   const loggedInUser = await userRepository.touchLastLogin(user.id) || user;
   const { passwordHash, ...safeUser } = loggedInUser;
+  triggerNotificationEmailSync(safeUser.id, 'login_email_sync');
 
   return {
     token: signAccessToken(safeUser),

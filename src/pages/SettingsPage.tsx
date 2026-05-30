@@ -212,16 +212,17 @@ export default function SettingsPage() {
     }
 
     if (healthQuery.data?.emailEnabled) {
-      return "SMTP configured";
+      return healthQuery.data.emailProvider === "resend" ? "Resend configured" : "SMTP configured";
     }
 
     if (healthQuery.isPending) {
       return "Checking";
     }
 
-    return "Needs SMTP";
+    return "Needs provider";
   }, [
     healthQuery.data?.emailEnabled,
+    healthQuery.data?.emailProvider,
     healthQuery.isPending,
     lastEmailTest?.status,
     notificationPrefs.notificationEmailEnabled,

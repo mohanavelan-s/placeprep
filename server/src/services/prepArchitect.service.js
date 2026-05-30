@@ -11,6 +11,7 @@ const taskRepository = require('../repositories/task.repository');
 const userRepository = require('../repositories/user.repository');
 const progressService = require('./progress.service');
 const tierService = require('./tier.service');
+const { sendPlanReadyEmail } = require('./email.service');
 const { getTodayInTimezone } = require('../utils/date');
 const AppError = require('../utils/appError');
 
@@ -1887,6 +1888,24 @@ async function persistPlan(user, plan, sourcePlanId = null) {
   return finalPlan;
 }
 
+function triggerPlanReadyEmail(user, plan) {
+  const timer = setTimeout(() => {
+    void sendPlanReadyEmail({ user, plan })
+      .then((result) => {
+        if (result?.attempted && !result.sent) {
+          console.error('[prep-architect] Plan ready email was not sent.', result.reason);
+        }
+      })
+      .catch((error) => {
+        console.error('[prep-architect] Plan ready email dispatch failed.', error);
+      });
+  }, 0);
+
+  if (typeof timer.unref === 'function') {
+    timer.unref();
+  }
+}
+
 function buildPlanRequestPayload(user, payload = {}, currentPlan = null) {
   const knownTopics = cleanTopics(payload.knownTopics || currentPlan?.knownTopics || user.strongTopics, 8);
   const targetTopics = cleanTopics(payload.targetTopics || currentPlan?.targetTopics || user.weakAreas, 8);
@@ -1975,6 +1994,7 @@ async function generatePlan(user, payload = {}) {
     usedFallback,
   });
   await tierService.consumeFeature(user, 'plan_generations');
+  triggerPlanReadyEmail(user, plan);
   return plan;
 }
 
@@ -2031,6 +2051,7 @@ async function updatePlan(user, payload = {}) {
     usedFallback,
   }, currentPlan.id);
   await tierService.consumeFeature(user, 'plan_generations');
+  triggerPlanReadyEmail(user, plan);
   return plan;
 }
 

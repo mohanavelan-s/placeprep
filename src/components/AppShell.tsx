@@ -3,7 +3,6 @@ import {
   ClipboardList,
   ChevronRight,
   BrainCircuit,
-  BellRing,
   Code2,
   LayoutDashboard,
   LineChart,
@@ -45,7 +44,6 @@ const navItems = [
   { to: "/prep-architect", label: "Prep Architect", icon: BrainCircuit, observerVisible: false },
   { to: "/assessments", label: "Assessments", icon: ClipboardList, observerVisible: false },
   { to: "/coding-lab", label: "Coding Lab", icon: Code2, observerVisible: false },
-  { to: "/notifications", label: "Notifications", icon: BellRing, observerVisible: false },
   { to: "/tasks", label: "Tasks", icon: ListTodo, observerVisible: true },
   { to: "/progress", label: "Progress", icon: LineChart, observerVisible: false },
   { to: "/admin-console", label: "Admin Console", icon: ShieldCheck, observerVisible: false, adminOnly: true },
@@ -76,10 +74,6 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   "/coding-lab": {
     title: "Coding Lab",
     description: "Run. Score. Submit.",
-  },
-  "/notifications": {
-    title: "Notifications",
-    description: "Pulse. Deliver. Act.",
   },
   "/progress": {
     title: "Progress Intel",
