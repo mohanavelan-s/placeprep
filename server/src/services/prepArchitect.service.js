@@ -10,6 +10,7 @@ const prepPlanRepository = require('../repositories/prepPlan.repository');
 const taskRepository = require('../repositories/task.repository');
 const userRepository = require('../repositories/user.repository');
 const progressService = require('./progress.service');
+const tierService = require('./tier.service');
 const { getTodayInTimezone } = require('../utils/date');
 const AppError = require('../utils/appError');
 
@@ -1834,6 +1835,8 @@ function buildPlanRequestPayload(user, payload = {}, currentPlan = null) {
 }
 
 async function generatePlan(user, payload = {}) {
+  await tierService.assertCanUse(user, 'plan_generations');
+
   const input = buildPlanRequestPayload(user, payload);
   const fallbackPlan = buildFallbackPlan(input);
 
@@ -1890,15 +1893,19 @@ async function generatePlan(user, payload = {}) {
 
   const normalizedPlan = normalizePlanResult(data, fallbackPlan);
 
-  return persistPlan(user, {
+  const plan = await persistPlan(user, {
     ...input,
     ...normalizedPlan,
     preferredLanguage: input.preferredLanguage,
     usedFallback,
   });
+  await tierService.consumeFeature(user, 'plan_generations');
+  return plan;
 }
 
 async function updatePlan(user, payload = {}) {
+  await tierService.assertCanUse(user, 'plan_generations');
+
   const currentPlan = await prepPlanRepository.findById(payload.planId, user.id);
 
   if (!currentPlan) {
@@ -1942,12 +1949,14 @@ async function updatePlan(user, payload = {}) {
 
   const normalizedPlan = normalizePlanResult(data, fallbackPlan);
 
-  return persistPlan(user, {
+  const plan = await persistPlan(user, {
     ...input,
     ...normalizedPlan,
     preferredLanguage: input.preferredLanguage,
     usedFallback,
   }, currentPlan.id);
+  await tierService.consumeFeature(user, 'plan_generations');
+  return plan;
 }
 
 async function getLatestPlan(user) {

@@ -9,5 +9,5 @@ How to generate a new invite:
 3. Go to invite management.
 4. Generate a new invite for admin or user access.
 
-Public signup is disabled.
+Public signup is enabled for free accounts. Invite codes upgrade the account into college access.
 Do not rely on a static invite code stored in the repository.

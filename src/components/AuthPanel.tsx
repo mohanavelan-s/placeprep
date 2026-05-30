@@ -134,10 +134,9 @@ export default function AuthPanel({
       : "";
   const registerDisabled =
     isSubmitting
-    || !inviteCodeValue
     || invitePreviewQuery.isFetching
-    || invitePreviewQuery.isError
-    || (invitePreviewQuery.isFetched && !inviteIsValid);
+    || Boolean(inviteCodeValue && invitePreviewQuery.isError)
+    || Boolean(inviteCodeValue && invitePreviewQuery.isFetched && !inviteIsValid);
 
   return (
     <div className="min-h-screen bg-background vignette relative overflow-hidden">
@@ -167,7 +166,7 @@ export default function AuthPanel({
             {[
               {
                 title: "Live auth",
-                copy: "JWT-backed sign in and invite-gated registration against the running API.",
+                copy: "JWT-backed sign in, open free signup, and college-code upgrades against the running API.",
               },
               {
                 title: "Private workspace",
@@ -283,15 +282,14 @@ export default function AuthPanel({
                 <form className="space-y-4" onSubmit={handleRegister}>
                   <label className="block space-y-2">
                     <span className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
-                      Invite code
+                      Invite code <span className="text-muted-foreground/70">(optional)</span>
                     </span>
                     <Input
                       value={registerForm.inviteCode}
                       onChange={(event) =>
                         setRegisterForm((current) => ({ ...current, inviteCode: event.target.value }))
                       }
-                      placeholder="ENTER-YOUR-INVITE"
-                      required
+                      placeholder="Leave blank for a free account"
                     />
                   </label>
 
@@ -316,7 +314,7 @@ export default function AuthPanel({
                       </div>
                     ) : (
                       <p className="text-muted-foreground">
-                        Public signup is disabled. Access is granted through an invite code.
+                        Leave this blank for a free workspace. Have a college code? Enter it to unlock your institution's plan.
                       </p>
                     )}
                   </div>

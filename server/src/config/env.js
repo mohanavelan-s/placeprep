@@ -162,7 +162,7 @@ const env = {
   deliveryWorkerEnabled: process.env.DELIVERY_WORKER_ENABLED !== 'false',
   deliveryWorkerCron: process.env.DELIVERY_WORKER_CRON || '*/1 * * * *',
   deliveryWorkerBatchSize: Number(process.env.DELIVERY_WORKER_BATCH_SIZE || 12),
-  publicSignupEnabled: process.env.ALLOW_PUBLIC_SIGNUP === 'true',
+  publicSignupEnabled: process.env.INVITE_ONLY_ACCESS !== 'true',
   bootstrapAdminInviteCode: process.env.BOOTSTRAP_ADMIN_INVITE_CODE || '',
   bootstrapObserverInviteCode: process.env.BOOTSTRAP_OBSERVER_INVITE_CODE || '',
   bootstrapUserInviteCode: process.env.BOOTSTRAP_USER_INVITE_CODE || '',

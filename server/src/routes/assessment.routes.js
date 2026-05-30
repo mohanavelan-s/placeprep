@@ -15,7 +15,7 @@ router.get('/overview', asyncHandler(controller.getOverview));
 router.post(
   '/generate',
   [
-    body('assessmentType').optional().isIn(['mcq', 'fill_blank', 'coding']),
+    body('assessmentType').optional().isIn(['mcq', 'fill_blank', 'coding', 'ordering']),
     body('durationMinutes').optional().isInt({ min: 10, max: 90 }),
     body('assessmentScope').optional().isIn(['daily', 'weekly']),
   ],

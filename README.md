@@ -7,8 +7,8 @@ Live deployment:
 
 Access:
 
-- Public signup is disabled.
-- Use the invite page on the live app to create an account: [https://placeprep-nine.vercel.app/invite](https://placeprep-nine.vercel.app/invite)
+- Public signup is enabled for free accounts.
+- Use the invite page on the live app to create a free account or enter a college invite: [https://placeprep-nine.vercel.app/invite](https://placeprep-nine.vercel.app/invite)
 - Invite generation guidance is stored in [docs/invite-code.txt](docs/invite-code.txt).
 
 PlacePrep now includes a modular Express + PostgreSQL backend inside [server/package.json](server/package.json) with JWT auth, task/log tracking, Power Pocket sessions, AI utilities, uploads, resume analysis, and progress analytics.

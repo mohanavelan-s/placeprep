@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Send } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 
 import ClearHistoryButton from "@/components/ClearHistoryButton";
@@ -8,11 +9,37 @@ import SoftSyncNotice from "@/components/SoftSyncNotice";
 import { MentorSkeleton } from "@/components/WorkspaceSkeletons";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/context/AuthContext";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
+import { useTierGate } from "@/hooks/use-tier-gate";
 import { clearMentorHistory, fetchMentorHistory, sendMentorMessage } from "@/lib/api";
+
+function MentorMessageContent({
+  content,
+  assistant,
+}: {
+  content: string;
+  assistant: boolean;
+}) {
+  if (!assistant) {
+    return (
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/88">
+        {content}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2 text-sm leading-6 text-foreground/88 [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-background/70 [&_code]:px-1.5 [&_li]:ml-5 [&_ol]:list-decimal [&_p]:whitespace-pre-wrap [&_ul]:list-disc">
+      <ReactMarkdown>{content}</ReactMarkdown>
+    </div>
+  );
+}
 
 export default function AiMentorPage() {
   const queryClient = useQueryClient();
+  const { refreshProfile } = useAuth();
+  const tierGate = useTierGate();
   const [message, setMessage] = useState("");
   const historyQuery = useQuery({
     queryKey: ["mentor-history"],
@@ -24,9 +51,10 @@ export default function AiMentorPage() {
 
   const sendMutation = useMutation({
     mutationFn: () => sendMentorMessage({ message }),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       queryClient.setQueryData(["mentor-history"], result.history);
       setMessage("");
+      await refreshProfile();
       toast.success(result.usedFallback ? "Fallback mentor reply loaded." : "Nocturne Mentor replied.");
     },
     onError: (error) => {
@@ -54,6 +82,7 @@ export default function AiMentorPage() {
   }, [historyQuery.data, sendMutation.data]);
 
   const history = Array.isArray(historyQuery.data) ? historyQuery.data : [];
+  const canMessageMentor = tierGate.canUse("mentor_messages");
 
   if (historyQuery.isPending && !history.length) {
     return <MentorSkeleton />;
@@ -110,9 +139,7 @@ export default function AiMentorPage() {
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                   {entry.role === "assistant" ? "Nocturne Mentor" : "You"}
                 </p>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/88">
-                  {entry.content}
-                </p>
+                <MentorMessageContent content={entry.content} assistant={entry.role === "assistant"} />
               </div>
             ))}
             {!history.length && !historyQuery.isPending && (
@@ -132,13 +159,19 @@ export default function AiMentorPage() {
             onChange={(event) => setMessage(event.target.value)}
             placeholder="Ask about DSA, system design, weak areas, or interview strategy..."
             className="min-h-[120px] border-border/80 bg-background/70"
+            disabled={!canMessageMentor}
           />
+          {!canMessageMentor && tierGate.tier === "free" && (
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Free workspaces include 10 mentor messages. Enter a college invite or upgrade later to keep chatting.
+            </p>
+          )}
           <div className="mt-4 flex justify-end">
             <Button
               type="button"
               className="gap-2"
               onClick={() => sendMutation.mutate()}
-              disabled={!message.trim() || sendMutation.isPending}
+              disabled={!message.trim() || sendMutation.isPending || !canMessageMentor}
             >
               <Send className="h-4 w-4" />
               {sendMutation.isPending ? "Mentor is thinking..." : "Send"}

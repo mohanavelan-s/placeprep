@@ -7,6 +7,7 @@ const {
 } = require('../config/openai');
 const mentorMessageRepository = require('../repositories/mentorMessage.repository');
 const prepPlanRepository = require('../repositories/prepPlan.repository');
+const tierService = require('./tier.service');
 const AppError = require('../utils/appError');
 
 function buildFallbackReply(message, context) {
@@ -133,6 +134,8 @@ async function sendMessage(user, payload = {}) {
     throw new AppError('Message is required.', 400);
   }
 
+  await tierService.assertCanUse(user, 'mentor_messages');
+
   const context = await getContext(user);
   const history = await mentorMessageRepository.listRecentByUser(user.id, 12);
 
@@ -143,6 +146,7 @@ async function sendMessage(user, payload = {}) {
   });
 
   const { reply, usedFallback } = await requestMentorReply(message, history.slice(-10), context);
+  await tierService.consumeFeature(user, 'mentor_messages');
 
   const assistantMessage = await mentorMessageRepository.createMessage({
     userId: user.id,

@@ -24,6 +24,9 @@ const publicColumns = `
   consistency_score AS "consistencyScore",
   current_streak AS "currentStreak",
   readiness_score AS "readinessScore",
+  tier,
+  plan_generations AS "planGenerations",
+  mentor_messages AS "mentorMessages",
   COALESCE(coach_metadata->>'preferredLanguage', 'english') AS "preferredLanguage",
   COALESCE(coach_metadata->>'accessTier', 'standard') AS "accessTier",
   coach_metadata AS "coachMetadata",
@@ -52,8 +55,11 @@ async function createUser(payload, client = null) {
       target_role,
       placement_date,
       timezone,
+      tier,
+      plan_generations,
+      mentor_messages,
       coach_metadata
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
     RETURNING ${publicColumns}`,
     [
       randomUUID(),
@@ -67,6 +73,9 @@ async function createUser(payload, client = null) {
       payload.targetRole || null,
       payload.placementDate || null,
       payload.timezone,
+      payload.tier || 'free',
+      payload.planGenerations ?? 0,
+      payload.mentorMessages ?? 0,
       payload.coachMetadata || {},
     ]
   );
@@ -137,6 +146,9 @@ async function updateUser(id, updates) {
     consistency_score: updates.consistencyScore,
     current_streak: updates.currentStreak,
     readiness_score: updates.readinessScore,
+    tier: updates.tier,
+    plan_generations: updates.planGenerations,
+    mentor_messages: updates.mentorMessages,
     coach_metadata: updates.coachMetadata,
     last_login_at: updates.lastLoginAt,
   };
@@ -153,6 +165,24 @@ async function updateUser(id, updates) {
      WHERE id = $${values.length + 1}
      RETURNING ${publicColumns}`,
     [...values, id]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function incrementUsageCounter(userId, counter, amount = 1, client = null) {
+  const allowedCounters = new Set(['plan_generations', 'mentor_messages']);
+  if (!allowedCounters.has(counter)) {
+    throw new Error(`Unsupported usage counter: ${counter}`);
+  }
+
+  const execute = getExecutor(client);
+  const result = await execute(
+    `UPDATE users
+     SET ${counter} = ${counter} + $2
+     WHERE id = $1
+     RETURNING ${publicColumns}`,
+    [userId, amount]
   );
 
   return result.rows[0] || null;
@@ -259,6 +289,7 @@ module.exports = {
   findByIdentifier,
   findById,
   updateUser,
+  incrementUsageCounter,
   touchLastLogin,
   listUsersForNotificationSweep,
   listStudentsForOversight,

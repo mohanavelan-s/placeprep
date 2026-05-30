@@ -72,15 +72,12 @@ async function register(payload) {
     : await buildAvailableUsername(payload.name, email.split('@')[0]);
   const passwordHash = await bcrypt.hash(payload.password, 12);
 
-  if (env.inviteOnlyAccess && !payload.inviteCode) {
-    throw new AppError('An invite code is required to create an account.', 403);
-  }
-
   const registration = await withTransaction(async (client) => {
     const invite = payload.inviteCode
       ? await inviteService.assertInviteAvailable(payload.inviteCode, client)
       : null;
     const accessTier = invite?.accessTier === 'observer' ? 'observer' : 'standard';
+    const tier = invite ? 'college' : 'free';
 
     const createdUser = await userRepository.createUser({
       name: payload.name.trim(),
@@ -92,6 +89,9 @@ async function register(payload) {
       targetRole: payload.targetRole || null,
       placementDate: payload.placementDate || null,
       timezone: payload.timezone || env.defaultTimezone,
+      tier,
+      planGenerations: 0,
+      mentorMessages: 0,
       coachMetadata: accessTier === 'observer'
         ? {
             accessTier: 'observer',

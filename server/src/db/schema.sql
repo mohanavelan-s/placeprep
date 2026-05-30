@@ -17,11 +17,15 @@ CREATE TABLE IF NOT EXISTS users (
   consistency_score NUMERIC(5, 2) NOT NULL DEFAULT 0,
   current_streak INTEGER NOT NULL DEFAULT 0,
   readiness_score NUMERIC(5, 2) NOT NULL DEFAULT 0,
+  tier TEXT NOT NULL DEFAULT 'free',
+  plan_generations INTEGER NOT NULL DEFAULT 0,
+  mentor_messages INTEGER NOT NULL DEFAULT 0,
   coach_metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
   last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT users_role_check CHECK (role IN ('admin', 'user'))
+  CONSTRAINT users_role_check CHECK (role IN ('admin', 'user')),
+  CONSTRAINT users_tier_check CHECK (tier IN ('free', 'pro', 'college'))
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(60);
@@ -34,12 +38,18 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS mistake_count INTEGER NOT NULL DEFAUL
 ALTER TABLE users ADD COLUMN IF NOT EXISTS consistency_score NUMERIC(5, 2) NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS current_streak INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS readiness_score NUMERIC(5, 2) NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'free';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_generations INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mentor_messages INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS coach_metadata JSONB NOT NULL DEFAULT '{}'::JSONB;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 UPDATE users SET role = 'user' WHERE role = 'viewer';
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'user'));
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_tier_check;
+UPDATE users SET tier = 'free' WHERE tier IS NULL OR tier NOT IN ('free', 'pro', 'college');
+ALTER TABLE users ADD CONSTRAINT users_tier_check CHECK (tier IN ('free', 'pro', 'college'));
 
 CREATE TABLE IF NOT EXISTS invites (
   id UUID PRIMARY KEY,
@@ -391,6 +401,9 @@ CREATE TABLE IF NOT EXISTS apk_versions (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS target_role VARCHAR(120);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS placement_date DATE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone VARCHAR(80) NOT NULL DEFAULT 'Asia/Calcutta';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'free';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_generations INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mentor_messages INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
@@ -575,6 +588,7 @@ CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_app_settings_updated_at ON app_settings(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_users_username_lower ON users (LOWER(username)) WHERE username IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_tier ON users(tier);
 CREATE INDEX IF NOT EXISTS idx_invites_code ON invites(code);
 CREATE INDEX IF NOT EXISTS idx_invites_created_at ON invites(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_invites_unused_expires_at ON invites(used, expires_at);
@@ -616,7 +630,7 @@ CREATE TABLE IF NOT EXISTS assessment_sessions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT assessment_sessions_status_check CHECK (status IN ('draft', 'started', 'completed', 'skipped')),
-  CONSTRAINT assessment_sessions_type_check CHECK (assessment_type IN ('mcq', 'fill_blank', 'coding'))
+  CONSTRAINT assessment_sessions_type_check CHECK (assessment_type IN ('mcq', 'fill_blank', 'coding', 'ordering'))
 );
 
 ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS plan_id UUID REFERENCES prep_plans(id) ON DELETE SET NULL;
@@ -640,7 +654,7 @@ ADD CONSTRAINT assessment_sessions_status_check CHECK (status IN ('draft', 'star
 
 ALTER TABLE assessment_sessions DROP CONSTRAINT IF EXISTS assessment_sessions_type_check;
 ALTER TABLE assessment_sessions
-ADD CONSTRAINT assessment_sessions_type_check CHECK (assessment_type IN ('mcq', 'fill_blank', 'coding'));
+ADD CONSTRAINT assessment_sessions_type_check CHECK (assessment_type IN ('mcq', 'fill_blank', 'coding', 'ordering'));
 
 CREATE INDEX IF NOT EXISTS idx_assessment_sessions_user_created_at ON assessment_sessions(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_assessment_sessions_user_status ON assessment_sessions(user_id, status, created_at DESC);

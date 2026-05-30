@@ -23,6 +23,9 @@ export interface User {
   consistencyScore: number;
   currentStreak: number;
   readinessScore: number;
+  tier?: "free" | "pro" | "college";
+  planGenerations?: number;
+  mentorMessages?: number;
   preferredLanguage?: "english" | "tamil" | "hindi" | null;
   coachMetadata: Record<string, unknown>;
   createdAt: string;
@@ -574,7 +577,7 @@ export interface PrepPlan {
   usedFallback?: boolean;
 }
 
-export type AssessmentType = "mcq" | "fill_blank" | "coding";
+export type AssessmentType = "mcq" | "fill_blank" | "coding" | "ordering";
 export type AssessmentScope = "daily" | "weekly";
 
 export interface AssessmentQuestionChoice {
@@ -588,10 +591,15 @@ export interface AssessmentQuestion {
   topic: string;
   prompt: string;
   type: AssessmentType;
+  difficulty?: "easy" | "medium" | "hard" | "hard_plus" | string;
   averageTimeMinutes: number;
   referenceLabel?: string | null;
   referenceUrl?: string | null;
   choices?: AssessmentQuestionChoice[];
+  items?: Array<{
+    id: string;
+    text: string;
+  }>;
   placeholder?: string | null;
   taskTitle?: string | null;
 }
@@ -616,6 +624,7 @@ export interface AssessmentRecommendation {
 
 export interface AssessmentSubmission {
   answers?: Record<string, string>;
+  answerStats?: Record<string, unknown>;
   questionResults?: AssessmentQuestionResult[];
   submittedAt?: string | null;
 }
@@ -1377,6 +1386,7 @@ function normalizeAssessmentQuestion(question: AssessmentQuestion): AssessmentQu
     topic: String(question?.topic || "").trim(),
     prompt: String(question?.prompt || "").trim(),
     type: (String(question?.type || "mcq").trim() as AssessmentType),
+    difficulty: question?.difficulty ? String(question.difficulty).trim() : "medium",
     averageTimeMinutes: Number(question?.averageTimeMinutes || 0),
     referenceLabel: question?.referenceLabel ? String(question.referenceLabel).trim() : null,
     referenceUrl: question?.referenceUrl ? String(question.referenceUrl).trim() : null,
@@ -1385,6 +1395,10 @@ function normalizeAssessmentQuestion(question: AssessmentQuestion): AssessmentQu
       label: String(choice?.label || String.fromCharCode(65 + index)).trim(),
       text: String(choice?.text || "").trim(),
     })).filter((choice) => choice.text),
+    items: toArray<{ id?: string; text?: string }>(question?.items).map((item, index) => ({
+      id: String(item?.id || `${question?.id || "item"}-${index + 1}`).trim(),
+      text: String(item?.text || "").trim(),
+    })).filter((item) => item.text),
     placeholder: question?.placeholder ? String(question.placeholder).trim() : null,
     taskTitle: question?.taskTitle ? String(question.taskTitle).trim() : null,
   };
@@ -1443,6 +1457,7 @@ function normalizeAssessmentSession(session: AssessmentSession | null): Assessme
       answers: Object.fromEntries(
         Object.entries(answers).map(([key, value]) => [key, String(value || "")]),
       ),
+      answerStats: normalizeRecord(submission.answerStats),
       questionResults: toArray<AssessmentQuestionResult>(submission.questionResults).map((result) => ({
         questionId: String(result?.questionId || "").trim(),
         topic: String(result?.topic || "").trim(),
@@ -2036,7 +2051,7 @@ export async function generateAssessment(payload: {
 
 export async function submitAssessment(
   assessmentId: string,
-  payload: { answers: Record<string, string> },
+  payload: { answers: Record<string, string>; answerStats?: Record<string, unknown> },
 ) {
   return normalizeAssessmentSession(await request<AssessmentSession>(`/assessments/${assessmentId}/submit`, {
     method: "POST",

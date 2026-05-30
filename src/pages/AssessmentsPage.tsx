@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpRight,
+  ArrowDown,
+  ArrowUp,
   Brain,
   CheckCircle2,
   ClipboardList,
   Code2,
   FileQuestion,
+  GripVertical,
+  Lightbulb,
   Loader2,
   PenLine,
   RefreshCcw,
@@ -67,6 +71,12 @@ const ASSESSMENT_OPTIONS: Array<{
     description: "Timed implementation or pseudocode under an interview-style average time budget.",
     icon: Code2,
   },
+  {
+    type: "ordering",
+    title: "Ordering drill",
+    description: "Arrange reasoning steps in the order you would explain them live.",
+    icon: ClipboardList,
+  },
 ];
 
 const ASSESSMENT_SCOPES: Array<{
@@ -116,17 +126,103 @@ function scoreTone(score: number) {
   return "text-rose-200 border-rose-400/20 bg-rose-500/10";
 }
 
+function difficultyLabel(value?: string) {
+  if (value === "hard_plus") {
+    return "Hard+";
+  }
+
+  return value ? value.replace("_", " ") : "Medium";
+}
+
+function parseOrderingValue(question: AssessmentQuestion, value: string) {
+  const fallback = question.items?.map((item) => item.id) || [];
+
+  if (!value) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      const parsedIds = parsed.map(String).filter((id) => fallback.includes(id));
+      const missingIds = fallback.filter((id) => !parsedIds.includes(id));
+      return [...parsedIds, ...missingIds];
+    }
+  } catch {
+    return fallback;
+  }
+
+  return fallback;
+}
+
+function moveItem(values: string[], index: number, direction: -1 | 1) {
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= values.length) {
+    return values;
+  }
+
+  const next = [...values];
+  [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+  return next;
+}
+
+function buildApproachHint(question: AssessmentQuestion) {
+  const reference = question.referenceLabel || question.taskTitle || question.topic;
+
+  if (/graph|bfs|dfs/i.test(reference)) {
+    return "Start by naming the state, then the visited rule. The answer usually follows from what must never be revisited.";
+  }
+
+  if (/dynamic|dp|memo/i.test(reference)) {
+    return "Say the subproblem in one sentence. If you cannot name the state, do not touch the transition yet.";
+  }
+
+  if (/sql|database|dbms/i.test(reference)) {
+    return "Ask what rows must survive filtering, what relationship joins them, and what index would make that path cheap.";
+  }
+
+  if (/system|design|scale|cache/i.test(reference)) {
+    return "Separate requirements from mechanisms. Pick the bottleneck first, then justify the cache, queue, or database choice.";
+  }
+
+  return "Name the constraint, choose the pattern that removes repeated work, then test one edge case before committing.";
+}
+
+function formatTime(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainder = safeSeconds % 60;
+  return `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+function countAnswerChanges(answerStats?: Record<string, unknown>) {
+  return Object.values(answerStats || {}).reduce((total, stat) => {
+    if (!stat || typeof stat !== "object") {
+      return total;
+    }
+
+    return total + Number((stat as { answerChanges?: number }).answerChanges || 0);
+  }, 0);
+}
+
 function QuestionCard({
   question,
   value,
   onChange,
   disabled,
+  onHint,
+  hint,
 }: {
   question: AssessmentQuestion;
   value: string;
   onChange: (next: string) => void;
   disabled?: boolean;
+  onHint?: () => void;
+  hint?: string;
 }) {
+  const orderingIds = question.type === "ordering" ? parseOrderingValue(question, value) : [];
+  const orderingItemsById = new Map((question.items || []).map((item) => [item.id, item]));
+
   return (
     <article className="rounded-[1.25rem] border border-border/80 bg-card/60 p-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -136,7 +232,7 @@ function QuestionCard({
         </div>
 
         <div className="rounded-full border border-border/80 bg-background/70 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-          Avg {question.averageTimeMinutes} min
+          {difficultyLabel(question.difficulty)} / Avg {question.averageTimeMinutes} min
         </div>
       </div>
 
@@ -197,6 +293,70 @@ function QuestionCard({
           />
         </div>
       )}
+
+      {question.type === "ordering" && (
+        <div className="mt-5 grid gap-3">
+          {orderingIds.map((itemId, index) => {
+            const item = orderingItemsById.get(itemId);
+            if (!item) {
+              return null;
+            }
+
+            return (
+              <div
+                key={itemId}
+                className="flex items-center gap-3 rounded-[1rem] border border-border/80 bg-background/45 px-4 py-3"
+              >
+                <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Step {index + 1}</p>
+                  <p className="mt-1 text-sm leading-6 text-foreground/85">{item.text}</p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9"
+                    disabled={disabled || index === 0}
+                    onClick={() => onChange(JSON.stringify(moveItem(orderingIds, index, -1)))}
+                    aria-label="Move step up"
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9"
+                    disabled={disabled || index === orderingIds.length - 1}
+                    onClick={() => onChange(JSON.stringify(moveItem(orderingIds, index, 1)))}
+                    aria-label="Move step down"
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {onHint && (
+        <div className="mt-5 rounded-[1rem] border border-border/80 bg-background/45 px-4 py-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 gap-2 border-border/80 bg-card/60"
+            onClick={onHint}
+            disabled={Boolean(hint)}
+          >
+            <Lightbulb className="h-4 w-4" />
+            Approach hint
+          </Button>
+          {hint && <p className="mt-3 text-sm leading-6 text-foreground/80">{hint}</p>}
+        </div>
+      )}
     </article>
   );
 }
@@ -208,6 +368,9 @@ export default function AssessmentsPage() {
   const [assessmentScope, setAssessmentScope] = useState<AssessmentScope>("daily");
   const [durationMinutes, setDurationMinutes] = useState("20");
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answerStats, setAnswerStats] = useState<Record<string, { answerChanges: number; firstAnsweredAt?: string; lastAnsweredAt?: string }>>({});
+  const [approachHints, setApproachHints] = useState<Record<string, string>>({});
+  const [now, setNow] = useState(() => Date.now());
   const [missingPlanDialogOpen, setMissingPlanDialogOpen] = useState(false);
 
   const overviewQuery = useQuery({
@@ -233,6 +396,8 @@ export default function AssessmentsPage() {
   useEffect(() => {
     if (!currentSession) {
       setAnswers({});
+      setAnswerStats({});
+      setApproachHints({});
       return;
     }
 
@@ -240,6 +405,17 @@ export default function AssessmentsPage() {
       Object.entries(currentSession.submission?.answers || {}).map(([key, value]) => [key, String(value || "")]),
     );
     setAnswers(seededAnswers);
+    setAnswerStats((currentSession.submission?.answerStats || {}) as Record<string, { answerChanges: number; firstAnsweredAt?: string; lastAnsweredAt?: string }>);
+    setApproachHints({});
+  }, [currentSession]);
+
+  useEffect(() => {
+    if (!currentSession || currentSession.status === "completed") {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
   }, [currentSession]);
 
   const startAssessmentMutation = useMutation({
@@ -269,7 +445,7 @@ export default function AssessmentsPage() {
         throw new Error("Start an assessment before submitting.");
       }
 
-      return submitAssessment(currentSession.id, { answers });
+      return submitAssessment(currentSession.id, { answers, answerStats });
     },
     onSuccess: async (session) => {
       await queryClient.invalidateQueries({ queryKey: ["assessments", "overview"] });
@@ -312,6 +488,43 @@ export default function AssessmentsPage() {
 
     return currentSession.questions.filter((question) => !String(answers[question.id] || "").trim()).length;
   }, [answers, currentSession]);
+
+  const timeLeftSeconds = useMemo(() => {
+    if (!currentSession?.startedAt || currentSession.status === "completed") {
+      return null;
+    }
+
+    const startedAt = new Date(currentSession.startedAt).getTime();
+    const endsAt = startedAt + currentSession.durationMinutes * 60 * 1000;
+    return Math.ceil((endsAt - now) / 1000);
+  }, [currentSession, now]);
+  const isTimeExpired = timeLeftSeconds !== null && timeLeftSeconds <= 0;
+  const pressurePercent = timeLeftSeconds === null || !currentSession
+    ? 100
+    : Math.max(0, Math.min(100, (timeLeftSeconds / (currentSession.durationMinutes * 60)) * 100));
+  const pressureTone = pressurePercent <= 20
+    ? "bg-destructive"
+    : pressurePercent <= 45
+      ? "bg-amber-400"
+      : "bg-primary";
+  const answerChangeCount = countAnswerChanges(currentSession?.submission?.answerStats);
+
+  function updateAnswer(question: AssessmentQuestion, next: string) {
+    setAnswers((current) => ({ ...current, [question.id]: next }));
+    setAnswerStats((current) => {
+      const existing = current[question.id];
+      const answeredAt = new Date().toISOString();
+
+      return {
+        ...current,
+        [question.id]: {
+          answerChanges: existing ? existing.answerChanges + 1 : 0,
+          firstAnsweredAt: existing?.firstAnsweredAt || answeredAt,
+          lastAnsweredAt: answeredAt,
+        },
+      };
+    });
+  }
 
   if (isBooting) {
     return <AssessmentsSkeleton />;
@@ -461,7 +674,9 @@ export default function AssessmentsPage() {
                       ? "MCQ sprint"
                       : currentSession.assessmentType === "fill_blank"
                         ? "Fill in the blanks"
-                        : "Short programming"}
+                        : currentSession.assessmentType === "ordering"
+                          ? "Ordering drill"
+                          : "Short programming"}
                   </h3>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     Started {formatDateTime(currentSession.startedAt)} / {currentSession.durationMinutes} total minutes / {currentSession.assessmentScope || "daily"} scope
@@ -473,13 +688,36 @@ export default function AssessmentsPage() {
                 </div>
               </div>
 
+              {timeLeftSeconds !== null && (
+                <div className="mt-5 rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
+                  <div className="flex items-center justify-between gap-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                    <span>Pressure clock</span>
+                    <span>{isTimeExpired ? "Time expired" : formatTime(timeLeftSeconds)}</span>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted/45">
+                    <div
+                      className={`h-full rounded-full transition-all ${pressureTone}`}
+                      style={{ width: `${pressurePercent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="mt-6 space-y-4">
                 {currentSession.questions.map((question) => (
                   <QuestionCard
                     key={question.id}
                     question={question}
                     value={answers[question.id] || ""}
-                    onChange={(next) => setAnswers((current) => ({ ...current, [question.id]: next }))}
+                    onChange={(next) => updateAnswer(question, next)}
+                    disabled={isTimeExpired}
+                    onHint={() =>
+                      setApproachHints((current) => ({
+                        ...current,
+                        [question.id]: current[question.id] || buildApproachHint(question),
+                      }))
+                    }
+                    hint={approachHints[question.id]}
                   />
                 ))}
               </div>
@@ -577,6 +815,15 @@ export default function AssessmentsPage() {
                     )}
                     {applyPlanUpdateMutation.isPending ? "Updating plan..." : "Apply to plan"}
                   </Button>
+                </div>
+
+                <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Session debrief</p>
+                  <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                    {answerChangeCount > 0
+                      ? `You changed answers ${answerChangeCount} time${answerChangeCount === 1 ? "" : "s"}, which signals uncertainty worth reviewing before the next timed run.`
+                      : "Your submitted answers were steady. Review the weak spots and test whether that confidence holds under the next timer."}
+                  </p>
                 </div>
               </div>
 

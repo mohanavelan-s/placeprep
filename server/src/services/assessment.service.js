@@ -177,6 +177,7 @@ function normalizeSessionShape(session) {
 
   const normalizedSubmission = normalizeRecord(session.submission);
   const normalizedAnswers = normalizeRecord(normalizedSubmission.answers);
+  const normalizedAnswerStats = normalizeRecord(normalizedSubmission.answerStats);
 
   return {
     ...session,
@@ -196,6 +197,7 @@ function normalizeSessionShape(session) {
       topic: String(question?.topic || '').trim(),
       prompt: String(question?.prompt || '').trim(),
       type: String(question?.type || 'mcq').trim(),
+      difficulty: String(question?.difficulty || 'medium').trim(),
       averageTimeMinutes: Number(question?.averageTimeMinutes || 0),
       referenceLabel: question?.referenceLabel ? String(question.referenceLabel).trim() : null,
       referenceUrl: question?.referenceUrl ? String(question.referenceUrl).trim() : null,
@@ -204,6 +206,10 @@ function normalizeSessionShape(session) {
         label: String(choice?.label || String.fromCharCode(65 + index)).trim(),
         text: String(choice?.text || '').trim(),
       })).filter((choice) => choice.text),
+      items: toArray(question?.items).map((item, index) => ({
+        id: String(item?.id || `${question?.id || 'item'}-${index + 1}`).trim(),
+        text: String(item?.text || '').trim(),
+      })).filter((item) => item.text),
       placeholder: question?.placeholder ? String(question.placeholder).trim() : null,
       taskTitle: question?.taskTitle ? String(question.taskTitle).trim() : null,
     })).filter((question) => question.id && question.prompt),
@@ -212,6 +218,7 @@ function normalizeSessionShape(session) {
       answers: Object.fromEntries(
         Object.entries(normalizedAnswers).map(([key, value]) => [key, String(value || '')])
       ),
+      answerStats: normalizedAnswerStats,
       questionResults: toArray(normalizedSubmission.questionResults).map((result) => ({
         questionId: String(result?.questionId || '').trim(),
         topic: String(result?.topic || '').trim(),
@@ -488,10 +495,12 @@ function sanitizeQuestion(question) {
     topic: question.topic,
     prompt: question.prompt,
     type: question.type,
+    difficulty: question.difficulty || 'medium',
     averageTimeMinutes: question.averageTimeMinutes,
     referenceLabel: question.referenceLabel || null,
     referenceUrl: question.referenceUrl || null,
     choices: Array.isArray(question.choices) ? question.choices : undefined,
+    items: Array.isArray(question.items) ? question.items : undefined,
     placeholder: question.placeholder || null,
     taskTitle: question.taskTitle || null,
   };
@@ -729,13 +738,52 @@ function buildContextualAnswer(source, flashcard) {
   return buildKnowledgeAnswer(source, flashcard);
 }
 
-function buildAssessmentMcqPrompt(source) {
+function buildAssessmentMcqPrompt(source, difficulty = 'medium') {
   const topic = source.referenceLabel || source.taskTitle || source.topic || 'this topic';
+  if (difficulty === 'hard_plus') {
+    return `In ${topic}, which choice best predicts the failure mode or tradeoff an interviewer would probe?`;
+  }
+
+  if (difficulty === 'hard') {
+    return `For ${topic}, which statement best explains the tradeoff behind the correct approach?`;
+  }
+
+  if (difficulty === 'easy') {
+    return `Which core recall statement is correct for ${topic}?`;
+  }
+
   if (source.kind === 'task') {
     return `Which statement correctly explains the core concept behind ${topic}?`;
   }
 
   return `Which statement is correct about ${topic}?`;
+}
+
+function resolveAdaptiveDifficulty(sessions = []) {
+  const latestCompleted = sessions.find((session) => session.status === 'completed');
+  if (!latestCompleted) {
+    return 'medium';
+  }
+
+  const submission = normalizeRecord(latestCompleted.submission);
+  const results = toArray(submission.questionResults);
+  const score = Number(latestCompleted.score || 0);
+  const lastThreeCorrect = results.slice(-3).length >= 3
+    && results.slice(-3).every((result) => Boolean(result?.correct));
+
+  if (lastThreeCorrect && score >= 80) {
+    return 'hard_plus';
+  }
+
+  if (score >= 70) {
+    return 'hard';
+  }
+
+  if (score < 45) {
+    return 'easy';
+  }
+
+  return 'medium';
 }
 
 function buildBlankPromptLabel(source, assessmentScope) {
@@ -761,7 +809,7 @@ function chooseBlankPhrase(answer, source) {
   return extractKeyPhrase(answer) || source.topic || 'core idea';
 }
 
-function buildMcqQuestions(plan, sources, durationMinutes) {
+function buildMcqQuestions(plan, sources, durationMinutes, difficulty = 'medium') {
   const fallbackSources = sources.length ? sources : buildAssessmentSources(plan, [], 'mcq', durationMinutes, 'daily');
   const answersBySource = fallbackSources.map((source) => ({
     source,
@@ -782,8 +830,9 @@ function buildMcqQuestions(plan, sources, durationMinutes) {
     return {
       id: questionId,
       type: 'mcq',
+      difficulty,
       topic: source.topic,
-      prompt: buildAssessmentMcqPrompt(source),
+      prompt: buildAssessmentMcqPrompt(source, difficulty),
       averageTimeMinutes: clamp(Math.floor(durationMinutes / Math.max(fallbackSources.length, 1)), 3, 8),
       referenceLabel: source.referenceLabel || null,
       referenceUrl: source.referenceUrl || null,
@@ -810,6 +859,7 @@ function buildFillBlankQuestions(plan, sources, durationMinutes, assessmentScope
     return {
       id: `fill-${index + 1}-${slugify(source.referenceLabel || source.topic || `topic-${index + 1}`)}`,
       type: 'fill_blank',
+      difficulty: 'medium',
       topic: source.topic,
       prompt: `Fill in the blank for ${buildBlankPromptLabel(source, assessmentScope)}: ${blankedAnswer}`,
       averageTimeMinutes: clamp(Math.floor(durationMinutes / Math.max(fallbackSources.length, 1)), 3, 8),
@@ -840,6 +890,7 @@ function buildCodingQuestions(plan, sources, durationMinutes, assessmentScope = 
     return {
       id: `code-${index + 1}-${slugify(referenceLabel)}`,
       type: 'coding',
+      difficulty: 'hard',
       topic: source.topic || referenceLabel,
       prompt: `Write a short programming solution or pseudocode for ${referenceLabel}. Keep it interview-length, mention the main approach, the key data structure, and the expected time complexity.`,
       averageTimeMinutes: clamp(Math.floor(durationMinutes / Math.max(baseSources.length, 1)), 15, 45),
@@ -853,18 +904,122 @@ function buildCodingQuestions(plan, sources, durationMinutes, assessmentScope = 
   });
 }
 
-function buildQuestions(plan, taskPool, assessmentType, durationMinutes, assessmentScope = 'daily') {
+function buildOrderingSteps(source) {
+  const topic = String(source.topic || source.referenceLabel || source.taskTitle || 'the problem').trim();
+  const normalizedTopic = normalizeText(topic);
+
+  if (normalizedTopic.includes('graph') || normalizedTopic.includes('bfs')) {
+    return [
+      `Model ${topic} as nodes, edges, and a start state.`,
+      'Initialize a queue and mark the start state as visited.',
+      'Process the current frontier while adding unseen neighbors.',
+      'Return the discovered distance, traversal order, or failure state.',
+    ];
+  }
+
+  if (normalizedTopic.includes('dynamic') || normalizedTopic === 'dp') {
+    return [
+      `Define the state needed for ${topic}.`,
+      'Write the transition using smaller already-solved states.',
+      'Set the base cases before filling or memoizing the table.',
+      'Return the target state and verify it on a tiny example.',
+    ];
+  }
+
+  if (normalizedTopic.includes('sql') || normalizedTopic.includes('database')) {
+    return [
+      'Identify the required rows and relationships first.',
+      'Apply joins and filters before grouping or aggregating.',
+      'Select only the fields needed by the result.',
+      'Check indexes or constraints that affect performance and correctness.',
+    ];
+  }
+
+  if (normalizedTopic.includes('system') || normalizedTopic.includes('design')) {
+    return [
+      'Clarify requirements, scale, and the highest-risk operation.',
+      'Choose the data model and main request path.',
+      'Add cache, queue, or partitioning only where the bottleneck demands it.',
+      'Name the failure mode and how the design recovers.',
+    ];
+  }
+
+  return [
+    `Restate what ${topic} asks for and the input constraints.`,
+    'Choose the pattern or data structure that removes repeated work.',
+    'Dry-run one small edge case before coding.',
+    'State the time and space complexity after the solution is stable.',
+  ];
+}
+
+function buildOrderingQuestions(plan, sources, durationMinutes, assessmentScope = 'daily') {
+  const fallbackSources = sources.length ? sources : buildAssessmentSources(plan, [], 'ordering', durationMinutes, assessmentScope);
+
+  return fallbackSources.map((source, index) => {
+    const questionId = `order-${index + 1}-${slugify(source.referenceLabel || source.topic || `topic-${index + 1}`)}`;
+    const steps = buildOrderingSteps(source).map((text, itemIndex) => ({
+      id: `${questionId}-step-${itemIndex + 1}`,
+      text,
+    }));
+
+    return {
+      id: questionId,
+      type: 'ordering',
+      difficulty: 'hard',
+      topic: source.topic,
+      prompt: `Arrange the steps for ${source.referenceLabel || source.taskTitle || source.topic || 'this topic'} in the order you would explain them during an interview.`,
+      averageTimeMinutes: clamp(Math.floor(durationMinutes / Math.max(fallbackSources.length, 1)), 4, 10),
+      referenceLabel: source.referenceLabel || null,
+      referenceUrl: source.referenceUrl || null,
+      taskTitle: source.taskTitle || null,
+      items: shuffle(steps),
+      expectedOrderIds: steps.map((item) => item.id),
+      explanation: steps.map((item, itemIndex) => `${itemIndex + 1}. ${item.text}`).join('\n'),
+    };
+  });
+}
+
+function validateQuestions(questions = [], assessmentType = 'mcq') {
+  return questions
+    .map((question, index) => ({
+      ...question,
+      id: question.id || `${assessmentType}-${index + 1}`,
+      difficulty: question.difficulty || 'medium',
+      topic: question.topic || question.referenceLabel || question.taskTitle || 'Placement prep',
+      prompt: question.prompt || `Answer this ${assessmentType.replace('_', ' ')} question.`,
+    }))
+    .filter((question) => {
+      if (question.type === 'mcq') {
+        const choices = toArray(question.choices);
+        const uniqueChoices = new Set(choices.map((choice) => normalizeChoiceFingerprint(choice.text)));
+        return choices.length >= 4 && uniqueChoices.size >= 4 && choices.some((choice) => choice.id === question.correctOptionId);
+      }
+
+      if (question.type === 'ordering') {
+        const itemIds = toArray(question.items).map((item) => item.id);
+        const expectedOrderIds = toArray(question.expectedOrderIds).map(String);
+        return itemIds.length >= 3 && expectedOrderIds.length === itemIds.length;
+      }
+
+      return Boolean(question.expectedAnswer || toArray(question.expectedKeywords).length || question.explanation);
+    });
+}
+
+function buildQuestions(plan, taskPool, assessmentType, durationMinutes, assessmentScope = 'daily', difficulty = 'medium') {
   const sources = buildAssessmentSources(plan, taskPool, assessmentType, durationMinutes, assessmentScope);
+  let questions;
 
   if (assessmentType === 'coding') {
-    return buildCodingQuestions(plan, sources, durationMinutes, assessmentScope);
+    questions = buildCodingQuestions(plan, sources, durationMinutes, assessmentScope);
+  } else if (assessmentType === 'fill_blank') {
+    questions = buildFillBlankQuestions(plan, sources, durationMinutes, assessmentScope);
+  } else if (assessmentType === 'ordering') {
+    questions = buildOrderingQuestions(plan, sources, durationMinutes, assessmentScope);
+  } else {
+    questions = buildMcqQuestions(plan, sources, durationMinutes, difficulty);
   }
 
-  if (assessmentType === 'fill_blank') {
-    return buildFillBlankQuestions(plan, sources, durationMinutes, assessmentScope);
-  }
-
-  return buildMcqQuestions(plan, sources, durationMinutes);
+  return validateQuestions(questions, assessmentType);
 }
 
 function scoreTextAgainstKeywords(response, expectedKeywords = []) {
@@ -911,6 +1066,34 @@ function gradeQuestion(question, response) {
       feedback: isCorrect
         ? 'Nice. The missing idea is intact.'
         : `Tighten the recall phrase for ${question.topic} and keep it short enough to say under pressure.`,
+    };
+  }
+
+  if (question.type === 'ordering') {
+    let submittedOrder = [];
+    try {
+      const parsed = JSON.parse(String(response || '[]'));
+      submittedOrder = Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      submittedOrder = String(response || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    const expectedOrder = toArray(question.expectedOrderIds).map(String);
+    const correctPositions = expectedOrder.filter((itemId, index) => submittedOrder[index] === itemId).length;
+    const score = expectedOrder.length ? correctPositions / expectedOrder.length : 0;
+    const correct = score >= 0.75;
+
+    return {
+      questionId: question.id,
+      topic: question.topic,
+      score: clamp(Number(score.toFixed(2)), 0, 1),
+      correct,
+      feedback: correct
+        ? 'Good ordering. The explanation would sound structured under pressure.'
+        : `Rebuild the sequence for ${question.topic}: constraints first, pattern second, execution third, tradeoff last.`,
     };
   }
 
@@ -997,14 +1180,18 @@ async function generateAssessment(user, payload = {}) {
     throw new AppError('Create a Prep Architect plan first, then start an assessment.', 409);
   }
 
-  const assessmentType = ['mcq', 'fill_blank', 'coding'].includes(payload.assessmentType)
+  const assessmentType = ['mcq', 'fill_blank', 'coding', 'ordering'].includes(payload.assessmentType)
     ? payload.assessmentType
     : 'mcq';
   const assessmentScope = payload.assessmentScope === 'weekly' ? 'weekly' : 'daily';
   const durationMinutes = clamp(Number(payload.durationMinutes || 20), 10, 90);
   const today = getTodayInTimezone(user.timezone);
-  const todaysTasks = await taskRepository.listByUser(user.id, { date: today });
-  const questions = buildQuestions(activePlan, todaysTasks, assessmentType, durationMinutes, assessmentScope);
+  const [todaysTasks, recentSessions] = await Promise.all([
+    taskRepository.listByUser(user.id, { date: today }),
+    assessmentRepository.listByUser(user.id, 5),
+  ]);
+  const adaptiveDifficulty = resolveAdaptiveDifficulty(recentSessions);
+  const questions = buildQuestions(activePlan, todaysTasks, assessmentType, durationMinutes, assessmentScope, adaptiveDifficulty);
 
   if (!questions.length) {
     throw new AppError('Unable to build an assessment from the current plan.', 400);
@@ -1023,6 +1210,7 @@ async function generateAssessment(user, payload = {}) {
       targetRole: activePlan.targetRole || null,
       targetTopics: activePlan.targetTopics || [],
       scope: assessmentScope,
+      adaptiveDifficulty,
       sourceTaskCount: todaysTasks.length,
       sourceKnownTopicCount: (activePlan.knownTopics || []).length,
       questionCount: questions.length,
@@ -1048,6 +1236,9 @@ async function submitAssessment(user, assessmentId, payload = {}) {
 
   const answers = payload.answers && typeof payload.answers === 'object' && !Array.isArray(payload.answers)
     ? payload.answers
+    : {};
+  const answerStats = payload.answerStats && typeof payload.answerStats === 'object' && !Array.isArray(payload.answerStats)
+    ? payload.answerStats
     : {};
   const plan = session.planId
     ? normalizePlanShape(await prepPlanRepository.findById(session.planId, user.id))
@@ -1079,6 +1270,7 @@ async function submitAssessment(user, assessmentId, payload = {}) {
     score: roundedScore,
     submission: {
       answers,
+      answerStats,
       questionResults,
       submittedAt: new Date().toISOString(),
     },

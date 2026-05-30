@@ -9,7 +9,7 @@
 ## Backend
 
 - Deploy the Node.js API from `server/` on Render or Railway.
-- Set `ALLOW_PUBLIC_SIGNUP=false`.
+- Public signup is enabled by default. Set `INVITE_ONLY_ACCESS=true` only if you need to temporarily close free registration.
 - Set `CLIENT_URLS` to the deployed frontend origin.
 - Set `APP_URL` to the public frontend URL used in invite links.
 - Keep `SMTP_FORCE_IPV4=true` on hosts that do not route IPv6; Gmail SMTP can otherwise resolve to IPv6 and fail before delivery starts.

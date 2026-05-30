@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
+import { useTierGate } from "@/hooks/use-tier-gate";
 import {
   activatePrepPlan,
   clearPrepPlanHistory,
@@ -55,7 +56,8 @@ import { PREP_LANGUAGES, PREP_TOPICS, TARGET_ROLES } from "@/lib/topics";
 
 export default function PrepArchitectPage() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
+  const tierGate = useTierGate();
   const { language } = useLanguage();
   const latestPlanQuery = useQuery({
     queryKey: ["prep-plan", "latest"],
@@ -111,11 +113,14 @@ export default function PrepArchitectPage() {
         targetRole,
         preferredLanguage,
       }),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       queryClient.setQueryData(["prep-plan", "latest"], result);
-      void queryClient.invalidateQueries({ queryKey: ["prep-plan", "history"] });
-      void queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      void queryClient.invalidateQueries({ queryKey: ["progress-summary"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["prep-plan", "history"] }),
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["progress-summary"] }),
+        refreshProfile(),
+      ]);
       setIsEditing(false);
       toast.success("Prep Architect plan generated.");
     },
@@ -135,11 +140,14 @@ export default function PrepArchitectPage() {
         targetRole,
         preferredLanguage,
       }),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       queryClient.setQueryData(["prep-plan", "latest"], result);
-      void queryClient.invalidateQueries({ queryKey: ["prep-plan", "history"] });
-      void queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      void queryClient.invalidateQueries({ queryKey: ["progress-summary"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["prep-plan", "history"] }),
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["progress-summary"] }),
+        refreshProfile(),
+      ]);
       setIsEditing(false);
       toast.success("Prep Architect plan updated.");
     },
@@ -214,6 +222,7 @@ export default function PrepArchitectPage() {
   });
 
   const pending = generateMutation.isPending || updateMutation.isPending;
+  const canGeneratePlan = tierGate.canUse("plan_generations");
   const latestPlan = latestPlanQuery.data ?? null;
   const history = useMemo(
     () => (Array.isArray(historyQuery.data) ? historyQuery.data : []),
@@ -332,7 +341,7 @@ export default function PrepArchitectPage() {
 
           <div className="flex flex-wrap gap-3">
             {!latestPlan && (
-              <Button type="button" className="gap-2" onClick={() => generateMutation.mutate()} disabled={pending}>
+              <Button type="button" className="gap-2" onClick={() => generateMutation.mutate()} disabled={pending || !canGeneratePlan}>
                 <Sparkles className="h-4 w-4" />
                 {pending ? "Building your plan..." : "Generate Plan"}
               </Button>
@@ -343,20 +352,26 @@ export default function PrepArchitectPage() {
                   <PencilLine className="h-4 w-4" />
                   Edit Plan
                 </Button>
-                <Button type="button" className="gap-2" onClick={() => updateMutation.mutate()} disabled={pending}>
+                <Button type="button" className="gap-2" onClick={() => updateMutation.mutate()} disabled={pending || !canGeneratePlan}>
                   <RefreshCcw className="h-4 w-4" />
                   {pending ? "Building your plan..." : "Regenerate Plan"}
                 </Button>
               </>
             )}
             {latestPlan && isEditing && (
-              <Button type="button" className="gap-2" onClick={() => updateMutation.mutate()} disabled={pending}>
+              <Button type="button" className="gap-2" onClick={() => updateMutation.mutate()} disabled={pending || !canGeneratePlan}>
                 <RefreshCcw className="h-4 w-4" />
                 {pending ? "Building your plan..." : "Update Plan"}
               </Button>
             )}
           </div>
         </div>
+
+        {!canGeneratePlan && tierGate.tier === "free" && (
+          <div className="mb-6 rounded-2xl border border-primary/25 bg-primary/10 px-4 py-3 text-sm leading-6 text-foreground/85">
+            Free workspaces include one AI-generated plan. Enter a college invite or upgrade later to regenerate more plans.
+          </div>
+        )}
 
         <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
           <div className="space-y-6">

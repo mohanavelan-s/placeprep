@@ -696,7 +696,7 @@ function buildMcqChoices(questionId: string, correctText: string, distractors: s
 
 function buildAssessmentQuestions(
   plan: ReturnType<typeof buildPlan>,
-  assessmentType: "mcq" | "fill_blank" | "coding",
+  assessmentType: "mcq" | "fill_blank" | "coding" | "ordering",
   durationMinutes: number,
   assessmentScope: "daily" | "weekly",
 ) {
@@ -715,6 +715,35 @@ function buildAssessmentQuestions(
       taskTitle: source.taskTitle,
       expectedKeywords: cleanTopics([source.type, source.promptTopic, source.referenceLabel || "", "time complexity"], 6),
     }));
+  }
+
+  if (assessmentType === "ordering") {
+    return sources.slice(0, assessmentScope === "weekly" ? 6 : 4).map((source, index) => {
+      const questionId = `order-${index + 1}`;
+      const orderedItems = [
+        `Restate the goal for ${source.referenceLabel || source.promptTopic}.`,
+        "Name the constraint or edge case that can break a naive answer.",
+        "Choose the pattern or data structure that removes repeated work.",
+        "Explain the complexity and one tradeoff.",
+      ].map((text, itemIndex) => ({
+        id: `${questionId}-step-${itemIndex + 1}`,
+        text,
+      }));
+
+      return {
+        id: questionId,
+        topic: source.promptTopic,
+        prompt: `Arrange the interview explanation steps for ${source.referenceLabel || source.promptTopic}.`,
+        type: "ordering",
+        difficulty: "hard",
+        averageTimeMinutes: clamp(Math.round(durationMinutes / 4), 4, 10),
+        referenceLabel: source.referenceLabel,
+        referenceUrl: source.referenceUrl,
+        taskTitle: source.taskTitle,
+        items: shuffle(orderedItems),
+        expectedOrderIds: orderedItems.map((item) => item.id),
+      };
+    });
   }
 
   const questionCount = assessmentType === "fill_blank"
@@ -777,7 +806,7 @@ function buildAssessmentQuestions(
 
 function buildAssessmentSession(
   plan: ReturnType<typeof buildPlan>,
-  assessmentType: "mcq" | "fill_blank" | "coding",
+  assessmentType: "mcq" | "fill_blank" | "coding" | "ordering",
   durationMinutes: number,
   assessmentScope: "daily" | "weekly",
 ) {
@@ -816,6 +845,22 @@ function scoreDemoAssessmentQuestion(question: Record<string, unknown>, response
 
   if (question.type === "fill_blank") {
     return normalizedResponse.includes(String(question.expectedAnswer || "").trim().toLowerCase()) ? 1 : 0;
+  }
+
+  if (question.type === "ordering") {
+    let submittedOrder: string[] = [];
+    try {
+      const parsed = JSON.parse(String(response || "[]"));
+      submittedOrder = Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      submittedOrder = [];
+    }
+
+    const expectedOrder = Array.isArray(question.expectedOrderIds)
+      ? question.expectedOrderIds.map(String)
+      : [];
+    const correctPositions = expectedOrder.filter((itemId, index) => submittedOrder[index] === itemId).length;
+    return expectedOrder.length ? correctPositions / expectedOrder.length : 0;
   }
 
   const expectedKeywords = Array.isArray(question.expectedKeywords)
@@ -1659,7 +1704,7 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
 
     const nextSession = buildAssessmentSession(
       activePlan,
-      (body.assessmentType as "mcq" | "fill_blank" | "coding") || "mcq",
+      (body.assessmentType as "mcq" | "fill_blank" | "coding" | "ordering") || "mcq",
       clamp(Number(body.durationMinutes || 20), 10, 90),
       body.assessmentScope === "weekly" ? "weekly" : "daily",
     );
