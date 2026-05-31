@@ -1,5 +1,10 @@
 const { randomUUID } = require('crypto');
 const { query } = require('../config/database');
+const {
+  applyOwnerAccess,
+  buildOwnerCoachMetadata,
+  isOwnerEmail,
+} = require('../utils/ownerAccess');
 const { buildUpdateClause } = require('../utils/sql');
 
 function getExecutor(client) {
@@ -40,8 +45,16 @@ const authColumns = `
   password_hash AS "passwordHash"
 `;
 
+function normalizeUserRow(row) {
+  return applyOwnerAccess(row);
+}
+
 async function createUser(payload, client = null) {
   const execute = getExecutor(client);
+  const owner = isOwnerEmail(payload.email);
+  const coachMetadata = owner
+    ? buildOwnerCoachMetadata(payload.coachMetadata)
+    : payload.coachMetadata || {};
   const result = await execute(
     `INSERT INTO users (
       id,
@@ -65,7 +78,7 @@ async function createUser(payload, client = null) {
       randomUUID(),
       payload.name,
       payload.username || null,
-      payload.role || 'user',
+      owner ? 'admin' : payload.role || 'user',
       payload.email,
       payload.passwordHash,
       payload.weakAreas || [],
@@ -73,14 +86,14 @@ async function createUser(payload, client = null) {
       payload.targetRole || null,
       payload.placementDate || null,
       payload.timezone,
-      payload.tier || 'free',
+      owner ? 'college' : payload.tier || 'free',
       payload.planGenerations ?? 0,
       payload.mentorMessages ?? 0,
-      payload.coachMetadata || {},
+      coachMetadata,
     ]
   );
 
-  return result.rows[0];
+  return normalizeUserRow(result.rows[0]);
 }
 
 async function findByEmail(email) {
@@ -91,7 +104,7 @@ async function findByEmail(email) {
     [email]
   );
 
-  return result.rows[0] || null;
+  return normalizeUserRow(result.rows[0]) || null;
 }
 
 async function findByUsername(username) {
@@ -102,7 +115,7 @@ async function findByUsername(username) {
     [username]
   );
 
-  return result.rows[0] || null;
+  return normalizeUserRow(result.rows[0]) || null;
 }
 
 async function findByIdentifier(identifier) {
@@ -126,7 +139,7 @@ async function findById(id) {
     [id]
   );
 
-  return result.rows[0] || null;
+  return normalizeUserRow(result.rows[0]) || null;
 }
 
 async function updateUser(id, updates) {
@@ -167,7 +180,7 @@ async function updateUser(id, updates) {
     [...values, id]
   );
 
-  return result.rows[0] || null;
+  return normalizeUserRow(result.rows[0]) || null;
 }
 
 async function incrementUsageCounter(userId, counter, amount = 1, client = null) {
@@ -185,7 +198,7 @@ async function incrementUsageCounter(userId, counter, amount = 1, client = null)
     [userId, amount]
   );
 
-  return result.rows[0] || null;
+  return normalizeUserRow(result.rows[0]) || null;
 }
 
 async function touchLastLogin(id) {
@@ -197,7 +210,7 @@ async function touchLastLogin(id) {
     [id]
   );
 
-  return result.rows[0] || null;
+  return normalizeUserRow(result.rows[0]) || null;
 }
 
 async function listUsersForNotificationSweep() {
@@ -215,7 +228,7 @@ async function listUsersForNotificationSweep() {
      ORDER BY users.created_at ASC`
   );
 
-  return result.rows;
+  return result.rows.map(normalizeUserRow);
 }
 
 async function listStudentsForOversight(limit = 40) {
@@ -260,7 +273,9 @@ async function listStudentsForOversight(limit = 40) {
     [limit]
   );
 
-  return result.rows;
+  return result.rows
+    .map(normalizeUserRow)
+    .filter((student) => student.role === 'user');
 }
 
 async function listGroupCandidates(limit = 80) {
@@ -279,7 +294,7 @@ async function listGroupCandidates(limit = 80) {
     [limit]
   );
 
-  return result.rows;
+  return result.rows.map(normalizeUserRow);
 }
 
 module.exports = {

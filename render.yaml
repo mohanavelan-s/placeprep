@@ -41,6 +41,8 @@ services:
         sync: false
       - key: SMTP_FROM
         sync: false
+      - key: OWNER_EMAILS
+        value: mohanavelan2006@gmail.com
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY

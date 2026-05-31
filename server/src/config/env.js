@@ -146,6 +146,8 @@ const env = {
   resendFrom: process.env.RESEND_FROM || process.env.EMAIL_FROM || '',
   emailProvider: process.env.EMAIL_PROVIDER || 'resend',
   allowSmtpFallback: process.env.ALLOW_SMTP_FALLBACK === 'true',
+  ownerEmails: splitCsv(process.env.OWNER_EMAILS || process.env.OWNER_EMAIL || 'mohanavelan2006@gmail.com')
+    .map((email) => email.toLowerCase()),
   webPushPublicKey: process.env.WEB_PUSH_PUBLIC_KEY || '',
   webPushPrivateKey: process.env.WEB_PUSH_PRIVATE_KEY || '',
   webPushSubject: normalizeWebPushSubject(

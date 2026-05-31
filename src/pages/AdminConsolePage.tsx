@@ -10,12 +10,12 @@ export default function AdminConsolePage() {
           Manage access, cohorts, and student execution from one place.
         </h2>
         <p className="mt-3 max-w-3xl text-base leading-7 text-foreground/80">
-          Invite links, groups, assigned practice bundles, student proof, and saved admin history now live here instead of being scattered across Settings and Progress.
+          Invite links, named groups, student proof, and saved admin history now live here. Task assignment happens from Tasks so admins work in the same place students execute.
         </p>
       </section>
 
       <AdminInvitePanel />
-      <AdminStudentOversightPanel />
+      <AdminStudentOversightPanel showAssignmentComposer={false} />
     </div>
   );
 }

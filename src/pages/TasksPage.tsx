@@ -4,6 +4,7 @@ import { Code2, Plus, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
+import AdminStudentOversightPanel from "@/components/AdminStudentOversightPanel";
 import HoursInput from "@/components/HoursInput";
 import PageStatusPanel from "@/components/PageStatusPanel";
 import StudentPracticeCapsulesPanel from "@/components/StudentPracticeCapsulesPanel";
@@ -341,6 +342,7 @@ export default function TasksPage() {
     [tasks]
   );
   const shouldShowStudentPanels = user?.role === "user" && !isObserverUser(user);
+  const shouldShowAdminAssignments = user?.role === "admin";
 
   function toggleExpandedTask(taskId: string) {
     setExpandedTaskIds((current) =>
@@ -568,6 +570,8 @@ export default function TasksPage() {
           )}
         </div>
       </section>
+
+      {shouldShowAdminAssignments && <AdminStudentOversightPanel />}
 
       {shouldShowStudentPanels && <StudentPracticeCapsulesPanel />}
 

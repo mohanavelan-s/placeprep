@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Send } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -84,6 +84,28 @@ export default function AiMentorPage() {
   const history = Array.isArray(historyQuery.data) ? historyQuery.data : [];
   const canMessageMentor = tierGate.canUse("mentor_messages");
 
+  function handleSendMessage() {
+    if (!message.trim() || sendMutation.isPending || !canMessageMentor) {
+      return;
+    }
+
+    sendMutation.mutate();
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (
+      event.key !== "Enter"
+      || event.shiftKey
+      || event.altKey
+      || event.nativeEvent.isComposing
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    handleSendMessage();
+  }
+
   if (historyQuery.isPending && !history.length) {
     return <MentorSkeleton />;
   }
@@ -157,6 +179,7 @@ export default function AiMentorPage() {
           <Textarea
             value={message}
             onChange={(event) => setMessage(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
             placeholder="Ask about DSA, system design, weak areas, or interview strategy..."
             className="min-h-[120px] border-border/80 bg-background/70"
             disabled={!canMessageMentor}
@@ -170,7 +193,7 @@ export default function AiMentorPage() {
             <Button
               type="button"
               className="gap-2"
-              onClick={() => sendMutation.mutate()}
+              onClick={handleSendMessage}
               disabled={!message.trim() || sendMutation.isPending || !canMessageMentor}
             >
               <Send className="h-4 w-4" />

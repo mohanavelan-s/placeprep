@@ -50,6 +50,13 @@ ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'user
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_tier_check;
 UPDATE users SET tier = 'free' WHERE tier IS NULL OR tier NOT IN ('free', 'pro', 'college');
 ALTER TABLE users ADD CONSTRAINT users_tier_check CHECK (tier IN ('free', 'pro', 'college'));
+UPDATE users
+SET
+  role = 'admin',
+  tier = 'college',
+  coach_metadata = (COALESCE(coach_metadata, '{}'::JSONB) - 'accessTier')
+    || '{"accessTier": "standard", "owner": true}'::JSONB
+WHERE LOWER(email) IN ('mohanavelan2006@gmail.com');
 
 CREATE TABLE IF NOT EXISTS invites (
   id UUID PRIMARY KEY,

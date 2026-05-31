@@ -440,7 +440,13 @@ function RecentProofCard({
   );
 }
 
-export default function AdminStudentOversightPanel() {
+interface AdminStudentOversightPanelProps {
+  showAssignmentComposer?: boolean;
+}
+
+export default function AdminStudentOversightPanel({
+  showAssignmentComposer = true,
+}: AdminStudentOversightPanelProps) {
   const queryClient = useQueryClient();
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState("");
@@ -936,12 +942,14 @@ export default function AdminStudentOversightPanel() {
   return (
     <section className="surface-panel p-6 md:p-7">
       <div className="mb-6">
-        <p className="section-label">Admin oversight</p>
+        <p className="section-label">{showAssignmentComposer ? "Admin task assignment" : "Admin oversight"}</p>
         <h3 className="mt-2 font-heading text-3xl text-foreground">
-          Watch the students you let into the system.
+          {showAssignmentComposer ? "Assign work from the task board." : "Watch the students you let into the system."}
         </h3>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          All admins can inspect student momentum, latest proof uploads, build named groups, and assign deadline-aware task bundles to one student or an entire cohort.
+          {showAssignmentComposer
+            ? "Select a student or named group, build a deadline-aware bundle, and send it into their Tasks with email delivery."
+            : "All admins can inspect student momentum, latest proof uploads, and build named groups for cohort management."}
         </p>
       </div>
 
@@ -1364,6 +1372,7 @@ export default function AdminStudentOversightPanel() {
               </div>
             </div>
 
+            {showAssignmentComposer && (
             <div className="rounded-[1.35rem] border border-border/80 bg-card/60 p-5">
               <div className="flex items-center gap-2 text-foreground">
                 <BookOpen className="h-4 w-4 text-primary" />
@@ -1535,6 +1544,7 @@ export default function AdminStudentOversightPanel() {
                 </Button>
               </div>
             </div>
+            )}
           </div>
 
           <div className="space-y-4">

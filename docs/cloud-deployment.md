@@ -12,6 +12,7 @@
 - Public signup is enabled by default. Set `INVITE_ONLY_ACCESS=true` only if you need to temporarily close free registration.
 - Set `CLIENT_URLS` to the deployed frontend origin.
 - Set `APP_URL` to the public frontend URL used in invite links.
+- `OWNER_EMAILS` defaults to `mohanavelan2006@gmail.com`; any matching account is promoted to admin with full college-tier access during signup, login/profile reads, and startup schema sync.
 - Keep `SMTP_FORCE_IPV4=true` on hosts that do not route IPv6; Gmail SMTP can otherwise resolve to IPv6 and fail before delivery starts.
 
 ## Database
