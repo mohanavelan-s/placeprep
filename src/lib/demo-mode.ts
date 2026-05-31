@@ -480,33 +480,94 @@ const demoLeetCodeCatalog: Record<string, {
   },
 };
 
+function extractDemoLeetCodeNumber(value: unknown) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+
+  return text.match(/\b(?:leetcode|lc)\s*#?\s*(\d{1,5})\b/i)?.[1]
+    || text.match(/^#?(\d{1,5})(?=\s*(?:[.)\]:-]|\b))/)?.[1]
+    || "";
+}
+
+function demoSlugify(value: unknown, fallback = "demo-practice-problem") {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/^\s*#?\d{1,5}\s*(?:[.)\]:-]\s*)?/, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    || fallback;
+}
+
+function buildDemoFunctionName(value: unknown, fallback = "solve") {
+  const words = String(value || "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .match(/[a-z0-9]+/g) || [];
+
+  if (!words.length) {
+    return fallback;
+  }
+
+  const name = words
+    .map((word, index) => index === 0
+      ? word
+      : `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join("");
+
+  return /^\d/.test(name) ? `${fallback}${name.charAt(0).toUpperCase()}${name.slice(1)}` : name;
+}
+
+function buildDemoStarterCode(problem: { slug?: unknown; title?: unknown }) {
+  const functionName = buildDemoFunctionName(problem.slug || problem.title || "solve");
+
+  return {
+    python: `class Solution:\n    def ${functionName}(self, *args):\n        pass\n`,
+    c: "#include <stdio.h>\n\nint main(void) {\n  return 0;\n}\n",
+    cpp: `#include <bits/stdc++.h>\nusing namespace std;\n\nclass Solution {\npublic:\n  auto ${functionName}() {\n  }\n};\n`,
+    java: `class Solution {\n  public Object ${functionName}(Object... args) {\n    return null;\n  }\n}\n`,
+    javascript: `class Solution {\n  ${functionName}(...args) {\n    return null;\n  }\n}\n`,
+    typescript: `class Solution {\n  ${functionName}(...args: unknown[]): unknown {\n    return null;\n  }\n}\n`,
+    go: `package main\n\nfunc ${functionName}() {\n}\n`,
+    rust: `struct Solution;\n\nimpl Solution {\n    pub fn ${functionName}() {\n    }\n}\n`,
+    csharp: `public class Solution {\n  public object ${functionName}(params object[] args) {\n    return null;\n  }\n}\n`,
+    mysql: "-- Write your MySQL query here\n",
+    postgresql: "-- Write your PostgreSQL query here\n",
+  };
+}
+
 function normalizeDemoProblemInput(input: Record<string, unknown> = {}, task?: Record<string, unknown> | null) {
   const metadata = (task?.metadata as Record<string, unknown>) || {};
   const lookup = String(input.problemNumber || input.number || input.slug || input.title || input.problemTitle || "");
   const sourceUrl = String(input.url || (/\bhttps?:\/\//i.test(lookup) ? lookup : "") || metadata.problemUrl || task?.referenceUrl || "");
   const leetCodeMatch = sourceUrl.match(/leetcode\.com\/problems\/([^/?#]+)/i);
-  const numberMatch = String(input.problemNumber || input.number || lookup).match(/\d{1,5}/);
-  const catalogProblem = numberMatch?.[0] ? demoLeetCodeCatalog[numberMatch[0]] : null;
-  const slug = String(input.slug || metadata.problemSlug || leetCodeMatch?.[1] || (!numberMatch ? lookup : "") || task?.title || "demo-practice-problem")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+  const problemNumber = extractDemoLeetCodeNumber(input.problemNumber || input.number || lookup);
+  const catalogProblem = problemNumber ? demoLeetCodeCatalog[problemNumber] : null;
+  const slug = String(
+    catalogProblem?.slug
+    || input.slug
+    || metadata.problemSlug
+    || leetCodeMatch?.[1]
+    || demoSlugify(lookup || task?.title, problemNumber ? `leetcode-${problemNumber}` : "demo-practice-problem")
+  );
   const title = String(
-    input.title
+    catalogProblem?.title
+    || input.title
     || input.problemTitle
     || metadata.problemTitle
     || task?.referenceLabel
     || task?.title
-    || (numberMatch ? `LeetCode ${numberMatch[0]} demo problem` : "Demo practice problem")
+    || (problemNumber ? `LeetCode ${problemNumber} demo problem` : "Demo practice problem")
   );
-  const platform = String(input.platform || metadata.problemPlatform || (leetCodeMatch || numberMatch ? "leetcode" : /sql|dbms|database/i.test(title) ? "sql" : "custom"));
+  const platform = String(input.platform || metadata.problemPlatform || (leetCodeMatch || problemNumber ? "leetcode" : /sql|dbms|database/i.test(title) ? "sql" : "custom"));
 
   return {
     platform,
-    number: numberMatch?.[0] || null,
-    slug: catalogProblem?.slug || slug,
-    title: catalogProblem?.title || title,
-    url: sourceUrl || (catalogProblem ? `https://leetcode.com/problems/${catalogProblem.slug}/` : numberMatch ? `https://leetcode.com/problems/${slug}/` : null),
+    number: problemNumber || null,
+    slug,
+    title,
+    url: sourceUrl || (catalogProblem ? `https://leetcode.com/problems/${catalogProblem.slug}/` : problemNumber ? `https://leetcode.com/problems/${slug}/` : null),
     description: catalogProblem?.description || String(input.description || task?.description || metadata.summary || [
       "Solve the problem and compare the result against the expected behavior.",
       "",
@@ -525,21 +586,13 @@ function normalizeDemoProblemInput(input: Record<string, unknown> = {}, task?: R
     testCases: catalogProblem?.testCases || [
       { name: "Demo case", input: "2 7 11 15\n9", expectedOutput: "0 1" },
     ],
-    starterCode: {
-      python: "# Write your solution here\n",
-      c: "#include <stdio.h>\n\nint main(void) {\n  return 0;\n}\n",
-      cpp: "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n  return 0;\n}\n",
-      java: "class Main {\n  public static void main(String[] args) {\n  }\n}\n",
-      javascript: "function solve() {\n  // Write your solution here\n}\n\nsolve();\n",
-      typescript: "function solve(): void {\n  // Write your solution here\n}\n\nsolve();\n",
-      go: "package main\n\nimport \"fmt\"\n\nfunc main() {\n  fmt.Println(\"Hello, PlacePrep\")\n}\n",
-      rust: "fn main() {\n    println!(\"Hello, PlacePrep\");\n}\n",
-      csharp: "using System;\n\nclass Program {\n  static void Main() {\n  }\n}\n",
-      mysql: "-- Write your MySQL query here\n",
-      postgresql: "-- Write your PostgreSQL query here\n",
-    },
+    starterCode: buildDemoStarterCode({ slug, title }),
     extractionStatus: sourceUrl ? "resolved" : "manual",
-    extractionMessage: sourceUrl ? "Demo mode prepared this workspace from the supplied problem link." : null,
+    extractionMessage: catalogProblem || sourceUrl
+      ? "Demo mode prepared this workspace from the supplied problem link."
+      : problemNumber
+        ? "Demo mode recognized the LeetCode number. Sign in with the live backend to fetch the exact LeetCode statement and samples."
+        : null,
   };
 }
 

@@ -41,7 +41,7 @@ import {
 } from "@/lib/api";
 
 const FALLBACK_STARTER_CODE: Record<string, string> = {
-  python: "# Write your solution here\n",
+  python: "class Solution:\n    def solve(self, *args):\n        pass\n",
   c: "#include <stdio.h>\n\nint main(void) {\n  return 0;\n}\n",
   cpp: "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n  return 0;\n}\n",
   java: "class Main {\n  public static void main(String[] args) {\n  }\n}\n",
@@ -112,14 +112,58 @@ function inferStarterLanguageKey(language: string, languageInfo?: CodingLanguage
   return FALLBACK_STARTER_CODE[language] ? language : "python";
 }
 
+function buildFunctionName(value: string, fallback = "solve") {
+  const words = String(value || "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .match(/[a-z0-9]+/g) || [];
+
+  if (!words.length) {
+    return fallback;
+  }
+
+  const name = words
+    .map((word, index) => index === 0
+      ? word
+      : `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join("");
+
+  return /^\d/.test(name) ? `${fallback}${name.charAt(0).toUpperCase()}${name.slice(1)}` : name;
+}
+
+function buildFallbackStarterCode(problem: CodingProblem | null, starterKey: string) {
+  const functionName = buildFunctionName(problem?.slug || problem?.title || "solve");
+
+  switch (starterKey) {
+    case "python":
+      return `class Solution:\n    def ${functionName}(self, *args):\n        pass\n`;
+    case "cpp":
+      return `#include <bits/stdc++.h>\nusing namespace std;\n\nclass Solution {\npublic:\n  auto ${functionName}() {\n  }\n};\n`;
+    case "java":
+      return `class Solution {\n  public Object ${functionName}(Object... args) {\n    return null;\n  }\n}\n`;
+    case "javascript":
+      return `class Solution {\n  ${functionName}(...args) {\n    return null;\n  }\n}\n`;
+    case "typescript":
+      return `class Solution {\n  ${functionName}(...args: unknown[]): unknown {\n    return null;\n  }\n}\n`;
+    case "go":
+      return `package main\n\nfunc ${functionName}() {\n}\n`;
+    case "rust":
+      return `struct Solution;\n\nimpl Solution {\n    pub fn ${functionName}() {\n    }\n}\n`;
+    case "csharp":
+      return `public class Solution {\n  public object ${functionName}(params object[] args) {\n    return null;\n  }\n}\n`;
+    default:
+      return FALLBACK_STARTER_CODE[starterKey] || FALLBACK_STARTER_CODE.python;
+  }
+}
+
 function getStarterCodeForLanguage(problem: CodingProblem | null, language: string, languageInfo?: CodingLanguage | null) {
   const starterKey = inferStarterLanguageKey(language, languageInfo);
   const starter = problem?.starterCode?.[language] || problem?.starterCode?.[starterKey];
-  return starter || FALLBACK_STARTER_CODE[starterKey] || FALLBACK_STARTER_CODE.python;
+  return starter || buildFallbackStarterCode(problem, starterKey);
 }
 
 function looksLikeLeetCodeNumber(value: string) {
-  return /^\s*(?:leetcode|lc)?\s*#?\s*\d{1,5}\s*$/i.test(value);
+  return /^\s*(?:leetcode|lc)?\s*#?\s*\d{1,5}\s*(?:$|[.)\]:-]\s*.+|\s+[a-z].*)/i.test(value);
 }
 
 function looksLikeUrl(value: string) {
@@ -131,7 +175,10 @@ function looksLikeLeetCodeSlug(value: string) {
 }
 
 function extractLeetCodeNumber(value: string) {
-  return value.match(/\d{1,5}/)?.[0] || "";
+  const text = value.trim();
+  return text.match(/\b(?:leetcode|lc)\s*#?\s*(\d{1,5})\b/i)?.[1]
+    || text.match(/^#?(\d{1,5})(?=\s*(?:[.)\]:-]|\b))/)?.[1]
+    || "";
 }
 
 function formatDuration(seconds: number) {

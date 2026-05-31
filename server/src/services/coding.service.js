@@ -9,10 +9,11 @@ const progressService = require('./progress.service');
 
 const SQL_LANGUAGES = new Set(['mysql', 'postgresql']);
 const LEETCODE_GRAPHQL_URL = 'https://leetcode.com/graphql/';
+const LEETCODE_PROBLEM_INDEX_URL = 'https://leetcode.com/api/problems/all/';
 const LEETCODE_REFERER = 'https://leetcode.com/problemset/all/';
 const LEETCODE_USER_AGENT = 'Mozilla/5.0 PlacePrep Coding Lab';
 const DEFAULT_STARTER_CODE = {
-  python: '# Write your solution here\n',
+  python: 'class Solution:\n    def solve(self, *args):\n        pass\n',
   c: '#include <stdio.h>\n\nint main(void) {\n  return 0;\n}\n',
   cpp: '#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n  return 0;\n}\n',
   java: 'class Main {\n  public static void main(String[] args) {\n  }\n}\n',
@@ -180,6 +181,7 @@ const LEETCODE_CATALOG = {
 const LEETCODE_CATALOG_BY_SLUG = Object.fromEntries(
   Object.values(LEETCODE_CATALOG).map((problem) => [problem.slug, problem]),
 );
+let cachedLeetCodeProblemIndex = null;
 
 function toArray(value) {
   return Array.isArray(value) ? value : [];
@@ -195,6 +197,87 @@ function normalizeText(value) {
 
 function slugify(value) {
   return normalizeText(value).replace(/\s+/g, '-').replace(/[+#]/g, '').slice(0, 80) || 'practice-problem';
+}
+
+function buildFunctionName(value, fallback = 'solve') {
+  const words = String(value || '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .match(/[a-z0-9]+/g) || [];
+
+  if (!words.length) {
+    return fallback;
+  }
+
+  const name = words
+    .map((word, index) => index === 0
+      ? word
+      : `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join('');
+
+  return /^\d/.test(name) ? `${fallback}${name.charAt(0).toUpperCase()}${name.slice(1)}` : name;
+}
+
+function buildFallbackStarterCode(problem = {}) {
+  const functionName = buildFunctionName(problem.slug || problem.title || 'solve');
+
+  return {
+    ...DEFAULT_STARTER_CODE,
+    python: `class Solution:\n    def ${functionName}(self, *args):\n        pass\n`,
+    c: [
+      '#include <stdio.h>',
+      '',
+      'int main(void) {',
+      '  return 0;',
+      '}',
+      '',
+    ].join('\n'),
+    cpp: [
+      '#include <bits/stdc++.h>',
+      'using namespace std;',
+      '',
+      'class Solution {',
+      'public:',
+      `  auto ${functionName}() {`,
+      '  }',
+      '};',
+      '',
+    ].join('\n'),
+    java: [
+      'class Solution {',
+      `  public Object ${functionName}(Object... args) {`,
+      '    return null;',
+      '  }',
+      '}',
+      '',
+    ].join('\n'),
+    javascript: `class Solution {\n  ${functionName}(...args) {\n    return null;\n  }\n}\n`,
+    typescript: `class Solution {\n  ${functionName}(...args: unknown[]): unknown {\n    return null;\n  }\n}\n`,
+    go: [
+      'package main',
+      '',
+      `func ${functionName}() {`,
+      '}',
+      '',
+    ].join('\n'),
+    rust: [
+      'struct Solution;',
+      '',
+      'impl Solution {',
+      `    pub fn ${functionName}() {`,
+      '    }',
+      '}',
+      '',
+    ].join('\n'),
+    csharp: [
+      'public class Solution {',
+      `  public object ${functionName}(params object[] args) {`,
+      '    return null;',
+      '  }',
+      '}',
+      '',
+    ].join('\n'),
+  };
 }
 
 function clampScore(value) {
@@ -306,6 +389,11 @@ function extractLeetCodeNumber(value) {
     return text;
   }
 
+  const leadingMatch = text.match(/^#?(\d{1,5})(?=\s*(?:[.)\]:-]|\b))/);
+  if (leadingMatch?.[1]) {
+    return leadingMatch[1];
+  }
+
   return '';
 }
 
@@ -393,8 +481,17 @@ function inferPlatform(value) {
 
 function normalizeProblemPayload(payload = {}) {
   const source = payload.url || payload.slug || payload.title || payload.problemTitle || payload.problemNumber || '';
-  const problemNumber = String(payload.number || payload.problemNumber || extractLeetCodeNumber(source) || '').trim() || null;
-  const platform = payload.platform || inferPlatform(source);
+  const problemNumber = String(
+    payload.number
+    || payload.problemNumber
+    || extractLeetCodeNumber(payload.title)
+    || extractLeetCodeNumber(payload.problemTitle)
+    || extractLeetCodeNumber(payload.slug)
+    || extractLeetCodeNumber(payload.url)
+    || extractLeetCodeNumber(source)
+    || ''
+  ).trim() || null;
+  const platform = payload.platform || (problemNumber ? 'leetcode' : inferPlatform(source));
   const leetCodeSlug = extractLeetCodeSlug(payload.url || payload.slug || payload.title);
   const title = String(payload.title || payload.problemTitle || '').trim()
     || (leetCodeSlug ? leetCodeSlug.split('-').map((part) => part[0]?.toUpperCase() + part.slice(1)).join(' ') : '')
@@ -428,7 +525,7 @@ function buildCatalogProblem(problem) {
     examples: problem.examples || [],
     constraints: problem.constraints || [],
     testCases: problem.testCases || [],
-    starterCode: DEFAULT_STARTER_CODE,
+    starterCode: buildFallbackStarterCode(problem),
     extractionStatus: 'catalog',
   };
 }
@@ -446,6 +543,83 @@ function findCatalogProblem(problem = {}) {
   }
 
   return null;
+}
+
+function cleanExamplePart(value) {
+  return String(value || '')
+    .replace(/\n{2,}/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+function parseExamplesFromDescription(description) {
+  const text = String(description || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/(Example\s+\d+:)/gi, '\n$1\n')
+    .replace(/\b(Input:|Output:|Explanation:|Constraints:)\s*/gi, '\n$1 ');
+  const examples = [];
+  const pattern = /Input:\s*([\s\S]*?)\nOutput:\s*([\s\S]*?)(?=\nExplanation:|\nExample\s+\d+:|\nConstraints:|$)(?:\nExplanation:\s*([\s\S]*?)(?=\nExample\s+\d+:|\nConstraints:|$))?/gi;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null && examples.length < 6) {
+    const input = cleanExamplePart(match[1]);
+    const expectedOutput = cleanExamplePart(match[2]);
+    const explanation = cleanExamplePart(match[3]);
+
+    if (input || expectedOutput) {
+      examples.push({
+        name: `Example ${examples.length + 1}`,
+        input,
+        expectedOutput,
+        explanation,
+        exampleText: [
+          input ? `Input: ${input}` : '',
+          expectedOutput ? `Output: ${expectedOutput}` : '',
+          explanation ? `Explanation: ${explanation}` : '',
+        ].filter(Boolean).join('\n'),
+      });
+    }
+  }
+
+  return examples;
+}
+
+function buildTestCasesFromLeetCodeExamples(description, exampleTestcases) {
+  const parsedExamples = parseExamplesFromDescription(description);
+
+  if (parsedExamples.length) {
+    return parsedExamples.map((example) => ({
+      name: example.name,
+      input: example.input,
+      expectedOutput: example.expectedOutput,
+      explanation: example.explanation || null,
+    }));
+  }
+
+  return String(exampleTestcases || '')
+    .split(/\n{2,}/)
+    .map((entry, index) => ({
+      name: `LeetCode sample ${index + 1}`,
+      input: cleanExamplePart(entry),
+      expectedOutput: '',
+      explanation: null,
+    }))
+    .filter((testCase) => testCase.input)
+    .slice(0, 6);
+}
+
+function buildExampleList(description, exampleTestcases) {
+  const parsedExamples = parseExamplesFromDescription(description);
+  if (parsedExamples.length) {
+    return parsedExamples.map((example) => example.exampleText).slice(0, 6);
+  }
+
+  return String(exampleTestcases || '')
+    .split(/\n{2,}/)
+    .map((entry) => cleanExamplePart(entry))
+    .filter(Boolean)
+    .slice(0, 6);
 }
 
 async function fetchLeetCodeProblem(titleSlug) {
@@ -470,6 +644,9 @@ async function fetchLeetCodeProblem(titleSlug) {
   if (!question) {
     throw new Error('Question was not found on LeetCode.');
   }
+  const description = stripHtml(question.content || '');
+  const examples = buildExampleList(description, question.exampleTestcases);
+  const testCases = buildTestCasesFromLeetCodeExamples(description, question.exampleTestcases);
 
   return {
     platform: 'leetcode',
@@ -477,15 +654,11 @@ async function fetchLeetCodeProblem(titleSlug) {
     slug: question.titleSlug || titleSlug,
     title: question.title || titleSlug,
     url: `https://leetcode.com/problems/${question.titleSlug || titleSlug}/`,
-    description: stripHtml(question.content || ''),
+    description,
     difficulty: question.difficulty || null,
-    examples: String(question.exampleTestcases || '')
-      .split(/\n{2,}/)
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-      .slice(0, 3),
+    examples,
     constraints: toArray(question.topicTags).map((tag) => tag?.name).filter(Boolean).slice(0, 8),
-    testCases: findCatalogProblem({ number: question.questionFrontendId, slug: question.titleSlug })?.testCases || [],
+    testCases,
     starterCode: buildStarterCodeFromSnippets(question.codeSnippets),
   };
 }
@@ -522,7 +695,13 @@ function buildStarterCodeFromSnippets(snippets = []) {
 }
 
 async function fetchLeetCodeProblemByNumber(frontendId) {
-  const json = await requestLeetCodeGraphql({
+  const requestedId = String(frontendId || '').trim();
+  if (!requestedId) {
+    throw new Error('LeetCode problem number is required.');
+  }
+
+  try {
+    const json = await requestLeetCodeGraphql({
       query: `
         query problemsetQuestionList($categorySlug: String, $skip: Int, $limit: Int, $filters: QuestionListFilterInput) {
           problemsetQuestionList: questionList(categorySlug: $categorySlug, skip: $skip, limit: $limit, filters: $filters) {
@@ -537,19 +716,64 @@ async function fetchLeetCodeProblemByNumber(frontendId) {
       variables: {
         categorySlug: '',
         skip: 0,
-        limit: 20,
-        filters: { searchKeywords: String(frontendId) },
+        limit: 50,
+        filters: { searchKeywords: requestedId },
       },
-  });
-  const questions = toArray(json?.data?.problemsetQuestionList?.questions);
-  const match = questions.find((question) => String(question?.frontendQuestionId) === String(frontendId))
-    || questions.find((question) => String(question?.title || '').startsWith(`${frontendId}.`));
+    });
+    const questions = toArray(json?.data?.problemsetQuestionList?.questions);
+    const match = questions.find((question) => String(question?.frontendQuestionId) === requestedId)
+      || questions.find((question) => String(question?.title || '').startsWith(`${requestedId}.`));
 
-  if (!match?.titleSlug) {
+    if (match?.titleSlug) {
+      return fetchLeetCodeProblem(match.titleSlug);
+    }
+  } catch {
+    // Fall through to the public problem index, which is broader and often available
+    // even when the GraphQL problemset search is blocked or rate-limited.
+  }
+
+  return fetchLeetCodeProblemFromIndex(requestedId);
+}
+
+async function fetchLeetCodeProblemIndex() {
+  if (cachedLeetCodeProblemIndex?.expiresAt > Date.now()) {
+    return cachedLeetCodeProblemIndex.items;
+  }
+
+  const response = await fetch(LEETCODE_PROBLEM_INDEX_URL, {
+    headers: {
+      Accept: 'application/json',
+      Referer: LEETCODE_REFERER,
+      'User-Agent': LEETCODE_USER_AGENT,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`LeetCode problem index responded with ${response.status}`);
+  }
+
+  const data = await response.json();
+  const items = toArray(data?.stat_status_pairs);
+  cachedLeetCodeProblemIndex = {
+    items,
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  };
+
+  return items;
+}
+
+async function fetchLeetCodeProblemFromIndex(frontendId) {
+  const items = await fetchLeetCodeProblemIndex();
+  const match = items.find((item) =>
+    String(item?.stat?.frontend_question_id || item?.stat?.question_id || '') === String(frontendId)
+  );
+  const titleSlug = match?.stat?.question__title_slug;
+
+  if (!titleSlug) {
     throw new Error('Question number was not found on LeetCode.');
   }
 
-  return fetchLeetCodeProblem(match.titleSlug);
+  return fetchLeetCodeProblem(titleSlug);
 }
 
 async function resolveProblem(payload = {}) {
@@ -557,18 +781,6 @@ async function resolveProblem(payload = {}) {
   const catalogProblem = normalizedProblem.platform === 'leetcode'
     ? findCatalogProblem(normalizedProblem)
     : null;
-
-  if (catalogProblem) {
-    return {
-      ...normalizedProblem,
-      ...catalogProblem,
-      starterCode: {
-        ...DEFAULT_STARTER_CODE,
-        ...(catalogProblem.starterCode || {}),
-        ...(normalizedProblem.starterCode || {}),
-      },
-    };
-  }
 
   if (normalizedProblem.platform === 'leetcode' && (normalizedProblem.slug || normalizedProblem.number)) {
     try {
@@ -583,12 +795,35 @@ async function resolveProblem(payload = {}) {
         testCases: leetCodeProblem.testCases?.length
           ? leetCodeProblem.testCases
           : (fallbackCatalogProblem?.testCases || normalizedProblem.testCases || []),
+        starterCode: {
+          ...buildFallbackStarterCode(leetCodeProblem),
+          ...(leetCodeProblem.starterCode || {}),
+          ...(normalizedProblem.starterCode || {}),
+        },
         extractionStatus: 'resolved',
       };
     } catch (error) {
+      if (catalogProblem) {
+        return {
+          ...normalizedProblem,
+          ...catalogProblem,
+          starterCode: {
+            ...DEFAULT_STARTER_CODE,
+            ...(catalogProblem.starterCode || {}),
+            ...(normalizedProblem.starterCode || {}),
+          },
+          extractionStatus: 'catalog',
+          extractionMessage: 'Live LeetCode extraction was unavailable, so PlacePrep used its built-in fallback for this known problem.',
+        };
+      }
+
       return {
         ...normalizedProblem,
         testCases: normalizedProblem.testCases || [],
+        starterCode: {
+          ...buildFallbackStarterCode(normalizedProblem),
+          ...(normalizedProblem.starterCode || {}),
+        },
         extractionStatus: 'fallback',
         extractionMessage: 'Live LeetCode extraction was unavailable, so PlacePrep built the workspace from the provided number, title, or URL.',
       };
@@ -598,6 +833,10 @@ async function resolveProblem(payload = {}) {
   return {
     ...normalizedProblem,
     testCases: normalizedProblem.testCases || [],
+    starterCode: {
+      ...buildFallbackStarterCode(normalizedProblem),
+      ...(normalizedProblem.starterCode || {}),
+    },
     extractionStatus: normalizedProblem.description ? 'provided' : 'manual',
   };
 }
