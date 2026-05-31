@@ -148,6 +148,12 @@ const env = {
   allowSmtpFallback: process.env.ALLOW_SMTP_FALLBACK === 'true',
   ownerEmails: splitCsv(process.env.OWNER_EMAILS || process.env.OWNER_EMAIL || 'mohanavelan2006@gmail.com')
     .map((email) => email.toLowerCase()),
+  androidPublisherEmails: splitCsv(
+    process.env.ANDROID_PUBLISHER_EMAILS
+    || process.env.OWNER_EMAILS
+    || process.env.OWNER_EMAIL
+    || 'mohanavelan2006@gmail.com,mohanavelan200@gmail.com'
+  ).map((email) => email.toLowerCase()),
   webPushPublicKey: process.env.WEB_PUSH_PUBLIC_KEY || '',
   webPushPrivateKey: process.env.WEB_PUSH_PRIVATE_KEY || '',
   webPushSubject: normalizeWebPushSubject(
@@ -211,6 +217,11 @@ env.emailProvider = env.allowSmtpFallback && requestedEmailProvider === 'smtp' ?
 env.emailFrom = env.emailProvider === 'resend' ? env.resendFrom : env.smtpFrom;
 env.emailEnabled = env.emailProvider === 'resend' ? env.resendEnabled : env.smtpEnabled;
 env.inviteOnlyAccess = !env.publicSignupEnabled;
+env.androidPublisherEmails = Array.from(new Set([
+  ...env.androidPublisherEmails,
+  ...env.ownerEmails,
+  'mohanavelan200@gmail.com',
+].map((email) => String(email || '').trim().toLowerCase()).filter(Boolean)));
 
 if (env.ngrokUrl && !env.clientUrls.includes(env.ngrokUrl)) {
   env.clientUrls.push(env.ngrokUrl);

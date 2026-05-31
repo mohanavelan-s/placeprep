@@ -7,6 +7,14 @@ export const OBSERVER_ALLOWED_PATHS = [
 ] as const;
 
 const observerAllowedPathSet = new Set<string>(OBSERVER_ALLOWED_PATHS);
+const ANDROID_PUBLISHER_EMAILS = new Set([
+  "mohanavelan2006@gmail.com",
+  "mohanavelan200@gmail.com",
+]);
+
+function normalizeEmail(value?: string | null) {
+  return String(value || "").trim().toLowerCase();
+}
 
 export function getUserAccessTier(user?: Pick<User, "accessTier" | "role"> | null) {
   if (!user) {
@@ -36,3 +44,11 @@ export function canAccessAppPath(user: Pick<User, "accessTier" | "role"> | null 
   return observerAllowedPathSet.has(pathname);
 }
 
+export function isAndroidPublisherUser(user?: Pick<User, "email" | "coachMetadata"> | null) {
+  if (!user) {
+    return false;
+  }
+
+  return ANDROID_PUBLISHER_EMAILS.has(normalizeEmail(user.email))
+    || user.coachMetadata?.androidPublisher === true;
+}

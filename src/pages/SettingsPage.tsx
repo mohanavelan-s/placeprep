@@ -30,6 +30,7 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
+import { isAndroidPublisherUser } from "@/lib/access";
 import { syncBrowserPushSubscription } from "@/lib/browser-push";
 import {
   clearNotificationHistory,
@@ -832,7 +833,7 @@ export default function SettingsPage() {
 
       <ResumeAnalysisPanel defaultTargetRole={targetRole || user?.targetRole || ""} />
 
-      <AndroidAccessPanel adminMode={user?.role === "admin"} />
+      <AndroidAccessPanel adminMode={isAndroidPublisherUser(user)} />
       <Dialog open={Boolean(emailDeliveryPopup)} onOpenChange={(open) => !open && setEmailDeliveryPopup(null)}>
         <DialogContent className="border-border/80 bg-background">
           <DialogHeader>

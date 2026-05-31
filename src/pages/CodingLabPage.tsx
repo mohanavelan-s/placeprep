@@ -11,7 +11,7 @@ import {
   Send,
   TerminalSquare,
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import PageStatusPanel from "@/components/PageStatusPanel";
@@ -37,6 +37,7 @@ import {
   type CodingLanguage,
   type CodingProblem,
   type CodingSubmission,
+  type CodingTestCase,
 } from "@/lib/api";
 
 const FALLBACK_STARTER_CODE: Record<string, string> = {
@@ -133,6 +134,29 @@ function extractLeetCodeNumber(value: string) {
   return value.match(/\d{1,5}/)?.[0] || "";
 }
 
+function formatDuration(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainder = safeSeconds % 60;
+  return `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+function buildProblemPayloadFromSearch(searchParams: URLSearchParams) {
+  const title = searchParams.get("title") || searchParams.get("referenceLabel") || "";
+  const url = searchParams.get("url") || "";
+  const problemNumber = searchParams.get("problemNumber") || extractLeetCodeNumber(title);
+  const description = searchParams.get("description") || "";
+
+  return {
+    platform: problemNumber || /leetcode\.com/i.test(url) ? "leetcode" : undefined,
+    title: problemNumber ? undefined : title,
+    problemTitle: problemNumber ? undefined : title,
+    problemNumber: problemNumber || undefined,
+    url: url || undefined,
+    description,
+  };
+}
+
 function buildManualProblemPayload({
   title,
   url,
@@ -168,7 +192,13 @@ function formatProblemDescription(value: string) {
     .trim();
 }
 
-function ProblemBrief({ problem }: { problem: CodingProblem | null }) {
+function ProblemBrief({
+  problem,
+  onUseTestCase,
+}: {
+  problem: CodingProblem | null;
+  onUseTestCase?: (testCase: CodingTestCase) => void;
+}) {
   if (!problem) {
     return (
       <div className="mt-5 rounded-[1rem] border border-border/70 bg-background/45 p-5">
@@ -182,6 +212,7 @@ function ProblemBrief({ problem }: { problem: CodingProblem | null }) {
   const description = formatProblemDescription(problem.description || "");
   const examples = stringList(problem.examples).filter((example) => !description.includes(example));
   const topics = stringList(problem.constraints);
+  const testCases = problem.testCases || [];
 
   return (
     <div className="mt-5 rounded-[1rem] border border-border/70 bg-background/45 p-5">
@@ -247,6 +278,38 @@ function ProblemBrief({ problem }: { problem: CodingProblem | null }) {
           ))}
         </div>
       )}
+
+      {!!testCases.length && (
+        <div className="mt-4 grid gap-3">
+          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Lab test cases</p>
+          {testCases.map((testCase, index) => (
+            <button
+              key={`${testCase.name || "case"}-${index}`}
+              type="button"
+              className="rounded-[0.85rem] border border-border/70 bg-card/55 p-3 text-left transition hover:border-primary/35 hover:bg-background/60"
+              onClick={() => onUseTestCase?.(testCase)}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs uppercase tracking-[0.16em] text-foreground/80">
+                  {testCase.name || `Case ${index + 1}`}
+                </p>
+                <span className="text-[10px] uppercase tracking-[0.14em] text-primary">Use case</span>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                <pre className="whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-background/65 p-3 font-mono text-xs leading-5 text-foreground/80">
+                  {testCase.input || "No input"}
+                </pre>
+                <pre className="whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-background/65 p-3 font-mono text-xs leading-5 text-foreground/80">
+                  {testCase.expectedOutput || "No expected output"}
+                </pre>
+              </div>
+              {testCase.explanation && (
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">{testCase.explanation}</p>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -270,6 +333,9 @@ function ResultPanel({ result }: { result: CodingSubmission | null }) {
   const summary = typeof result.analysis?.summary === "string"
     ? result.analysis.summary
     : "Review the run output and improve the highest-impact area.";
+  const detectedTime = String(result.rubric?.detectedTimeComplexity || result.rubric?.detectedComplexity || "not stated");
+  const detectedSpace = String(result.rubric?.detectedSpaceComplexity || "not stated");
+  const speedScore = Number(result.rubric?.speedScore || 0);
 
   return (
     <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-5">
@@ -286,16 +352,21 @@ function ResultPanel({ result }: { result: CodingSubmission | null }) {
 
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         <div className="rounded-[1rem] border border-border/70 bg-card/60 px-4 py-3">
-          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Time</p>
+          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Runtime</p>
           <p className="mt-2 text-lg text-foreground">{result.time ? `${result.time}s` : "n/a"}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{result.memory ? `${result.memory} KB` : "memory n/a"}</p>
         </div>
         <div className="rounded-[1rem] border border-border/70 bg-card/60 px-4 py-3">
-          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Memory</p>
-          <p className="mt-2 text-lg text-foreground">{result.memory ? `${result.memory} KB` : "n/a"}</p>
+          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Time / space</p>
+          <p className="mt-2 text-sm text-foreground">{detectedTime}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{detectedSpace}</p>
         </div>
         <div className="rounded-[1rem] border border-border/70 bg-card/60 px-4 py-3">
-          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Complexity</p>
-          <p className="mt-2 text-lg text-foreground">{String(result.rubric?.detectedComplexity || "not stated")}</p>
+          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Solve speed</p>
+          <p className="mt-2 text-lg text-foreground">{speedScore ? `${Math.round(speedScore)}%` : "n/a"}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {result.rubric?.durationSeconds ? `${formatDuration(Number(result.rubric.durationSeconds))} elapsed` : "timer not supplied"}
+          </p>
         </div>
       </div>
 
@@ -329,6 +400,7 @@ function ResultPanel({ result }: { result: CodingSubmission | null }) {
 export default function CodingLabPage() {
   const { taskId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [selectedLanguage, setSelectedLanguage] = useState("python");
   const [sourceCode, setSourceCode] = useState("");
@@ -340,6 +412,22 @@ export default function CodingLabPage() {
   const [resolvedProblem, setResolvedProblem] = useState<CodingProblem | null>(null);
   const [lastResult, setLastResult] = useState<CodingSubmission | null>(null);
   const [sourceTouched, setSourceTouched] = useState(false);
+  const [queryBootstrapped, setQueryBootstrapped] = useState(false);
+  const [workspaceStartedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+
+  const assessmentContext = useMemo(() => {
+    const assessmentId = searchParams.get("assessmentId") || "";
+    const assessmentQuestionId = searchParams.get("assessmentQuestionId") || "";
+    const timeLimitMinutes = Number(searchParams.get("timeLimitMinutes") || 0);
+
+    return {
+      assessmentId,
+      assessmentQuestionId,
+      returnTo: searchParams.get("returnTo") || "",
+      timeLimitSeconds: timeLimitMinutes > 0 ? Math.round(timeLimitMinutes * 60) : 0,
+    };
+  }, [searchParams]);
 
   const languagesQuery = useQuery({
     queryKey: ["coding", "languages"],
@@ -374,6 +462,18 @@ export default function CodingLabPage() {
   const selectedLanguageInfo = languages.find((language) => language.key === selectedLanguage);
   const submissions = taskWorkspace?.submissions || submissionsQuery.data || [];
   const isLoading = (taskId && taskQuery.isPending) || languagesQuery.isPending;
+  const elapsedSeconds = Math.max(0, Math.round((now - workspaceStartedAt) / 1000));
+  const labTimeLeftSeconds = assessmentContext.timeLimitSeconds
+    ? Math.max(0, assessmentContext.timeLimitSeconds - elapsedSeconds)
+    : null;
+  const labPressurePercent = labTimeLeftSeconds === null
+    ? 100
+    : Math.max(0, Math.min(100, (labTimeLeftSeconds / assessmentContext.timeLimitSeconds) * 100));
+  const labPressureTone = labPressurePercent <= 20
+    ? "bg-destructive"
+    : labPressurePercent <= 45
+      ? "bg-amber-400"
+      : "bg-emerald-400";
 
   useEffect(() => {
     const firstEnabled = languages.find((language) => language.enabled)?.key || languages[0]?.key;
@@ -389,14 +489,31 @@ export default function CodingLabPage() {
   }, [problem, selectedLanguage, selectedLanguageInfo, sourceCode, sourceTouched]);
 
   useEffect(() => {
+    if (!assessmentContext.timeLimitSeconds) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [assessmentContext.timeLimitSeconds]);
+
+  useEffect(() => {
+    const firstCase = problem?.testCases?.[0];
+    if (firstCase && !stdin.trim() && !expectedOutput.trim()) {
+      setStdin(firstCase.input || "");
+      setExpectedOutput(firstCase.expectedOutput || "");
+    }
+  }, [expectedOutput, problem?.number, problem?.slug, problem?.testCases, stdin]);
+
+  useEffect(() => {
     if (taskWorkspace?.submissions?.[0]) {
       setLastResult(taskWorkspace.submissions[0]);
     }
   }, [taskWorkspace?.submissions]);
 
   const resolveProblemMutation = useMutation({
-    mutationFn: () =>
-      resolveCodingProblem(buildManualProblemPayload({
+    mutationFn: (payload?: ReturnType<typeof buildProblemPayloadFromSearch>) =>
+      resolveCodingProblem(payload || buildManualProblemPayload({
         title: manualTitle,
         url: manualUrl,
         description: manualDescription,
@@ -405,6 +522,10 @@ export default function CodingLabPage() {
       setResolvedProblem(nextProblem);
       if (!sourceTouched) {
         setSourceCode(getStarterCodeForLanguage(nextProblem, selectedLanguage, selectedLanguageInfo));
+      }
+      if (nextProblem.testCases?.[0] && !stdin.trim() && !expectedOutput.trim()) {
+        setStdin(nextProblem.testCases[0].input || "");
+        setExpectedOutput(nextProblem.testCases[0].expectedOutput || "");
       }
       setManualTitle(nextProblem.number ? `${nextProblem.number}. ${nextProblem.title}` : nextProblem.title);
       setManualUrl(nextProblem.url || "");
@@ -415,23 +536,56 @@ export default function CodingLabPage() {
     },
   });
 
-  const runMutation = useMutation({
-    mutationFn: () =>
-      runCodingCode({
-        taskId,
-        language: selectedLanguage,
-        sourceCode,
-        stdin,
-        expectedOutput,
-        problem: problem || {
-          ...buildManualProblemPayload({
-            title: manualTitle || "Manual Coding Lab problem",
-            url: manualUrl,
-            description: manualDescription,
-          }),
+  useEffect(() => {
+    if (taskId || queryBootstrapped) {
+      return;
+    }
+
+    const hasQueryProblem = Boolean(
+      searchParams.get("problemNumber")
+      || searchParams.get("url")
+      || searchParams.get("title")
+      || searchParams.get("description"),
+    );
+
+    if (!hasQueryProblem) {
+      return;
+    }
+
+    const title = searchParams.get("title") || searchParams.get("referenceLabel") || "";
+    const url = searchParams.get("url") || "";
+    const description = searchParams.get("description") || "";
+    setManualTitle(title || searchParams.get("problemNumber") || "Assessment coding problem");
+    setManualUrl(url);
+    setManualDescription(description);
+    setQueryBootstrapped(true);
+    resolveProblemMutation.mutate(buildProblemPayloadFromSearch(searchParams));
+  }, [queryBootstrapped, resolveProblemMutation, searchParams, taskId]);
+
+  function buildExecutionPayload() {
+    return {
+      taskId,
+      language: selectedLanguage,
+      sourceCode,
+      stdin,
+      expectedOutput,
+      durationSeconds: Math.max(0, Math.round((Date.now() - workspaceStartedAt) / 1000)),
+      timeLimitSeconds: assessmentContext.timeLimitSeconds || undefined,
+      assessmentId: assessmentContext.assessmentId || undefined,
+      assessmentQuestionId: assessmentContext.assessmentQuestionId || undefined,
+      problem: problem || {
+        ...buildManualProblemPayload({
           title: manualTitle || "Manual Coding Lab problem",
-        },
-      }),
+          url: manualUrl,
+          description: manualDescription,
+        }),
+        title: manualTitle || "Manual Coding Lab problem",
+      },
+    };
+  }
+
+  const runMutation = useMutation({
+    mutationFn: () => runCodingCode(buildExecutionPayload()),
     onSuccess: async (result) => {
       setLastResult(result);
       await queryClient.invalidateQueries({ queryKey: ["coding", "task", taskId] });
@@ -444,22 +598,7 @@ export default function CodingLabPage() {
   });
 
   const submitMutation = useMutation({
-    mutationFn: () =>
-      submitCodingCode({
-        taskId,
-        language: selectedLanguage,
-        sourceCode,
-        stdin,
-        expectedOutput,
-        problem: problem || {
-          ...buildManualProblemPayload({
-            title: manualTitle || "Manual Coding Lab problem",
-            url: manualUrl,
-            description: manualDescription,
-          }),
-          title: manualTitle || "Manual Coding Lab problem",
-        },
-      }),
+    mutationFn: () => submitCodingCode(buildExecutionPayload()),
     onSuccess: async (result) => {
       setLastResult(result);
       await Promise.all([
@@ -530,6 +669,45 @@ export default function CodingLabPage() {
           </div>
         </div>
       </section>
+
+      {assessmentContext.assessmentId && (
+        <section className="surface-panel p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Timed assessment lab</p>
+              <p className="mt-2 text-sm leading-6 text-foreground/82">
+                This workspace is linked to your short programming assessment. Final scoring includes correctness, time complexity,
+                space complexity, and how quickly you finish.
+              </p>
+            </div>
+            {assessmentContext.returnTo && (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 gap-2 border-border/80 bg-background/70"
+                onClick={() => navigate(assessmentContext.returnTo)}
+              >
+                Back to assessment
+              </Button>
+            )}
+          </div>
+
+          {labTimeLeftSeconds !== null && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between gap-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                <span>Lab timer</span>
+                <span>{labTimeLeftSeconds <= 0 ? "Time expired" : formatDuration(labTimeLeftSeconds)}</span>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted/45">
+                <div
+                  className={`h-full rounded-full transition-all ${labPressureTone}`}
+                  style={{ width: `${labPressurePercent}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {!taskId && (
         <section className="surface-panel p-6 md:p-7">
@@ -633,7 +811,14 @@ export default function CodingLabPage() {
             </div>
           )}
 
-          <ProblemBrief problem={problem} />
+          <ProblemBrief
+            problem={problem}
+            onUseTestCase={(testCase) => {
+              setStdin(testCase.input || "");
+              setExpectedOutput(testCase.expectedOutput || "");
+              toast.success("Test case loaded into the runner.");
+            }}
+          />
 
           <div className="mt-5 grid gap-4">
             <div>

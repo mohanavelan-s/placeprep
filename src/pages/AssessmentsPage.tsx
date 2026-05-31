@@ -34,7 +34,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Textarea } from "@/components/ui/textarea";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import {
   applyAssessmentPlanUpdate,
@@ -167,25 +166,69 @@ function moveItem(values: string[], index: number, direction: -1 | 1) {
 }
 
 function buildApproachHint(question: AssessmentQuestion) {
-  const reference = question.referenceLabel || question.taskTitle || question.topic;
-
-  if (/graph|bfs|dfs/i.test(reference)) {
-    return "Start by naming the state, then the visited rule. The answer usually follows from what must never be revisited.";
+  if (question.approachHint) {
+    return question.approachHint;
   }
 
-  if (/dynamic|dp|memo/i.test(reference)) {
-    return "Say the subproblem in one sentence. If you cannot name the state, do not touch the transition yet.";
+  const reference = question.referenceLabel || question.taskTitle || question.topic || "this problem";
+  const prompt = `${reference} ${question.prompt}`.toLowerCase();
+
+  if (/two sum|pair sum/.test(prompt)) {
+    return `For ${reference}, track the complement needed for each value and explain why one pass avoids repeated scanning.`;
   }
 
-  if (/sql|database|dbms/i.test(reference)) {
-    return "Ask what rows must survive filtering, what relationship joins them, and what index would make that path cheap.";
+  if (/binary search|sorted|lower bound|upper bound/.test(prompt)) {
+    return `For ${reference}, define the sorted invariant first, then update left/right only after checking what half is impossible.`;
   }
 
-  if (/system|design|scale|cache/i.test(reference)) {
-    return "Separate requirements from mechanisms. Pick the bottleneck first, then justify the cache, queue, or database choice.";
+  if (/sliding window|subarray|substring|window/.test(prompt)) {
+    return `For ${reference}, state what makes a window valid, then move the left pointer only when that rule breaks.`;
   }
 
-  return "Name the constraint, choose the pattern that removes repeated work, then test one edge case before committing.";
+  if (/stack|parentheses|bracket|monotonic/.test(prompt)) {
+    return `For ${reference}, name what the stack represents after each step; the top should explain the next decision.`;
+  }
+
+  if (/linked list|node|pointer/.test(prompt)) {
+    return `For ${reference}, draw the pointer change before coding and protect the empty, one-node, and tail cases.`;
+  }
+
+  if (/tree|bst|binary tree/.test(prompt)) {
+    return `For ${reference}, decide whether the answer is local to a node or must be carried through recursion/level order.`;
+  }
+
+  if (/graph|bfs|dfs/.test(prompt)) {
+    return `For ${reference}, name the graph state, the visited rule, and the exact moment a node becomes safe to skip.`;
+  }
+
+  if (/dynamic|dp|memo/.test(prompt)) {
+    return `For ${reference}, say the subproblem in one sentence before writing the transition and base cases.`;
+  }
+
+  if (/sql|database|dbms/.test(prompt)) {
+    return `For ${reference}, identify the rows that must survive filtering, the join relationship, and the cheapest grouping path.`;
+  }
+
+  if (/system|design|scale|cache/.test(prompt)) {
+    return `For ${reference}, separate requirements from mechanisms, then justify the cache, queue, or database by the bottleneck.`;
+  }
+
+  return `For ${reference}, restate input/output, choose the pattern that removes repeated work, then test the smallest edge case before committing.`;
+}
+
+function extractLeetCodeNumberFromQuestion(question: AssessmentQuestion) {
+  const source = [
+    question.referenceLabel,
+    question.referenceUrl,
+    question.taskTitle,
+    question.topic,
+    question.prompt,
+  ].join(" ");
+
+  return source.match(/\b(?:leetcode|lc)\s*:?\s*#?\s*(\d{1,5})\b/i)?.[1]
+    || source.match(/\bleetcode\.com\/problems\/[^/\s]+\/?[^0-9]*(\d{1,5})?\b/i)?.[1]
+    || source.match(/^\s*(\d{1,5})\.\s+/)?.[1]
+    || "";
 }
 
 function formatTime(seconds: number) {
@@ -212,6 +255,7 @@ function QuestionCard({
   disabled,
   onHint,
   hint,
+  onOpenCodingLab,
 }: {
   question: AssessmentQuestion;
   value: string;
@@ -219,6 +263,7 @@ function QuestionCard({
   disabled?: boolean;
   onHint?: () => void;
   hint?: string;
+  onOpenCodingLab?: () => void;
 }) {
   const orderingIds = question.type === "ordering" ? parseOrderingValue(question, value) : [];
   const orderingItemsById = new Map((question.items || []).map((item) => [item.id, item]));
@@ -283,14 +328,26 @@ function QuestionCard({
       )}
 
       {question.type === "coding" && (
-        <div className="mt-5">
-          <Textarea
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            placeholder={question.placeholder || "Write code or structured pseudocode here."}
-            className="min-h-[170px] border-border/80 bg-background/70"
-            disabled={disabled}
-          />
+        <div className="mt-5 rounded-[1rem] border border-border/80 bg-background/45 p-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm leading-6 text-muted-foreground">
+                Solve this in the Coding Lab so the code runs in the sandbox, shows test cases, and records time-aware feedback.
+              </p>
+              {value && (
+                <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">{value}</p>
+              )}
+            </div>
+            <Button
+              type="button"
+              className="h-10 shrink-0 gap-2"
+              disabled={disabled}
+              onClick={onOpenCodingLab}
+            >
+              <Code2 className="h-4 w-4" />
+              Open timed Coding Lab
+            </Button>
+          </div>
         </div>
       )}
 
@@ -506,7 +563,7 @@ export default function AssessmentsPage() {
     ? "bg-destructive"
     : pressurePercent <= 45
       ? "bg-amber-400"
-      : "bg-primary";
+      : "bg-emerald-400";
   const answerChangeCount = countAnswerChanges(currentSession?.submission?.answerStats);
 
   function updateAnswer(question: AssessmentQuestion, next: string) {
@@ -524,6 +581,36 @@ export default function AssessmentsPage() {
         },
       };
     });
+  }
+
+  function openCodingAssessment(question: AssessmentQuestion) {
+    if (!currentSession) {
+      return;
+    }
+
+    updateAnswer(question, "Timed Coding Lab opened for this question.");
+
+    const params = new URLSearchParams({
+      assessmentId: currentSession.id,
+      assessmentQuestionId: question.id,
+      timeLimitMinutes: String(Math.max(5, question.averageTimeMinutes || currentSession.durationMinutes || 20)),
+      title: question.referenceLabel || question.taskTitle || question.topic || "Assessment coding problem",
+      description: question.prompt,
+      returnTo: "/assessments",
+    });
+    const problemNumber = extractLeetCodeNumberFromQuestion(question);
+
+    if (problemNumber) {
+      params.set("problemNumber", problemNumber);
+    }
+    if (question.referenceUrl) {
+      params.set("url", question.referenceUrl);
+    }
+    if (question.referenceLabel) {
+      params.set("referenceLabel", question.referenceLabel);
+    }
+
+    navigate(`/coding-lab?${params.toString()}`);
   }
 
   if (isBooting) {
@@ -718,6 +805,7 @@ export default function AssessmentsPage() {
                       }))
                     }
                     hint={approachHints[question.id]}
+                    onOpenCodingLab={() => openCodingAssessment(question)}
                   />
                 ))}
               </div>

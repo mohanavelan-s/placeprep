@@ -15,6 +15,15 @@ function isOwnerEmail(email) {
   return Boolean(normalizedEmail && env.ownerEmails.includes(normalizedEmail));
 }
 
+function isAndroidPublisherEmail(email) {
+  const normalizedEmail = normalizeEmail(email);
+  return Boolean(normalizedEmail && env.androidPublisherEmails.includes(normalizedEmail));
+}
+
+function isAndroidPublisherUser(user) {
+  return Boolean(user && isAndroidPublisherEmail(user.email));
+}
+
 function buildOwnerCoachMetadata(coachMetadata = {}) {
   return {
     ...(isPlainObject(coachMetadata) ? coachMetadata : {}),
@@ -41,6 +50,8 @@ module.exports = {
   OWNER_TIER,
   applyOwnerAccess,
   buildOwnerCoachMetadata,
+  isAndroidPublisherEmail,
+  isAndroidPublisherUser,
   isOwnerEmail,
   normalizeEmail,
 };

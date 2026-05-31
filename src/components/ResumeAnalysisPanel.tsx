@@ -26,6 +26,13 @@ import {
   type ResumeJobMatchResult,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -69,6 +76,34 @@ function scoreTone(score: number) {
   return "text-rose-200 border-rose-400/20 bg-rose-500/10";
 }
 
+type ResumeAnalysisMeta = {
+  targetRole?: string | null;
+  jobDescriptionFocus?: string | null;
+  jobMatchScore?: number | null;
+  missingKeywords?: string[];
+  benchmarkHighlights?: string[];
+  extraction?: {
+    method?: string;
+    message?: string;
+    extractedChars?: number;
+  };
+};
+
+function getResumeMeta(resume?: ResumeAnalysisRecord | null): ResumeAnalysisMeta {
+  const value = resume?.sections?._analysis;
+  return value && typeof value === "object" && !Array.isArray(value) ? value as ResumeAnalysisMeta : {};
+}
+
+function compactSummary(value?: string | null, fallback = "Resume analyzed for structure, role fit, and ATS readiness.") {
+  const text = String(value || "").trim();
+  if (!text) {
+    return fallback;
+  }
+
+  const firstSentence = text.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim() || text;
+  return firstSentence.length > 190 ? `${firstSentence.slice(0, 187).trim()}...` : firstSentence;
+}
+
 function SectionCoveragePill({
   label,
   active,
@@ -86,6 +121,139 @@ function SectionCoveragePill({
     >
       {label}
     </span>
+  );
+}
+
+function ResumeDetailDialogContent({ resume }: { resume: ResumeAnalysisRecord }) {
+  const meta = getResumeMeta(resume);
+  const sectionEntries = [
+    ["Summary", resume.sections?.summary],
+    ["Education", resume.sections?.education],
+    ["Experience", resume.sections?.experience],
+    ["Projects", resume.sections?.projects],
+    ["Skills", resume.sections?.skills],
+    ["Achievements", resume.sections?.achievements],
+  ] as const;
+
+  return (
+    <DialogContent className="max-h-[88vh] max-w-5xl overflow-auto border-border/80 bg-background p-0">
+      <div className="border-b border-border/70 px-6 py-5">
+        <DialogHeader>
+          <DialogTitle className="font-heading text-3xl text-foreground">{resume.fileName}</DialogTitle>
+          <DialogDescription className="leading-6">
+            {meta.targetRole ? `Role target: ${meta.targetRole}` : "Role target came from your current profile or upload settings."}
+          </DialogDescription>
+        </DialogHeader>
+      </div>
+
+      <div className="grid gap-5 p-6">
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
+          <div className="rounded-[1.1rem] border border-border/80 bg-card/60 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Deep analysis</p>
+            <p className="mt-3 text-sm leading-7 text-foreground/85">
+              {resume.analysisSummary || "Resume analyzed and indexed for placement readiness."}
+            </p>
+          </div>
+          <div className={`rounded-[1.1rem] border px-5 py-4 ${scoreTone(resume.score)}`}>
+            <p className="text-xs uppercase tracking-[0.18em]">Score</p>
+            <p className="mt-2 font-heading text-5xl">{resume.score}</p>
+            {typeof meta.jobMatchScore === "number" && (
+              <p className="mt-2 text-xs uppercase tracking-[0.14em]">JD match {meta.jobMatchScore}</p>
+            )}
+          </div>
+        </div>
+
+        {meta.extraction?.message && (
+          <div className="rounded-[1.1rem] border border-border/80 bg-background/55 p-4 text-sm leading-6 text-muted-foreground">
+            {meta.extraction.message}
+            {typeof meta.extraction.extractedChars === "number" && (
+              <span> Extracted {meta.extraction.extractedChars.toLocaleString("en-IN")} characters.</span>
+            )}
+          </div>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-[1.1rem] border border-border/80 bg-background/45 p-4">
+            <div className="flex items-center gap-2 text-foreground">
+              <BadgeCheck className="h-4 w-4 text-emerald-300" />
+              <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">Strengths</p>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {(resume.strengths.length ? resume.strengths : ["No strong signals were extracted yet."]).map((item) => (
+                <div key={item} className="rounded-xl border border-border/80 bg-card/60 px-3 py-3 text-sm leading-6 text-foreground/85">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[1.1rem] border border-border/80 bg-background/45 p-4">
+            <div className="flex items-center gap-2 text-foreground">
+              <Target className="h-4 w-4 text-primary" />
+              <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">Improvements</p>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {(resume.improvements.length ? resume.improvements : ["No critical gaps were detected."]).map((item) => (
+                <div key={item} className="rounded-xl border border-border/80 bg-card/60 px-3 py-3 text-sm leading-6 text-foreground/85">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-[1.1rem] border border-border/80 bg-background/45 p-4">
+            <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">Keyword alignment</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(resume.keywords.length ? resume.keywords : ["No role keywords matched yet."]).map((keyword) => (
+                <span key={keyword} className="coach-chip border-primary/20 bg-primary/8 text-foreground/85">
+                  {keyword}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[1.1rem] border border-border/80 bg-background/45 p-4">
+            <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">Section coverage</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {sectionEntries.map(([label, active]) => (
+                <SectionCoveragePill key={label} label={label} active={Boolean(active)} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {!!meta.benchmarkHighlights?.length && (
+          <div className="rounded-[1.1rem] border border-border/80 bg-background/45 p-4">
+            <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">Role benchmark</p>
+            <div className="mt-3 grid gap-2">
+              {meta.benchmarkHighlights.map((item) => (
+                <div key={item} className="rounded-xl border border-border/80 bg-card/60 px-3 py-3 text-sm leading-6 text-foreground/85">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+          <span>{formatBytes(resume.sizeBytes)}</span>
+          <span>{resume.storageProvider || "storage"}</span>
+          <span>{formatTimestamp(resume.createdAt)}</span>
+          {resume.secureUrl && (
+            <a
+              href={resume.secureUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary transition hover:text-foreground"
+            >
+              Open uploaded file
+            </a>
+          )}
+        </div>
+      </div>
+    </DialogContent>
   );
 }
 
@@ -213,6 +381,7 @@ export default function ResumeAnalysisPanel({
   const [uploadJobDescription, setUploadJobDescription] = useState("");
   const [matchJobDescription, setMatchJobDescription] = useState("");
   const [jobMatchResult, setJobMatchResult] = useState<ResumeJobMatchResult | null>(null);
+  const [selectedHistoryResume, setSelectedHistoryResume] = useState<ResumeAnalysisRecord | null>(null);
 
   const latestQuery = useQuery({
     queryKey: ["resume-analysis", "latest"],
@@ -294,8 +463,8 @@ export default function ResumeAnalysisPanel({
         <p className="section-label">Resume Review</p>
         <h3 className="mt-2 font-heading text-3xl text-foreground">Run your resume through the same system.</h3>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Upload the file, paste the resume text for sharper analysis, and let PlacePrep score structure, keyword alignment,
-          strengths, and interview-facing gaps.
+          Upload a PDF, DOCX, DOC, or TXT resume. PlacePrep extracts readable text automatically, scores it against the selected role,
+          and keeps deeper analysis in your history.
         </p>
       </div>
 
@@ -372,13 +541,13 @@ export default function ResumeAnalysisPanel({
             <Textarea
               value={resumeText}
               onChange={(event) => setResumeText(event.target.value)}
-              placeholder="Paste the raw resume text here for deeper analysis, especially if you uploaded a PDF or DOCX."
+              placeholder="Optional: paste corrections, missing text, or extra resume notes if the file extractor misses something."
               className="min-h-[180px] border-border/80 bg-background/70"
             />
 
             <div className="rounded-[1.1rem] border border-border/80 bg-background/45 p-4 text-sm leading-6 text-muted-foreground">
-              PDF and DOCX files are stored normally, but pasted raw text gives the AI a much sharper read on sections,
-              keyword alignment, and improvement points.
+              Resume text is extracted automatically from TXT, DOCX, text-based PDFs, and best-effort DOC files. The pasted field is only
+              for optional corrections or extra context.
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -588,10 +757,15 @@ export default function ResumeAnalysisPanel({
             </div>
           )}
 
-          {(historyQuery.data || []).map((resume) => (
-            <article
+          {(historyQuery.data || []).map((resume) => {
+            const meta = getResumeMeta(resume);
+
+            return (
+            <button
               key={resume.id}
-              className="rounded-[1.1rem] border border-border/80 bg-background/45 px-4 py-4"
+              type="button"
+              className="rounded-[1.1rem] border border-border/80 bg-background/45 px-4 py-4 text-left transition hover:border-primary/35 hover:bg-background/65"
+              onClick={() => setSelectedHistoryResume(resume)}
             >
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>
@@ -604,15 +778,13 @@ export default function ResumeAnalysisPanel({
                   </div>
 
                   <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                    {resume.analysisSummary || "Resume analyzed for structure and role fit."}
+                    {compactSummary(resume.analysisSummary)}
                   </p>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {(resume.keywords || []).slice(0, 8).map((keyword) => (
-                      <span key={keyword} className="coach-chip border-primary/20 bg-primary/8 text-foreground/85">
-                        {keyword}
-                      </span>
-                    ))}
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                    <span>{meta.targetRole || "Role-aware review"}</span>
+                    {meta.extraction?.method && <span>{meta.extraction.method}</span>}
+                    <span>Click for deeper analysis</span>
                   </div>
                 </div>
 
@@ -622,22 +794,17 @@ export default function ResumeAnalysisPanel({
                     {formatBytes(resume.sizeBytes)}
                   </div>
                   <p>{formatTimestamp(resume.createdAt)}</p>
-                  {resume.secureUrl && (
-                    <a
-                      href={resume.secureUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-block text-primary transition hover:text-foreground"
-                    >
-                      Open file
-                    </a>
-                  )}
                 </div>
               </div>
-            </article>
-          ))}
+            </button>
+          );
+          })}
         </div>
       </div>
+
+      <Dialog open={Boolean(selectedHistoryResume)} onOpenChange={(open) => !open && setSelectedHistoryResume(null)}>
+        {selectedHistoryResume && <ResumeDetailDialogContent resume={selectedHistoryResume} />}
+      </Dialog>
     </section>
   );
 }

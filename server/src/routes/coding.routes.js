@@ -21,6 +21,7 @@ router.post(
     body('problemTitle').optional({ values: 'falsy' }).isString(),
     body('problemNumber').optional({ values: 'falsy' }).isString(),
     body('description').optional({ values: 'falsy' }).isString(),
+    body('testCases').optional().isArray(),
   ],
   validate,
   asyncHandler(controller.resolveProblem),
@@ -40,6 +41,10 @@ const runValidators = [
   body('stdin').optional({ values: 'falsy' }).isString(),
   body('expectedOutput').optional({ values: 'falsy' }).isString(),
   body('problem').optional().isObject(),
+  body('durationSeconds').optional({ values: 'falsy' }).isNumeric(),
+  body('timeLimitSeconds').optional({ values: 'falsy' }).isNumeric(),
+  body('assessmentId').optional({ values: 'falsy' }).isUUID(),
+  body('assessmentQuestionId').optional({ values: 'falsy' }).isString().isLength({ max: 120 }),
 ];
 
 router.post('/runs', runValidators, validate, asyncHandler(controller.createRun));

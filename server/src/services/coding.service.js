@@ -25,6 +25,162 @@ const DEFAULT_STARTER_CODE = {
   postgresql: '-- Write your PostgreSQL query here\n',
 };
 
+const LEETCODE_CATALOG = {
+  '1': {
+    number: '1',
+    slug: 'two-sum',
+    title: 'Two Sum',
+    difficulty: 'Easy',
+    description: 'Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target. Each input has exactly one solution, and you may not use the same element twice.',
+    examples: [
+      'Input: nums = [2,7,11,15], target = 9\nOutput: [0,1]',
+      'Input: nums = [3,2,4], target = 6\nOutput: [1,2]',
+    ],
+    constraints: ['Array', 'Hash Table'],
+    testCases: [
+      { name: 'Basic complement', input: '[2,7,11,15]\n9', expectedOutput: '[0,1]' },
+      { name: 'Middle pair', input: '[3,2,4]\n6', expectedOutput: '[1,2]' },
+      { name: 'Duplicate value', input: '[3,3]\n6', expectedOutput: '[0,1]' },
+    ],
+  },
+  '20': {
+    number: '20',
+    slug: 'valid-parentheses',
+    title: 'Valid Parentheses',
+    difficulty: 'Easy',
+    description: 'Given a string s containing only parentheses and brackets, determine if the input string is valid. Open brackets must be closed by the same type of brackets and in the correct order.',
+    examples: ['Input: s = "()[]{}"\nOutput: true', 'Input: s = "(]"\nOutput: false'],
+    constraints: ['String', 'Stack'],
+    testCases: [
+      { name: 'All pairs', input: '()[]{}', expectedOutput: 'true' },
+      { name: 'Wrong close', input: '(]', expectedOutput: 'false' },
+      { name: 'Nested valid', input: '{[]}', expectedOutput: 'true' },
+    ],
+  },
+  '21': {
+    number: '21',
+    slug: 'merge-two-sorted-lists',
+    title: 'Merge Two Sorted Lists',
+    difficulty: 'Easy',
+    description: 'Merge the two sorted linked lists into one sorted list. Return the head of the merged linked list.',
+    examples: ['Input: list1 = [1,2,4], list2 = [1,3,4]\nOutput: [1,1,2,3,4,4]'],
+    constraints: ['Linked List', 'Recursion'],
+    testCases: [
+      { name: 'Interleaved', input: '[1,2,4]\n[1,3,4]', expectedOutput: '[1,1,2,3,4,4]' },
+      { name: 'One empty', input: '[]\n[0]', expectedOutput: '[0]' },
+    ],
+  },
+  '121': {
+    number: '121',
+    slug: 'best-time-to-buy-and-sell-stock',
+    title: 'Best Time to Buy and Sell Stock',
+    difficulty: 'Easy',
+    description: 'Given prices where prices[i] is the price of a stock on day i, choose one day to buy and a future day to sell to maximize profit. Return the maximum profit, or 0 if no profit is possible.',
+    examples: ['Input: prices = [7,1,5,3,6,4]\nOutput: 5', 'Input: prices = [7,6,4,3,1]\nOutput: 0'],
+    constraints: ['Array', 'Dynamic Programming'],
+    testCases: [
+      { name: 'Profit exists', input: '[7,1,5,3,6,4]', expectedOutput: '5' },
+      { name: 'Descending', input: '[7,6,4,3,1]', expectedOutput: '0' },
+    ],
+  },
+  '125': {
+    number: '125',
+    slug: 'valid-palindrome',
+    title: 'Valid Palindrome',
+    difficulty: 'Easy',
+    description: 'Given a string s, return true if it is a palindrome after converting uppercase letters to lowercase and removing all non-alphanumeric characters.',
+    examples: ['Input: s = "A man, a plan, a canal: Panama"\nOutput: true', 'Input: s = "race a car"\nOutput: false'],
+    constraints: ['Two Pointers', 'String'],
+    testCases: [
+      { name: 'Phrase', input: 'A man, a plan, a canal: Panama', expectedOutput: 'true' },
+      { name: 'Not palindrome', input: 'race a car', expectedOutput: 'false' },
+    ],
+  },
+  '136': {
+    number: '136',
+    slug: 'single-number',
+    title: 'Single Number',
+    difficulty: 'Easy',
+    description: 'Given a non-empty array of integers nums, every element appears twice except for one. Find that single one with linear runtime complexity and constant extra space.',
+    examples: ['Input: nums = [2,2,1]\nOutput: 1'],
+    constraints: ['Array', 'Bit Manipulation'],
+    testCases: [
+      { name: 'Short', input: '[2,2,1]', expectedOutput: '1' },
+      { name: 'Longer', input: '[4,1,2,1,2]', expectedOutput: '4' },
+    ],
+  },
+  '152': {
+    number: '152',
+    slug: 'maximum-product-subarray',
+    title: 'Maximum Product Subarray',
+    difficulty: 'Medium',
+    description: 'Given an integer array nums, find a non-empty subarray that has the largest product and return the product. Track both maximum and minimum running products because a negative number can flip them.',
+    examples: ['Input: nums = [2,3,-2,4]\nOutput: 6', 'Input: nums = [-2,0,-1]\nOutput: 0'],
+    constraints: ['Array', 'Dynamic Programming'],
+    testCases: [
+      { name: 'Positive then negative', input: '[2,3,-2,4]', expectedOutput: '6' },
+      { name: 'Zero split', input: '[-2,0,-1]', expectedOutput: '0' },
+      { name: 'Negative flip', input: '[-2,3,-4]', expectedOutput: '24' },
+    ],
+  },
+  '169': {
+    number: '169',
+    slug: 'majority-element',
+    title: 'Majority Element',
+    difficulty: 'Easy',
+    description: 'Given an array nums, return the majority element that appears more than floor(n / 2) times.',
+    examples: ['Input: nums = [3,2,3]\nOutput: 3'],
+    constraints: ['Array', 'Hash Table', 'Boyer-Moore Voting'],
+    testCases: [
+      { name: 'Three items', input: '[3,2,3]', expectedOutput: '3' },
+      { name: 'Seven items', input: '[2,2,1,1,1,2,2]', expectedOutput: '2' },
+    ],
+  },
+  '217': {
+    number: '217',
+    slug: 'contains-duplicate',
+    title: 'Contains Duplicate',
+    difficulty: 'Easy',
+    description: 'Given an integer array nums, return true if any value appears at least twice, and false if every element is distinct.',
+    examples: ['Input: nums = [1,2,3,1]\nOutput: true'],
+    constraints: ['Array', 'Hash Table', 'Sorting'],
+    testCases: [
+      { name: 'Duplicate exists', input: '[1,2,3,1]', expectedOutput: 'true' },
+      { name: 'All unique', input: '[1,2,3,4]', expectedOutput: 'false' },
+    ],
+  },
+  '226': {
+    number: '226',
+    slug: 'invert-binary-tree',
+    title: 'Invert Binary Tree',
+    difficulty: 'Easy',
+    description: 'Given the root of a binary tree, invert the tree and return its root.',
+    examples: ['Input: root = [4,2,7,1,3,6,9]\nOutput: [4,7,2,9,6,3,1]'],
+    constraints: ['Tree', 'DFS', 'BFS'],
+    testCases: [
+      { name: 'Full tree', input: '[4,2,7,1,3,6,9]', expectedOutput: '[4,7,2,9,6,3,1]' },
+      { name: 'Empty', input: '[]', expectedOutput: '[]' },
+    ],
+  },
+  '704': {
+    number: '704',
+    slug: 'binary-search',
+    title: 'Binary Search',
+    difficulty: 'Easy',
+    description: 'Given a sorted array nums and an integer target, return the index if the target exists. Otherwise, return -1. The algorithm must run in O(log n) time.',
+    examples: ['Input: nums = [-1,0,3,5,9,12], target = 9\nOutput: 4'],
+    constraints: ['Array', 'Binary Search'],
+    testCases: [
+      { name: 'Found', input: '[-1,0,3,5,9,12]\n9', expectedOutput: '4' },
+      { name: 'Missing', input: '[-1,0,3,5,9,12]\n2', expectedOutput: '-1' },
+    ],
+  },
+};
+
+const LEETCODE_CATALOG_BY_SLUG = Object.fromEntries(
+  Object.values(LEETCODE_CATALOG).map((problem) => [problem.slug, problem]),
+);
+
 function toArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -255,8 +411,41 @@ function normalizeProblemPayload(payload = {}) {
     difficulty: String(payload.difficulty || '').trim() || null,
     examples: toArray(payload.examples),
     constraints: toArray(payload.constraints),
+    testCases: toArray(payload.testCases),
     starterCode: payload.starterCode && typeof payload.starterCode === 'object' ? payload.starterCode : {},
   };
+}
+
+function buildCatalogProblem(problem) {
+  return {
+    platform: 'leetcode',
+    number: problem.number,
+    slug: problem.slug,
+    title: problem.title,
+    url: `https://leetcode.com/problems/${problem.slug}/`,
+    description: problem.description,
+    difficulty: problem.difficulty,
+    examples: problem.examples || [],
+    constraints: problem.constraints || [],
+    testCases: problem.testCases || [],
+    starterCode: DEFAULT_STARTER_CODE,
+    extractionStatus: 'catalog',
+  };
+}
+
+function findCatalogProblem(problem = {}) {
+  const number = String(problem.number || '').trim();
+  const slug = String(problem.slug || extractLeetCodeSlug(problem.url || problem.title || '') || '').trim().toLowerCase();
+
+  if (number && LEETCODE_CATALOG[number]) {
+    return buildCatalogProblem(LEETCODE_CATALOG[number]);
+  }
+
+  if (slug && LEETCODE_CATALOG_BY_SLUG[slug]) {
+    return buildCatalogProblem(LEETCODE_CATALOG_BY_SLUG[slug]);
+  }
+
+  return null;
 }
 
 async function fetchLeetCodeProblem(titleSlug) {
@@ -296,6 +485,7 @@ async function fetchLeetCodeProblem(titleSlug) {
       .filter(Boolean)
       .slice(0, 3),
     constraints: toArray(question.topicTags).map((tag) => tag?.name).filter(Boolean).slice(0, 8),
+    testCases: findCatalogProblem({ number: question.questionFrontendId, slug: question.titleSlug })?.testCases || [],
     starterCode: buildStarterCodeFromSnippets(question.codeSnippets),
   };
 }
@@ -364,21 +554,41 @@ async function fetchLeetCodeProblemByNumber(frontendId) {
 
 async function resolveProblem(payload = {}) {
   const normalizedProblem = normalizeProblemPayload(payload);
+  const catalogProblem = normalizedProblem.platform === 'leetcode'
+    ? findCatalogProblem(normalizedProblem)
+    : null;
+
+  if (catalogProblem) {
+    return {
+      ...normalizedProblem,
+      ...catalogProblem,
+      starterCode: {
+        ...DEFAULT_STARTER_CODE,
+        ...(catalogProblem.starterCode || {}),
+        ...(normalizedProblem.starterCode || {}),
+      },
+    };
+  }
 
   if (normalizedProblem.platform === 'leetcode' && (normalizedProblem.slug || normalizedProblem.number)) {
     try {
       const leetCodeProblem = normalizedProblem.slug && !/^leetcode-\d+$/.test(normalizedProblem.slug)
         ? await fetchLeetCodeProblem(normalizedProblem.slug)
         : await fetchLeetCodeProblemByNumber(normalizedProblem.number);
+      const fallbackCatalogProblem = findCatalogProblem(leetCodeProblem);
 
       return {
         ...normalizedProblem,
         ...leetCodeProblem,
+        testCases: leetCodeProblem.testCases?.length
+          ? leetCodeProblem.testCases
+          : (fallbackCatalogProblem?.testCases || normalizedProblem.testCases || []),
         extractionStatus: 'resolved',
       };
     } catch (error) {
       return {
         ...normalizedProblem,
+        testCases: normalizedProblem.testCases || [],
         extractionStatus: 'fallback',
         extractionMessage: 'Live LeetCode extraction was unavailable, so PlacePrep built the workspace from the provided number, title, or URL.',
       };
@@ -387,6 +597,7 @@ async function resolveProblem(payload = {}) {
 
   return {
     ...normalizedProblem,
+    testCases: normalizedProblem.testCases || [],
     extractionStatus: normalizedProblem.description ? 'provided' : 'manual',
   };
 }
@@ -438,8 +649,9 @@ function detectComplexity(sourceCode) {
   const source = String(sourceCode || '');
   const lower = source.toLowerCase();
 
-  if (/o\s*\(\s*(1|log\s*n|n|n\s*log\s*n|n\^2|n2)\s*\)/i.test(source)) {
-    return source.match(/o\s*\([^)]*\)/i)?.[0] || 'mentioned';
+  const timeMatch = source.match(/(?:time\s*(?:complexity)?\s*[:=-]?\s*)?(o\s*\([^)]*\))/i);
+  if (timeMatch) {
+    return timeMatch[1] || 'mentioned';
   }
 
   const loopCount = (source.match(/\b(for|while)\b/g) || []).length;
@@ -455,12 +667,34 @@ function detectComplexity(sourceCode) {
   return 'not stated';
 }
 
-function scoreComplexity(sourceCode, status) {
+function detectSpaceComplexity(sourceCode) {
+  const source = String(sourceCode || '');
+  const lower = source.toLowerCase();
+  const spaceMatch = source.match(/space\s*(?:complexity)?\s*[:=-]?\s*(o\s*\([^)]*\))/i);
+
+  if (spaceMatch) {
+    return spaceMatch[1];
+  }
+
+  if (/\b(hashmap|hash map|map|set|dict|dictionary|array|list|queue|stack|heap)\b/i.test(source)) {
+    return 'likely O(n)';
+  }
+  if (/\brecursion|recursive|dfs\b/i.test(source)) {
+    return 'likely O(h) recursion stack';
+  }
+  if (/\b(select|join|group by|order by)\b/i.test(lower)) {
+    return 'query-plan dependent';
+  }
+
+  return 'likely O(1)';
+}
+
+function scoreTimeComplexity(sourceCode, status) {
   const source = String(sourceCode || '');
   const complexity = detectComplexity(source);
   let score = 55;
 
-  if (/o\s*\(/i.test(source)) {
+  if (/time\s*(?:complexity)?|o\s*\(/i.test(source)) {
     score += 20;
   }
   if (/\b(hash|map|set|queue|stack|heap|binary search|two pointer|window|index|join|group by)\b/i.test(source)) {
@@ -474,6 +708,61 @@ function scoreComplexity(sourceCode, status) {
   }
 
   return clampScore(score);
+}
+
+function scoreSpaceComplexity(sourceCode, status) {
+  const source = String(sourceCode || '');
+  const space = detectSpaceComplexity(source);
+  let score = 58;
+
+  if (/space\s*(?:complexity)?/i.test(source)) {
+    score += 18;
+  }
+  if (/o\s*\(\s*1\s*\)/i.test(space)) {
+    score += 10;
+  }
+  if (/likely O\(n\)/i.test(space) && /\b(hash|map|set|dict|array|list|stack|queue|heap)\b/i.test(source)) {
+    score += 8;
+  }
+  if (['compile_error', 'runtime_error', 'timeout'].includes(status)) {
+    score -= 15;
+  }
+
+  return clampScore(score);
+}
+
+function scoreSpeed(durationSeconds, timeLimitSeconds, status) {
+  if (!durationSeconds || !timeLimitSeconds) {
+    return status === 'accepted' ? 70 : 55;
+  }
+
+  const ratio = Number(durationSeconds) / Math.max(1, Number(timeLimitSeconds));
+  let score = ratio <= 0.5
+    ? 100
+    : ratio <= 0.85
+      ? 88
+      : ratio <= 1
+        ? 76
+        : ratio <= 1.35
+          ? 58
+          : 38;
+
+  if (['compile_error', 'runtime_error', 'timeout', 'failed'].includes(status)) {
+    score -= 18;
+  }
+
+  return clampScore(score);
+}
+
+function inferProblemTimeLimitSeconds(problem = {}) {
+  const difficulty = String(problem.difficulty || '').toLowerCase();
+  if (difficulty.includes('hard')) {
+    return 45 * 60;
+  }
+  if (difficulty.includes('medium')) {
+    return 30 * 60;
+  }
+  return 20 * 60;
 }
 
 function scoreLogic(sourceCode, status, problem) {
@@ -538,7 +827,17 @@ function compareOutput(stdout, expectedOutput) {
   return normalizeOutput(stdout) === normalizeOutput(expectedOutput);
 }
 
-function buildRubric({ sourceCode, status, stdout, expectedOutput, compileOutput, stderr, problem }) {
+function buildRubric({
+  sourceCode,
+  status,
+  stdout,
+  expectedOutput,
+  compileOutput,
+  stderr,
+  problem,
+  durationSeconds = 0,
+  timeLimitSeconds = 0,
+}) {
   const outputMatched = compareOutput(stdout, expectedOutput);
   const accepted = status === 'accepted';
   const failedAtRuntime = ['compile_error', 'runtime_error', 'timeout', 'failed'].includes(status);
@@ -564,14 +863,18 @@ function buildRubric({ sourceCode, status, stdout, expectedOutput, compileOutput
         : failedAtRuntime
           ? 10
           : 45;
-  const complexityScore = scoreComplexity(sourceCode, status);
+  const timeComplexityScore = scoreTimeComplexity(sourceCode, status);
+  const spaceComplexityScore = scoreSpaceComplexity(sourceCode, status);
+  const complexityScore = clampScore((timeComplexityScore * 0.6) + (spaceComplexityScore * 0.4));
+  const speedScore = scoreSpeed(durationSeconds, timeLimitSeconds, status);
   const logicScore = scoreLogic(sourceCode, status, problem);
   const readabilityScore = scoreReadability(sourceCode);
   const finalScore = clampScore(
-    correctnessScore * 0.45
-    + executionScore * 0.2
-    + complexityScore * 0.15
-    + logicScore * 0.15
+    correctnessScore * 0.4
+    + executionScore * 0.15
+    + complexityScore * 0.2
+    + speedScore * 0.1
+    + logicScore * 0.1
     + readabilityScore * 0.05,
   );
   const recommendations = [];
@@ -589,7 +892,13 @@ function buildRubric({ sourceCode, status, stdout, expectedOutput, compileOutput
     recommendations.push('Dry-run the expected output and compare formatting, ordering, and edge cases.');
   }
   if (!/o\s*\(/i.test(sourceCode)) {
-    recommendations.push('State time and space complexity in the final explanation.');
+    recommendations.push('State time complexity in the final explanation.');
+  }
+  if (!/space\s*(?:complexity)?/i.test(sourceCode)) {
+    recommendations.push('State space complexity, especially if you used maps, stacks, arrays, or recursion.');
+  }
+  if (speedScore < 60) {
+    recommendations.push('You ran past the target pace. Practice the pattern until the first correct approach appears faster.');
   }
   if (!recommendations.length) {
     recommendations.push(finalScore >= 75
@@ -599,20 +908,28 @@ function buildRubric({ sourceCode, status, stdout, expectedOutput, compileOutput
 
   return {
     weights: {
-      correctness: 45,
-      execution: 20,
-      complexity: 15,
-      logic: 15,
+      correctness: 40,
+      execution: 15,
+      complexity: 20,
+      speed: 10,
+      logic: 10,
       readability: 5,
     },
     correctnessScore,
     executionScore,
+    timeComplexityScore,
+    spaceComplexityScore,
     complexityScore,
+    speedScore,
     logicScore,
     readabilityScore,
     finalScore,
     outputMatched,
     detectedComplexity: detectComplexity(sourceCode),
+    detectedTimeComplexity: detectComplexity(sourceCode),
+    detectedSpaceComplexity: detectSpaceComplexity(sourceCode),
+    durationSeconds: Number(durationSeconds || 0),
+    timeLimitSeconds: Number(timeLimitSeconds || 0),
     recommendations,
     signals: {
       stdoutPresent: Boolean(stdout),
@@ -626,7 +943,8 @@ function buildAnalysis({ problem, language, status, stdout, stderr, compileOutpu
   const weakSpots = [];
   if (rubric.correctnessScore < 75) weakSpots.push('Correctness');
   if (rubric.executionScore < 75) weakSpots.push('Execution stability');
-  if (rubric.complexityScore < 70) weakSpots.push('Complexity explanation');
+  if (rubric.complexityScore < 70) weakSpots.push('Time and space complexity');
+  if (rubric.speedScore < 70) weakSpots.push('Solve speed');
   if (rubric.logicScore < 70) weakSpots.push('Logic and edge cases');
   if (rubric.readabilityScore < 70) weakSpots.push('Readability');
 
@@ -645,6 +963,11 @@ function buildAnalysis({ problem, language, status, stdout, stderr, compileOutpu
     weakSpots,
     recommendations: rubric.recommendations,
     detectedComplexity: rubric.detectedComplexity,
+    detectedTimeComplexity: rubric.detectedTimeComplexity,
+    detectedSpaceComplexity: rubric.detectedSpaceComplexity,
+    speedScore: rubric.speedScore,
+    durationSeconds: rubric.durationSeconds,
+    timeLimitSeconds: rubric.timeLimitSeconds,
     executionUnavailable,
   };
 }
@@ -767,6 +1090,8 @@ async function runCode(user, payload = {}, options = {}) {
   const stdin = String(payload.stdin || '');
   const expectedOutput = payload.expectedOutput === undefined ? null : String(payload.expectedOutput || '');
   const final = Boolean(options.final || payload.final);
+  const durationSeconds = Math.max(0, Number(payload.durationSeconds || 0));
+  const requestedTimeLimitSeconds = Math.max(0, Number(payload.timeLimitSeconds || 0));
 
   assertPayloadSize(sourceCode, stdin);
 
@@ -781,6 +1106,7 @@ async function runCode(user, payload = {}, options = {}) {
     title: payload.problem?.title || payload.problemTitle || task?.referenceLabel || task?.title,
     url: payload.problem?.url || payload.problemUrl || task?.referenceUrl,
   });
+  const timeLimitSeconds = requestedTimeLimitSeconds || inferProblemTimeLimitSeconds(problem);
 
   let queuedSubmission = null;
   let finalResult = null;
@@ -803,10 +1129,14 @@ async function runCode(user, payload = {}, options = {}) {
       expectedOutput,
       status: 'queued',
       judgeToken: queued.token,
-      analysis: {
-        providerLanguage: queued.language.providerName,
-      },
-    });
+        analysis: {
+          providerLanguage: queued.language.providerName,
+          assessmentId: payload.assessmentId || null,
+          assessmentQuestionId: payload.assessmentQuestionId || null,
+          durationSeconds,
+          timeLimitSeconds,
+        },
+      });
     finalResult = await judge0Service.poll(queued.token);
   } catch (error) {
     if (error instanceof AppError && ['judge0_disabled', 'language_unavailable', 'language_not_allowed'].includes(error.details?.code)) {
@@ -823,6 +1153,10 @@ async function runCode(user, payload = {}, options = {}) {
         analysis: {
           executionUnavailable: true,
           unavailableReason: error.message,
+          assessmentId: payload.assessmentId || null,
+          assessmentQuestionId: payload.assessmentQuestionId || null,
+          durationSeconds,
+          timeLimitSeconds,
         },
       });
       finalResult = {
@@ -850,6 +1184,8 @@ async function runCode(user, payload = {}, options = {}) {
     compileOutput,
     stderr,
     problem,
+    durationSeconds,
+    timeLimitSeconds,
   });
   const analysis = buildAnalysis({
     problem,
@@ -884,6 +1220,8 @@ async function runCode(user, payload = {}, options = {}) {
       ...(queuedSubmission.analysis || {}),
       ...analysis,
       finalized: final,
+      assessmentId: payload.assessmentId || null,
+      assessmentQuestionId: payload.assessmentQuestionId || null,
     },
     rubric,
     score: rubric.finalScore,

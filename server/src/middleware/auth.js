@@ -3,6 +3,7 @@ const env = require('../config/env');
 const userRepository = require('../repositories/user.repository');
 const AppError = require('../utils/appError');
 const asyncHandler = require('../utils/asyncHandler');
+const { isAndroidPublisherUser } = require('../utils/ownerAccess');
 
 function isObserverUser(user) {
   return Boolean(
@@ -58,6 +59,20 @@ function requireRole(...roles) {
 
 const requireAdmin = requireRole('admin');
 
+function requireAndroidPublisher(req, res, next) {
+  if (!req.user) {
+    next(new AppError('Authentication token is required.', 401));
+    return;
+  }
+
+  if (!isAndroidPublisherUser(req.user)) {
+    next(new AppError('Only the owner account can publish Android builds.', 403));
+    return;
+  }
+
+  next();
+}
+
 function requireNonObserver(message = 'Observer access is limited for this resource.') {
   return (req, res, next) => {
     if (!req.user) {
@@ -78,6 +93,7 @@ module.exports = {
   requireAuth,
   requireRole,
   requireAdmin,
+  requireAndroidPublisher,
   requireNonObserver,
   isObserverUser,
 };

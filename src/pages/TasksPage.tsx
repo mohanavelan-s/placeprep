@@ -222,18 +222,20 @@ function formatTaskDueLabel(value?: string | null) {
 function supportsCodingLab(task: Task) {
   const metadata = task.metadata || {};
   const searchable = [
-    task.category,
-    task.subcategory,
     task.title,
     task.referenceLabel,
     task.referenceUrl,
     metadata.problemPlatform,
+    metadata.platform,
+    metadata.problemNumber,
     metadata.problemSlug,
     metadata.problemTitle,
   ].join(" ");
 
   return Boolean(metadata.codingLabEnabled)
-    || /dsa|coding|leetcode|hackerrank|codechef|algorithm|sql|dbms|database|array|string|tree|graph|stack|queue|dynamic|recursion|backtracking/i.test(searchable);
+    || /leetcode\.com\/problems|hackerrank\.com|codechef\.com|codeforces\.com/i.test(searchable)
+    || /\b(?:leetcode|lc)\s*:?\s*#?\s*\d{1,5}\b/i.test(searchable)
+    || /\b(?:leetcode|lc)\s*:?\s*[a-z0-9]+(?:-[a-z0-9]+)+\b/i.test(searchable);
 }
 
 export default function TasksPage() {
@@ -494,17 +496,18 @@ export default function TasksPage() {
                   )}
                 </div>
 
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="gap-2 text-muted-foreground"
-                  onClick={() => navigate(`/coding-lab/${task.id}`)}
-                  disabled={!supportsCodingLab(task)}
-                >
-                  <Code2 className="h-4 w-4" />
-                  Lab
-                </Button>
+                {supportsCodingLab(task) && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2 text-muted-foreground"
+                    onClick={() => navigate(`/coding-lab/${task.id}`)}
+                  >
+                    <Code2 className="h-4 w-4" />
+                    Lab
+                  </Button>
+                )}
 
                 <Button
                   type="button"

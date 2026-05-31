@@ -2,22 +2,7 @@ const resumeRepository = require('../repositories/resume.repository');
 const { deleteStoredAsset, uploadBuffer } = require('./storage.service');
 const aiService = require('./ai.service');
 const AppError = require('../utils/appError');
-
-function extractResumeText(file, providedText) {
-  if (providedText) {
-    return providedText.trim();
-  }
-
-  if (!file) {
-    return '';
-  }
-
-  if (file.mimetype === 'text/plain') {
-    return file.buffer.toString('utf8');
-  }
-
-  return '';
-}
+const { extractResumeText } = require('../utils/resumeTextExtractor');
 
 async function uploadResume(user, file, payload) {
   if (!file && !payload.resumeText) {
@@ -41,10 +26,12 @@ async function uploadResume(user, file, payload) {
     });
   }
 
-  const extractedText = extractResumeText(file, payload.resumeText);
+  const extraction = extractResumeText(file, payload.resumeText);
+  const extractedText = extraction.text;
+  const targetRole = payload.targetRole || user.targetRole;
   const analysis = await aiService.analyzeResumeText({
     resumeText: extractedText,
-    targetRole: payload.targetRole || user.targetRole,
+    targetRole,
     jobDescription: payload.jobDescription,
   });
 
@@ -64,7 +51,17 @@ async function uploadResume(user, file, payload) {
     strengths: analysis.strengths,
     improvements: analysis.improvements,
     keywords: analysis.keywords,
-    sections: analysis.sections,
+    sections: {
+      ...(analysis.sections || {}),
+      _analysis: {
+        targetRole: targetRole || null,
+        jobDescriptionFocus: payload.jobDescription || null,
+        jobMatchScore: analysis.jobMatchScore ?? null,
+        missingKeywords: analysis.missingKeywords || [],
+        benchmarkHighlights: analysis.benchmarkHighlights || [],
+        extraction,
+      },
+    },
     isActive: true,
   });
 }

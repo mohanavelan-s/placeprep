@@ -1062,25 +1062,31 @@ function buildResumeHeuristicAnalysis(payload = {}) {
       : ((benchmarkMatches.length / Math.max(benchmark.keywords.length, 1)) * 100)
   ), 0, 100);
 
+  const roleLabel = benchmark.label;
+  const missingRoleKeywords = benchmark.keywords
+    .filter((keyword) => !benchmarkMatches.includes(keyword))
+    .slice(0, 4);
+
   const strengths = uniqueStrings([
-    sections.projects ? 'Projects section is present and can carry proof of execution.' : '',
-    sections.experience ? 'Experience section gives ATS and recruiters a clear chronology.' : '',
-    sections.skills ? 'Skills section is present, which helps keyword scanning.' : '',
-    benchmarkMatches.length >= 5 ? `Role fit is visible through matched ${benchmark.label.toLowerCase()} keywords.` : '',
-    metricSignals >= 2 ? 'Several bullets already show quantified impact instead of generic responsibilities.' : '',
+    sections.projects ? `Projects section gives ${roleLabel} reviewers evidence of hands-on execution.` : '',
+    sections.experience ? `Experience section creates a clear ${roleLabel} chronology for ATS and recruiters.` : '',
+    sections.skills ? `Skills section is visible, so ${roleLabel} keyword scanning has a clean anchor.` : '',
+    benchmarkMatches.length >= 4 ? `${roleLabel} fit is visible through matched signals: ${benchmarkMatches.slice(0, 5).join(', ')}.` : '',
+    metricSignals >= 2 ? `Quantified impact is already present, which makes ${roleLabel} bullets more credible.` : '',
   ], 6);
 
   const improvements = uniqueStrings([
-    !sections.summary ? `Add a 2-3 line summary tailored to ${benchmark.label} roles.` : '',
-    !sections.projects ? 'Add a projects section with measurable outcomes, not just tool lists.' : '',
-    !sections.skills ? 'Add a clean skills section grouped by languages, tools, and platforms.' : '',
-    metricSignals < 2 ? 'Quantify more bullets with percentages, counts, latency, throughput, or business outcomes.' : '',
+    !sections.summary ? `Add a 2-3 line summary that names the ${roleLabel} lane, strongest stack, and target outcome.` : '',
+    !sections.projects ? `Add ${roleLabel}-relevant projects with problem, stack, ownership, and measurable outcome.` : '',
+    !sections.skills ? `Add a clean ${roleLabel} skills section grouped by languages, tools, platforms, and databases where relevant.` : '',
+    metricSignals < 2 ? `Quantify ${roleLabel} bullets with percentages, counts, latency, throughput, users, rows, dashboards, or business outcomes.` : '',
     missingKeywords.slice(0, 2).length ? `Mirror missing job keywords naturally in relevant bullets: ${missingKeywords.slice(0, 2).join(', ')}.` : '',
+    missingRoleKeywords.length ? `Strengthen ${roleLabel} role fit by adding honest evidence for: ${missingRoleKeywords.join(', ')}.` : '',
   ], 6);
 
   const summary = resumeText
-    ? `${benchmark.label} ATS review complete. The resume scores best when it shows ${benchmark.highlights[0].replace(/\.$/, '').toLowerCase()}, and the current version ${metricSignals >= 2 ? 'already has some quantified impact' : 'still needs stronger quantified impact'}.`
-    : 'Resume uploaded, but text extraction is limited. Provide resume text for deeper ATS analysis.';
+    ? `${roleLabel} ATS review complete. The resume was scored against ${roleLabel} signals, with emphasis on ${benchmark.highlights[0].replace(/\.$/, '').toLowerCase()}. The current version ${metricSignals >= 2 ? 'already has some quantified impact' : 'still needs stronger quantified impact'}.`
+    : 'Resume uploaded, but automatic text extraction found limited readable content. Upload a text-based PDF/DOCX/TXT or paste text for deeper ATS analysis.';
 
   return {
     summary,

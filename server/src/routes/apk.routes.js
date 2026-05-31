@@ -3,7 +3,7 @@ const { body, query, param } = require('express-validator');
 
 const controller = require('../controllers/apk.controller');
 const { apkUploader } = require('../config/multer');
-const { requireAdmin, requireAuth, requireNonObserver } = require('../middleware/auth');
+const { requireAndroidPublisher, requireAuth, requireNonObserver } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const asyncHandler = require('../utils/asyncHandler');
 
@@ -34,7 +34,7 @@ router.get(
 
 router.post(
   '/',
-  requireAdmin,
+  requireAndroidPublisher,
   apkUploader.single('apk'),
   [
     body('version').optional().isString(),

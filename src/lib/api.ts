@@ -262,7 +262,7 @@ export interface ResumeSectionCoverage {
   projects?: boolean;
   skills?: boolean;
   achievements?: boolean;
-  [key: string]: boolean | undefined;
+  [key: string]: boolean | string | number | string[] | Record<string, unknown> | undefined | null;
 }
 
 export interface ResumeAnalysisRecord {
@@ -695,6 +695,13 @@ export interface CodingLanguage {
   setupWarning?: string | null;
 }
 
+export interface CodingTestCase {
+  name?: string | null;
+  input: string;
+  expectedOutput?: string | null;
+  explanation?: string | null;
+}
+
 export interface CodingProblem {
   platform: string;
   number?: string | null;
@@ -705,6 +712,7 @@ export interface CodingProblem {
   difficulty?: string | null;
   examples: string[];
   constraints: string[];
+  testCases?: CodingTestCase[];
   starterCode?: Record<string, string>;
   extractionStatus?: "resolved" | "fallback" | "provided" | "manual" | string;
   extractionMessage?: string | null;
@@ -766,6 +774,10 @@ export interface CodingRunPayload {
   };
   problemTitle?: string;
   problemUrl?: string;
+  durationSeconds?: number;
+  timeLimitSeconds?: number;
+  assessmentId?: string;
+  assessmentQuestionId?: string;
 }
 
 export interface ResumeJobMatchResult {
@@ -1335,6 +1347,12 @@ function normalizeResumeRecord(record: ResumeAnalysisRecord): ResumeAnalysisReco
   return {
     ...record,
     secureUrl: record.secureUrl ? normalizeAssetUrl(record.secureUrl) : null,
+    sizeBytes: Number(record.sizeBytes || 0),
+    score: Number(record.score || 0),
+    strengths: normalizeStringList(record.strengths, 12),
+    improvements: normalizeStringList(record.improvements, 12),
+    keywords: normalizeStringList(record.keywords, 20),
+    sections: normalizeRecord(record.sections) as ResumeSectionCoverage,
   };
 }
 
@@ -1579,6 +1597,24 @@ function normalizeCodingLanguage(language: CodingLanguage): CodingLanguage {
   };
 }
 
+function normalizeCodingTestCase(testCase: Partial<CodingTestCase>): CodingTestCase | null {
+  const input = String(testCase?.input || "").trim();
+  const expectedOutput = testCase?.expectedOutput === null || testCase?.expectedOutput === undefined
+    ? null
+    : String(testCase.expectedOutput).trim();
+
+  if (!input && !expectedOutput) {
+    return null;
+  }
+
+  return {
+    name: testCase?.name ? String(testCase.name).trim() : null,
+    input,
+    expectedOutput,
+    explanation: testCase?.explanation ? String(testCase.explanation).trim() : null,
+  };
+}
+
 function normalizeCodingProblem(problem: CodingProblem | Partial<CodingProblem> | null | undefined): CodingProblem {
   const starterCode = normalizeRecord(problem?.starterCode) as Record<string, string>;
 
@@ -1592,6 +1628,9 @@ function normalizeCodingProblem(problem: CodingProblem | Partial<CodingProblem> 
     difficulty: problem?.difficulty ? String(problem.difficulty).trim() : null,
     examples: normalizeStringList(problem?.examples, 6),
     constraints: normalizeStringList(problem?.constraints, 10),
+    testCases: toArray<Partial<CodingTestCase>>(problem?.testCases)
+      .map(normalizeCodingTestCase)
+      .filter((testCase): testCase is CodingTestCase => Boolean(testCase)),
     starterCode,
     extractionStatus: problem?.extractionStatus ? String(problem.extractionStatus).trim() : undefined,
     extractionMessage: problem?.extractionMessage ? String(problem.extractionMessage).trim() : null,

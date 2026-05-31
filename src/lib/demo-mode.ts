@@ -454,12 +454,39 @@ const demoCodingLanguages = [
   { key: "postgresql", label: "PostgreSQL", enabled: true, id: null, providerName: null, unavailableReason: null, setupWarning: "Demo mode records static SQL review." },
 ];
 
+const demoLeetCodeCatalog: Record<string, {
+  number: string;
+  slug: string;
+  title: string;
+  difficulty: string;
+  description: string;
+  examples: string[];
+  constraints: string[];
+  testCases: Array<{ name: string; input: string; expectedOutput: string }>;
+}> = {
+  "152": {
+    number: "152",
+    slug: "maximum-product-subarray",
+    title: "Maximum Product Subarray",
+    difficulty: "Medium",
+    description: "Given an integer array nums, find a non-empty subarray that has the largest product and return the product. Track both maximum and minimum running products because a negative number can flip them.",
+    examples: ["Input: nums = [2,3,-2,4]\nOutput: 6", "Input: nums = [-2,0,-1]\nOutput: 0"],
+    constraints: ["Array", "Dynamic Programming"],
+    testCases: [
+      { name: "Positive then negative", input: "[2,3,-2,4]", expectedOutput: "6" },
+      { name: "Zero split", input: "[-2,0,-1]", expectedOutput: "0" },
+      { name: "Negative flip", input: "[-2,3,-4]", expectedOutput: "24" },
+    ],
+  },
+};
+
 function normalizeDemoProblemInput(input: Record<string, unknown> = {}, task?: Record<string, unknown> | null) {
   const metadata = (task?.metadata as Record<string, unknown>) || {};
   const lookup = String(input.problemNumber || input.number || input.slug || input.title || input.problemTitle || "");
   const sourceUrl = String(input.url || (/\bhttps?:\/\//i.test(lookup) ? lookup : "") || metadata.problemUrl || task?.referenceUrl || "");
   const leetCodeMatch = sourceUrl.match(/leetcode\.com\/problems\/([^/?#]+)/i);
   const numberMatch = String(input.problemNumber || input.number || lookup).match(/\d{1,5}/);
+  const catalogProblem = numberMatch?.[0] ? demoLeetCodeCatalog[numberMatch[0]] : null;
   const slug = String(input.slug || metadata.problemSlug || leetCodeMatch?.[1] || (!numberMatch ? lookup : "") || task?.title || "demo-practice-problem")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -477,10 +504,10 @@ function normalizeDemoProblemInput(input: Record<string, unknown> = {}, task?: R
   return {
     platform,
     number: numberMatch?.[0] || null,
-    slug,
-    title,
-    url: sourceUrl || (numberMatch ? `https://leetcode.com/problems/${slug}/` : null),
-    description: String(input.description || task?.description || metadata.summary || [
+    slug: catalogProblem?.slug || slug,
+    title: catalogProblem?.title || title,
+    url: sourceUrl || (catalogProblem ? `https://leetcode.com/problems/${catalogProblem.slug}/` : numberMatch ? `https://leetcode.com/problems/${slug}/` : null),
+    description: catalogProblem?.description || String(input.description || task?.description || metadata.summary || [
       "Solve the problem and compare the result against the expected behavior.",
       "",
       "Example 1:",
@@ -492,9 +519,12 @@ function normalizeDemoProblemInput(input: Record<string, unknown> = {}, task?: R
       "- Handle boundary inputs.",
       "- Explain time and space complexity.",
     ].join("\n")),
-    difficulty: String(input.difficulty || (Number(task?.difficulty || 3) >= 4 ? "Hard" : Number(task?.difficulty || 3) <= 2 ? "Easy" : "Medium")),
-    examples: ["Input: 2 7 11 15, target 9\nOutput: 0 1"],
-    constraints: ["Handle empty inputs.", "Explain time and space complexity."],
+    difficulty: catalogProblem?.difficulty || String(input.difficulty || (Number(task?.difficulty || 3) >= 4 ? "Hard" : Number(task?.difficulty || 3) <= 2 ? "Easy" : "Medium")),
+    examples: catalogProblem?.examples || ["Input: 2 7 11 15, target 9\nOutput: 0 1"],
+    constraints: catalogProblem?.constraints || ["Handle empty inputs.", "Explain time and space complexity."],
+    testCases: catalogProblem?.testCases || [
+      { name: "Demo case", input: "2 7 11 15\n9", expectedOutput: "0 1" },
+    ],
     starterCode: {
       python: "# Write your solution here\n",
       c: "#include <stdio.h>\n\nint main(void) {\n  return 0;\n}\n",
