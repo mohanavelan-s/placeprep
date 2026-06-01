@@ -54,8 +54,10 @@ const FALLBACK_STARTER_CODE: Record<string, string> = {
   postgresql: "-- Write your PostgreSQL query here\n",
 };
 
+const SQL_LANGUAGE_KEYS = new Set(["mysql", "postgresql"]);
+
 function isSqlLanguage(language: string) {
-  return ["mysql", "postgresql"].includes(language);
+  return SQL_LANGUAGE_KEYS.has(language);
 }
 
 function statusLabel(status?: string | null) {
@@ -174,11 +176,76 @@ function looksLikeLeetCodeSlug(value: string) {
   return /^[a-z0-9]+(?:-[a-z0-9]+)+$/i.test(value.trim());
 }
 
+function extractLeetCodeSlug(value: string) {
+  const text = value.trim();
+  const urlMatch = text.match(/leetcode\.com\/problems\/([^/?#]+)/i);
+  if (urlMatch?.[1]) {
+    return urlMatch[1].toLowerCase();
+  }
+
+  return looksLikeLeetCodeSlug(text) ? text.toLowerCase() : "";
+}
+
 function extractLeetCodeNumber(value: string) {
   const text = value.trim();
   return text.match(/\b(?:leetcode|lc)\s*#?\s*(\d{1,5})\b/i)?.[1]
     || text.match(/^#?(\d{1,5})(?=\s*(?:[.)\]:-]|\b))/)?.[1]
     || "";
+}
+
+function getLeetCodeLookupKey(value: string) {
+  return extractLeetCodeNumber(value) || extractLeetCodeSlug(value);
+}
+
+function isGeneratedLeetCodeUrl(url: string, problem?: CodingProblem | null) {
+  const normalizedUrl = url.trim().replace(/\/+$/, "").toLowerCase();
+  const normalizedProblemUrl = (problem?.url || "").trim().replace(/\/+$/, "").toLowerCase();
+
+  return /leetcode\.com\/problems\//i.test(normalizedUrl)
+    && (!normalizedProblemUrl || normalizedUrl === normalizedProblemUrl);
+}
+
+function getProblemIdentity(problem?: CodingProblem | null) {
+  if (!problem) {
+    return "";
+  }
+
+  return [
+    problem.platform || "custom",
+    problem.number || problem.slug || problem.title,
+  ].filter(Boolean).join(":").toLowerCase();
+}
+
+function isSqlProblem(problem?: CodingProblem | null) {
+  if (!problem) {
+    return false;
+  }
+
+  const tags = stringList(problem.constraints).join(" ").toLowerCase();
+  const description = String(problem.description || "").toLowerCase();
+  const starterKeys = Object.keys(problem.starterCode || {});
+
+  return problem.platform === "sql"
+    || /\b(database|sql)\b/i.test(tags)
+    || /\btable:\b|column name\s*\|\s*type|write\s+(?:an?\s+)?sql|query\s+to/i.test(description)
+    || (
+      starterKeys.some((key) => SQL_LANGUAGE_KEYS.has(key))
+      && !starterKeys.some((key) => !SQL_LANGUAGE_KEYS.has(key))
+    );
+}
+
+function filterLanguagesForProblem(languages: CodingLanguage[], problem?: CodingProblem | null) {
+  if (!problem) {
+    return languages;
+  }
+
+  const wantsSql = isSqlProblem(problem);
+  const filtered = languages.filter((language) => wantsSql
+    ? isSqlLanguage(language.key)
+    : !isSqlLanguage(language.key)
+  );
+
+  return filtered.length ? filtered : languages;
 }
 
 function formatDuration(seconds: number) {
@@ -497,7 +564,7 @@ export default function CodingLabPage() {
 
   const taskWorkspace = taskQuery.data || null;
   const problem = taskWorkspace?.problem || resolvedProblem;
-  const languages = useMemo(() => {
+  const allLanguages = useMemo(() => {
     const merged = taskWorkspace?.languages?.length ? taskWorkspace.languages : languagesQuery.data || [];
     return merged.length ? merged : Object.keys(FALLBACK_STARTER_CODE).map((key) => ({
       key,
@@ -506,6 +573,10 @@ export default function CodingLabPage() {
       unavailableReason: "Language registry is still loading.",
     }));
   }, [languagesQuery.data, taskWorkspace?.languages]);
+  const languages = useMemo(
+    () => filterLanguagesForProblem(allLanguages, problem),
+    [allLanguages, problem],
+  );
   const selectedLanguageInfo = languages.find((language) => language.key === selectedLanguage);
   const submissions = taskWorkspace?.submissions || submissionsQuery.data || [];
   const isLoading = (taskId && taskQuery.isPending) || languagesQuery.isPending;
@@ -530,8 +601,11 @@ export default function CodingLabPage() {
   }, [languages, selectedLanguage]);
 
   useEffect(() => {
-    if (!sourceTouched && !sourceCode.trim()) {
-      setSourceCode(getStarterCodeForLanguage(problem, selectedLanguage, selectedLanguageInfo));
+    if (!sourceTouched) {
+      const nextStarter = getStarterCodeForLanguage(problem, selectedLanguage, selectedLanguageInfo);
+      if (sourceCode !== nextStarter) {
+        setSourceCode(nextStarter);
+      }
     }
   }, [problem, selectedLanguage, selectedLanguageInfo, sourceCode, sourceTouched]);
 
@@ -566,13 +640,31 @@ export default function CodingLabPage() {
         description: manualDescription,
       })),
     onSuccess: (nextProblem) => {
+      const problemChanged = getProblemIdentity(problem) !== getProblemIdentity(nextProblem);
+      const nextLanguages = filterLanguagesForProblem(allLanguages, nextProblem);
+      const nextLanguage = nextLanguages.some((language) => language.key === selectedLanguage)
+        ? selectedLanguage
+        : nextLanguages.find((language) => language.enabled)?.key || nextLanguages[0]?.key || selectedLanguage;
+      const nextLanguageInfo = nextLanguages.find((language) => language.key === nextLanguage);
+      const firstCase = nextProblem.testCases?.[0];
+
       setResolvedProblem(nextProblem);
-      if (!sourceTouched) {
-        setSourceCode(getStarterCodeForLanguage(nextProblem, selectedLanguage, selectedLanguageInfo));
+      if (nextLanguage !== selectedLanguage) {
+        setSelectedLanguage(nextLanguage);
       }
-      if (nextProblem.testCases?.[0] && !stdin.trim() && !expectedOutput.trim()) {
-        setStdin(nextProblem.testCases[0].input || "");
-        setExpectedOutput(nextProblem.testCases[0].expectedOutput || "");
+      if (problemChanged || !sourceTouched) {
+        setSourceTouched(false);
+        setSourceCode(getStarterCodeForLanguage(nextProblem, nextLanguage, nextLanguageInfo));
+      }
+      if (firstCase && (problemChanged || (!stdin.trim() && !expectedOutput.trim()))) {
+        setStdin(firstCase.input || "");
+        setExpectedOutput(firstCase.expectedOutput || "");
+      } else if (problemChanged) {
+        setStdin("");
+        setExpectedOutput("");
+      }
+      if (problemChanged) {
+        setLastResult(null);
       }
       setManualTitle(nextProblem.number ? `${nextProblem.number}. ${nextProblem.title}` : nextProblem.title);
       setManualUrl(nextProblem.url || "");
@@ -629,6 +721,16 @@ export default function CodingLabPage() {
         title: manualTitle || "Manual Coding Lab problem",
       },
     };
+  }
+
+  function handleManualTitleChange(nextTitle: string) {
+    const previousLookup = getLeetCodeLookupKey(manualTitle);
+    const nextLookup = getLeetCodeLookupKey(nextTitle);
+
+    setManualTitle(nextTitle);
+    if (nextLookup && nextLookup !== previousLookup && isGeneratedLeetCodeUrl(manualUrl, problem)) {
+      setManualUrl("");
+    }
   }
 
   const runMutation = useMutation({
@@ -777,7 +879,7 @@ export default function CodingLabPage() {
           <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
             <Input
               value={manualTitle}
-              onChange={(event) => setManualTitle(event.target.value)}
+              onChange={(event) => handleManualTitleChange(event.target.value)}
               placeholder="LeetCode #, slug, title, or URL"
               className="h-11 border-border/80 bg-background/70"
             />
