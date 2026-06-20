@@ -1,11 +1,7 @@
-const env = require('../config/env');
 const {
   getAIStatus,
-  getOpenAIClient,
-  markAIUnavailable,
-  markAIWorking,
-  normalizeErrorReason,
 } = require('../config/openai');
+const aiGateway = require('./aiGateway.service');
 const taskRepository = require('../repositories/task.repository');
 const userProfileRepository = require('../repositories/userProfile.repository');
 const progressService = require('./progress.service');
@@ -141,75 +137,11 @@ function clampCount(value, min = 1, max = 8) {
   return clamp(value, min, max);
 }
 
-function safeJsonParse(content) {
-  try {
-    return JSON.parse(content);
-  } catch (error) {
-    const match = content.match(/\{[\s\S]*\}/);
-    if (match) {
-      return JSON.parse(match[0]);
-    }
-
-    throw error;
-  }
-}
-
-function withTimeout(promise, timeoutMs) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
-    }),
-  ]);
-}
-
-async function requestJson(systemPrompt, userPrompt, fallbackFactory) {
-  const currentStatus = getAIStatus();
-  if (currentStatus.fallbackMode && ['quota_exceeded', 'no_key'].includes(currentStatus.reason)) {
-    return {
-      data: fallbackFactory(),
-      usedFallback: true,
-    };
-  }
-
-  const client = getOpenAIClient();
-  if (!client) {
-    return {
-      data: fallbackFactory(),
-      usedFallback: true,
-    };
-  }
-
-  try {
-    const response = await withTimeout(
-      client.chat.completions.create({
-        model: env.aiModel,
-        temperature: 0.45,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-      }),
-      AI_REQUEST_TIMEOUT_MS,
-    );
-
-    markAIWorking();
-
-    return {
-      data: safeJsonParse(response.choices[0]?.message?.content || '{}'),
-      usedFallback: false,
-    };
-  } catch (error) {
-    const failureReason = normalizeErrorReason(error);
-    if (failureReason) {
-      markAIUnavailable(failureReason, error);
-    }
-    return {
-      data: fallbackFactory(error),
-      usedFallback: true,
-    };
-  }
+function requestJson(systemPrompt, userPrompt, fallbackFactory) {
+  return aiGateway.requestJson(systemPrompt, userPrompt, fallbackFactory, {
+    label: 'ai-service-json',
+    timeoutMs: AI_REQUEST_TIMEOUT_MS,
+  });
 }
 
 function getDaySeed() {

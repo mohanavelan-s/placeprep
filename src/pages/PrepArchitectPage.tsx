@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import HoursInput from "@/components/HoursInput";
 import PrepPlanView from "@/components/PrepPlanView";
 import SoftSyncNotice from "@/components/SoftSyncNotice";
-import TopicTagInput from "@/components/TopicTagInput";
 import { PrepArchitectSkeleton } from "@/components/WorkspaceSkeletons";
 import {
   AlertDialog,
@@ -47,12 +46,25 @@ import {
   fetchPrepPlanHistory,
   generatePrepPlan,
   renamePrepPlan,
+  type PrepCompanyKey,
   type PrepPlan,
   updatePrepPlan,
 } from "@/lib/api";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import { hoursStringFromMinutes, parseHoursToMinutes } from "@/lib/time";
-import { PREP_LANGUAGES, PREP_TOPICS, TARGET_ROLES } from "@/lib/topics";
+import { PREP_LANGUAGES, TARGET_ROLES } from "@/lib/topics";
+
+const COMPANY_OPTIONS: Array<{ value: PrepCompanyKey; label: string }> = [
+  { value: "google", label: "Google" },
+  { value: "meta", label: "Meta" },
+  { value: "amazon", label: "Amazon" },
+  { value: "microsoft", label: "Microsoft" },
+  { value: "zoho", label: "Zoho" },
+  { value: "tcs", label: "TCS" },
+  { value: "infosys", label: "Infosys" },
+  { value: "accenture", label: "Accenture" },
+  { value: "custom", label: "Custom company" },
+];
 
 export default function PrepArchitectPage() {
   const queryClient = useQueryClient();
@@ -71,8 +83,8 @@ export default function PrepArchitectPage() {
   useQueryErrorLogger("PrepArchitectPage:latest-plan", latestPlanQuery.error);
   useQueryErrorLogger("PrepArchitectPage:history", historyQuery.error);
 
-  const [knownTopics, setKnownTopics] = useState<string[]>([]);
-  const [targetTopics, setTargetTopics] = useState<string[]>([]);
+  const [companyKey, setCompanyKey] = useState<PrepCompanyKey>("google");
+  const [customCompanyName, setCustomCompanyName] = useState("");
   const [timePerDayHours, setTimePerDayHours] = useState("2");
   const [durationMonths, setDurationMonths] = useState("1");
   const [targetRole, setTargetRole] = useState(user?.targetRole || "Backend Engineer");
@@ -86,8 +98,8 @@ export default function PrepArchitectPage() {
 
   useEffect(() => {
     if (!latestPlanQuery.data) {
-      setKnownTopics(user?.strongTopics || []);
-      setTargetTopics(user?.weakAreas || []);
+      setCompanyKey("google");
+      setCustomCompanyName("");
       setTargetRole(user?.targetRole || "Backend Engineer");
       setTimePerDayHours("2");
       setDurationMonths("1");
@@ -95,19 +107,19 @@ export default function PrepArchitectPage() {
       return;
     }
 
-    setKnownTopics(latestPlanQuery.data.knownTopics || []);
-    setTargetTopics(latestPlanQuery.data.targetTopics || []);
+    setCompanyKey(latestPlanQuery.data.companyKey || "custom");
+    setCustomCompanyName(latestPlanQuery.data.customCompanyName || "");
     setTimePerDayHours(hoursStringFromMinutes(latestPlanQuery.data.timePerDay || 120));
     setDurationMonths(String(latestPlanQuery.data.durationMonths || 1));
     setTargetRole(latestPlanQuery.data.targetRole || user?.targetRole || "Backend Engineer");
     setPreferredLanguage(latestPlanQuery.data.preferredLanguage || "english");
-  }, [language, latestPlanQuery.data, user?.strongTopics, user?.targetRole, user?.weakAreas]);
+  }, [language, latestPlanQuery.data, user?.targetRole]);
 
   const generateMutation = useMutation({
     mutationFn: () =>
       generatePrepPlan({
-        knownTopics,
-        targetTopics,
+        companyKey,
+        customCompanyName: companyKey === "custom" ? customCompanyName.trim() || undefined : undefined,
         timePerDay: parseHoursToMinutes(timePerDayHours, 120),
         durationMonths: Math.min(12, Math.max(1, Number(durationMonths || 1))),
         targetRole,
@@ -133,8 +145,8 @@ export default function PrepArchitectPage() {
     mutationFn: () =>
       updatePrepPlan({
         planId: latestPlanQuery.data?.id || "",
-        knownTopics,
-        targetTopics,
+        companyKey,
+        customCompanyName: companyKey === "custom" ? customCompanyName.trim() || undefined : undefined,
         timePerDay: parseHoursToMinutes(timePerDayHours, 120),
         durationMonths: Math.min(12, Math.max(1, Number(durationMonths || 1))),
         targetRole,
@@ -235,20 +247,24 @@ export default function PrepArchitectPage() {
 
   const allVersionsSelected = history.length > 0 && selectedPlanIds.length === history.length;
   const roleStrategyCopy = useMemo(() => {
+    const companyName = companyKey === "custom"
+      ? customCompanyName.trim() || "your selected company"
+      : COMPANY_OPTIONS.find((company) => company.value === companyKey)?.label || "the selected company";
+
     if (/data analyst/i.test(targetRole)) {
-      return "Data Analyst plans bias toward SQL, statistics, dashboards, and stakeholder-ready analysis work while still honoring the topics you selected.";
+      return `${companyName} Data Analyst plans emphasize SQL, dashboards, business metrics, and interview-ready insight delivery.`;
     }
 
     if (/data engineer/i.test(targetRole)) {
-      return "Data Engineer plans bias toward SQL, pipelines, warehousing, orchestration, and build-oriented project work alongside your selected topics.";
+      return `${companyName} Data Engineer plans emphasize SQL, pipelines, warehousing, orchestration, and system tradeoffs.`;
     }
 
     if (/data scientist/i.test(targetRole)) {
-      return "Data Scientist plans bias toward Python, statistics, machine learning, and experiment-driven portfolio work while keeping your selected topics in focus.";
+      return `${companyName} Data Scientist plans emphasize Python, statistics, machine learning, experiments, and model reasoning.`;
     }
 
-    return "Plans bias toward the selected role while still prioritizing the topics you added above.";
-  }, [targetRole]);
+    return `The roadmap combines ${companyName}'s hiring style with the technical and behavioral signals expected for this role.`;
+  }, [companyKey, customCompanyName, targetRole]);
 
   function toggleSelectedPlan(planId: string, checked: boolean | "indeterminate") {
     setSelectedPlanIds((current) => {
@@ -281,10 +297,10 @@ export default function PrepArchitectPage() {
           <div>
             <p className="section-label">Prep Architect</p>
             <h2 className="mt-2 font-heading text-4xl text-foreground md:text-5xl">
-              Build a learning engine around what you know and what you still need.
+              Build a preparation engine for the company and role you want.
             </h2>
             <p className="mt-3 max-w-3xl text-base leading-7 text-foreground/80">
-              Select your current strengths, your target topics, your daily time budget, the number of months you want the plan to span, and the role you are pushing toward. PlacePrep will turn it into a roadmap, a task system, resources, and flashcards you can keep editing.
+              Choose a company, role, daily time budget, duration, and language. PlacePrep will shape the roadmap, tasks, resources, and flashcards around that hiring loop.
             </p>
           </div>
 
@@ -300,7 +316,7 @@ export default function PrepArchitectPage() {
                     v{latestPlan.version} / {latestPlan.durationMonths} month{latestPlan.durationMonths === 1 ? "" : "s"}
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {latestPlan.targetTopics[0] || "Custom focus"} / {latestPlan.preferredLanguage || "english"}
+                    {latestPlan.companyName || "Custom company"} / {latestPlan.targetRole || "Target role"}
                   </p>
                 </div>
 
@@ -323,7 +339,7 @@ export default function PrepArchitectPage() {
       {latestPlanQuery.isError && (
         <SoftSyncNotice
           title="Prep Architect is temporarily running without live sync."
-          description="You can still edit topics and build a new plan. Retry if you want stored plans and version history back."
+          description="You can still edit the plan inputs. Retry if you want stored plans and version history back."
           actionLabel="Retry"
           onAction={() => {
             void latestPlanQuery.refetch();
@@ -336,7 +352,7 @@ export default function PrepArchitectPage() {
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="section-label">Input system</p>
-            <h3 className="mt-2 font-heading text-3xl text-foreground">Editable, tag-based planning</h3>
+            <h3 className="mt-2 font-heading text-3xl text-foreground">Company-targeted planning</h3>
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -375,23 +391,40 @@ export default function PrepArchitectPage() {
 
         <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
           <div className="space-y-6">
-            <TopicTagInput
-              label="What do you know?"
-              placeholder="Search or add known topics"
-              value={knownTopics}
-              onChange={setKnownTopics}
-              suggestions={PREP_TOPICS}
-              maxTags={8}
-            />
+            <div className="rounded-2xl border border-border/80 bg-card/70 p-5">
+              <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Target company</p>
+              <Select value={companyKey} onValueChange={(value) => setCompanyKey(value as PrepCompanyKey)}>
+                <SelectTrigger className="mt-3 h-11 border-border/80 bg-background/70">
+                  <SelectValue placeholder="Choose a company" />
+                </SelectTrigger>
+                <SelectContent>
+                  {COMPANY_OPTIONS.map((company) => (
+                    <SelectItem key={company.value} value={company.value}>
+                      {company.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            <TopicTagInput
-              label="What do you want to learn?"
-              placeholder="Search or add target topics"
-              value={targetTopics}
-              onChange={setTargetTopics}
-              suggestions={PREP_TOPICS}
-              maxTags={8}
-            />
+              {companyKey === "custom" && (
+                <Input
+                  value={customCompanyName}
+                  onChange={(event) => setCustomCompanyName(event.target.value)}
+                  placeholder="Company name"
+                  maxLength={80}
+                  className="mt-3 h-11 border-border/80 bg-background/70"
+                />
+              )}
+
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                Hiring style, interview loop, technical focus, and behavioral signals are applied automatically.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-border/80 bg-card/70 p-5">
+              <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Preparation strategy</p>
+              <p className="mt-3 text-sm leading-6 text-foreground/80">{roleStrategyCopy}</p>
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -677,7 +710,7 @@ export default function PrepArchitectPage() {
                       })}
                     </p>
                     <p className="mt-2 text-sm text-foreground/75">
-                      {(plan.targetTopics || []).slice(0, 3).join(" / ") || plan.targetRole || "Saved version"}
+                      {plan.companyName || "Custom company"} / {plan.targetRole || "Saved role"}
                     </p>
                   </div>
                 </label>

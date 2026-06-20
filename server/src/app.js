@@ -19,9 +19,13 @@ const aiRoutes = require('./routes/ai.routes');
 const assessmentRoutes = require('./routes/assessment.routes');
 const coachRoutes = require('./routes/coach.routes');
 const codingRoutes = require('./routes/coding.routes');
+const billingRoutes = require('./routes/billing.routes');
+const razorpayRoutes = require('./routes/razorpay.routes');
+const billingController = require('./controllers/billing.controller');
 const { getAIStatus } = require('./config/openai');
 const errorHandler = require('./middleware/errorHandler');
 const notFound = require('./middleware/notFound');
+const asyncHandler = require('./utils/asyncHandler');
 const {
   attachRateLimitIdentity,
   authLimiter,
@@ -76,6 +80,11 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+app.post(
+  '/api/billing/webhook',
+  express.raw({ type: 'application/json' }),
+  asyncHandler(billingController.handleWebhook)
+);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -102,6 +111,8 @@ function buildHealthPayload() {
       cloudinaryEnabled: env.cloudinaryEnabled,
       emailEnabled: env.emailEnabled,
       emailProvider: env.emailProvider,
+      razorpayEnabled: env.razorpayEnabled,
+      razorpayCheckoutEnabled: env.razorpayCheckoutEnabled,
       judge0Enabled: env.judge0Enabled,
       judge0BaseUrl: env.judge0BaseUrl,
       notificationSchedulerEnabled: env.notificationSchedulerEnabled,
@@ -143,6 +154,8 @@ app.use('/api/ai', aiLimiter, aiRoutes);
 app.use('/api/assessments', standardApiLimiter, assessmentRoutes);
 app.use('/api/coach', adminLimiter, coachRoutes);
 app.use('/api/coding', codeRunLimiter, codingRoutes);
+app.use('/api/billing', standardApiLimiter, billingRoutes);
+app.use('/api', standardApiLimiter, razorpayRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

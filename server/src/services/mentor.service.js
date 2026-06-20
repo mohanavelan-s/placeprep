@@ -1,12 +1,7 @@
-const {
-  getAIStatus,
-  getOpenAIClient,
-  markAIUnavailable,
-  markAIWorking,
-  normalizeErrorReason,
-} = require('../config/openai');
+const { withTransaction } = require('../config/database');
 const mentorMessageRepository = require('../repositories/mentorMessage.repository');
 const prepPlanRepository = require('../repositories/prepPlan.repository');
+const aiGateway = require('./aiGateway.service');
 const tierService = require('./tier.service');
 const AppError = require('../utils/appError');
 
@@ -53,79 +48,50 @@ async function getContext(user) {
     targetTopics: latestPlan?.targetTopics || user.weakAreas || [],
     weakAreas: user.weakAreas || [],
     targetRole: latestPlan?.targetRole || user.targetRole || 'placements',
+    companyName: latestPlan?.metadata?.company?.label || null,
   };
 }
 
 async function requestMentorReply(message, history, context) {
-  const currentStatus = getAIStatus();
   const fallbackReply = buildFallbackReply(message, context);
+  const result = await aiGateway.requestText({
+    label: 'nocturne-mentor',
+    fallbackFactory: () => fallbackReply,
+    messages: [
+      {
+        role: 'system',
+        content: [
+          'Act as a strict placement mentor.',
+          '',
+          'User context:',
+          `* Known topics: ${context.knownTopics.join(', ') || 'Not enough data'}`,
+          `* Weak areas: ${context.weakAreas.join(', ') || 'Execution discipline'}`,
+          `* Goal: placements for ${context.targetRole}`,
+          `* Company: ${context.companyName || 'Not selected'}`,
+          '',
+          'Respond clearly and concisely. Guide without spoon-feeding. Never return an empty response.',
+        ].join('\n'),
+      },
+      ...history.map((item) => ({
+        role: item.role,
+        content: item.content,
+      })),
+      {
+        role: 'user',
+        content: message,
+      },
+    ],
+  });
 
-  if (currentStatus.fallbackMode && ['quota_exceeded', 'no_key'].includes(currentStatus.reason)) {
-    return {
-      reply: fallbackReply,
-      usedFallback: true,
-    };
+  const reply = String(result.data || '').trim();
+  if (!reply) {
+    throw new AppError('Nocturne could not produce a valid reply. Please try again.', 503);
   }
 
-  const client = getOpenAIClient();
-  if (!client) {
-    return {
-      reply: fallbackReply,
-      usedFallback: true,
-    };
-  }
-
-  try {
-    const response = await client.chat.completions.create({
-      model: currentStatus.model,
-      temperature: 0.4,
-      messages: [
-        {
-          role: 'system',
-          content: [
-            'Act as a strict placement mentor.',
-            '',
-            'User context:',
-            `* Known topics: ${context.knownTopics.join(', ') || 'Not enough data'}`,
-            `* Weak areas: ${context.weakAreas.join(', ') || 'Execution discipline'}`,
-            `* Goal: placements for ${context.targetRole}`,
-            '',
-            'Respond:',
-            '* Clearly',
-            '* Concisely',
-            '* No fluff',
-            '* Guide, do not spoon-feed',
-          ].join('\n'),
-        },
-        ...history.map((item) => ({
-          role: item.role,
-          content: item.content,
-        })),
-        {
-          role: 'user',
-          content: message,
-        },
-      ],
-    });
-
-    const reply = String(response.choices[0]?.message?.content || '').trim() || fallbackReply;
-    markAIWorking();
-
-    return {
-      reply,
-      usedFallback: false,
-    };
-  } catch (error) {
-    const reason = normalizeErrorReason(error);
-    if (reason) {
-      markAIUnavailable(reason, error);
-    }
-
-    return {
-      reply: fallbackReply,
-      usedFallback: true,
-    };
-  }
+  return {
+    ...result,
+    reply,
+  };
 }
 
 async function sendMessage(user, payload = {}) {
@@ -139,27 +105,39 @@ async function sendMessage(user, payload = {}) {
   const context = await getContext(user);
   const history = await mentorMessageRepository.listRecentByUser(user.id, 12);
 
-  const userMessage = await mentorMessageRepository.createMessage({
-    userId: user.id,
-    role: 'user',
-    content: message,
+  const result = await requestMentorReply(message, history.slice(-10), context);
+  const { userMessage, assistantMessage } = await withTransaction(async (client) => {
+    const savedUserMessage = await mentorMessageRepository.createMessage({
+      userId: user.id,
+      role: 'user',
+      content: message,
+    }, client);
+    const savedAssistantMessage = await mentorMessageRepository.createMessage({
+      userId: user.id,
+      role: 'assistant',
+      content: result.reply,
+      metadata: {
+        provider: result.provider || null,
+        model: result.model || null,
+        attempts: result.attempts || [],
+        usedFallback: result.usedFallback,
+        fallbackReason: result.fallbackReason || null,
+      },
+    }, client);
+
+    return {
+      userMessage: savedUserMessage,
+      assistantMessage: savedAssistantMessage,
+    };
   });
 
-  const { reply, usedFallback } = await requestMentorReply(message, history.slice(-10), context);
-  await tierService.consumeFeature(user, 'mentor_messages');
-
-  const assistantMessage = await mentorMessageRepository.createMessage({
-    userId: user.id,
-    role: 'assistant',
-    content: reply,
-    metadata: {
-      usedFallback,
-    },
-  });
+  if (!result.usedFallback) {
+    await tierService.consumeFeature(user, 'mentor_messages');
+  }
 
   return {
-    reply,
-    usedFallback,
+    reply: result.reply,
+    usedFallback: result.usedFallback,
     message: assistantMessage,
     history: [...history, userMessage, assistantMessage].slice(-20),
   };

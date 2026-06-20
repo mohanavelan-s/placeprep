@@ -1,10 +1,4 @@
-const {
-  getAIStatus,
-  getOpenAIClient,
-  markAIUnavailable,
-  markAIWorking,
-  normalizeErrorReason,
-} = require('../config/openai');
+const aiGateway = require('./aiGateway.service');
 const taskRepository = require('../repositories/task.repository');
 const userProfileRepository = require('../repositories/userProfile.repository');
 
@@ -382,43 +376,20 @@ function buildProofHeuristic(task, proof) {
   };
 }
 
-function safeJsonParse(content) {
-  try {
-    return JSON.parse(content);
-  } catch (error) {
-    const match = String(content || '').match(/\{[\s\S]*\}/);
-    if (match) {
-      return JSON.parse(match[0]);
-    }
-
-    throw error;
-  }
-}
-
 async function requestVisionVerification(task, proof) {
   const secureUrl = String(proof?.secureUrl || '').trim();
   if (!/^https?:\/\//i.test(secureUrl)) {
     return null;
   }
 
-  const currentStatus = getAIStatus();
-  if (currentStatus.fallbackMode && ['quota_exceeded', 'no_key'].includes(currentStatus.reason)) {
-    return null;
-  }
-
-  const client = getOpenAIClient();
-  if (!client) {
-    return null;
-  }
-
   const reference = extractTaskReference(task);
 
-  try {
-    const response = await client.chat.completions.create({
-      model: currentStatus.model,
-      temperature: 0.1,
-      response_format: { type: 'json_object' },
-      messages: [
+  const result = await aiGateway.requestWithModelChain({
+    label: 'task-proof-vision',
+    fallbackFactory: () => null,
+    parse: aiGateway.safeJsonParse,
+    validate: (data) => data && typeof data === 'object' && typeof data.verified === 'boolean',
+    messages: [
         {
           role: 'system',
           content: [
@@ -457,23 +428,22 @@ async function requestVisionVerification(task, proof) {
             },
           ],
         },
-      ],
-    });
+    ],
+  });
 
-    markAIWorking();
-    const parsed = safeJsonParse(response.choices[0]?.message?.content || '{}');
+  if (result.usedFallback || !result.data) {
+    return null;
+  }
+
+  try {
+    const parsed = result.data;
 
     return {
       verified: Boolean(parsed?.verified),
       confidence: Number(parsed?.confidence || 0),
       reason: String(parsed?.reason || '').trim() || 'Vision verification completed.',
     };
-  } catch (error) {
-    const reason = normalizeErrorReason(error);
-    if (reason) {
-      markAIUnavailable(reason, error);
-    }
-
+  } catch {
     return null;
   }
 }

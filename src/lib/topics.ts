@@ -40,6 +40,8 @@ export const TARGET_ROLES = [
   "Data Analyst",
   "Data Engineer",
   "Data Scientist",
+  "Machine Learning Engineer",
+  "AI Engineer",
 ];
 
 export const PREP_LANGUAGES = [

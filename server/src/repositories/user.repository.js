@@ -131,8 +131,9 @@ async function findByIdentifier(identifier) {
   return findByUsername(normalized);
 }
 
-async function findById(id) {
-  const result = await query(
+async function findById(id, client = null) {
+  const execute = getExecutor(client);
+  const result = await execute(
     `SELECT ${publicColumns}
      FROM users
      WHERE id = $1`,
@@ -142,7 +143,7 @@ async function findById(id) {
   return normalizeUserRow(result.rows[0]) || null;
 }
 
-async function updateUser(id, updates) {
+async function updateUser(id, updates, client = null) {
   const mappedUpdates = {
     name: updates.name,
     username: updates.username,
@@ -169,10 +170,11 @@ async function updateUser(id, updates) {
   const { clause, values } = buildUpdateClause(mappedUpdates);
 
   if (!clause) {
-    return findById(id);
+    return findById(id, client);
   }
 
-  const result = await query(
+  const execute = getExecutor(client);
+  const result = await execute(
     `UPDATE users
      SET ${clause}
      WHERE id = $${values.length + 1}

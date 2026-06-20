@@ -4,13 +4,6 @@ const taskRepository = require('../repositories/task.repository');
 const prepArchitectService = require('./prepArchitect.service');
 const { getTodayInTimezone } = require('../utils/date');
 const AppError = require('../utils/appError');
-const {
-  getAIStatus,
-  getOpenAIClient,
-  markAIUnavailable,
-  markAIWorking,
-  normalizeErrorReason,
-} = require('../config/openai');
 
 const STOP_WORDS = new Set([
   'a',
@@ -130,22 +123,6 @@ function normalizeRecord(value) {
   }
 
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function safeJsonParse(content) {
-  try {
-    return JSON.parse(content);
-  } catch {
-    const match = String(content || '').match(/\{[\s\S]*\}/);
-    if (match) {
-      try {
-        return JSON.parse(match[0]);
-      } catch {
-        return {};
-      }
-    }
-    return {};
-  }
 }
 
 function withTimeout(promise, timeoutMs) {

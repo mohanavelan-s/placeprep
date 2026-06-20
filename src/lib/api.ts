@@ -61,10 +61,87 @@ export interface ServiceHealth {
   timestamp: string;
   emailEnabled: boolean;
   emailProvider?: "smtp" | "resend";
+  razorpayEnabled?: boolean;
+  razorpayCheckoutEnabled?: boolean;
   judge0Enabled?: boolean;
   judge0BaseUrl?: string;
   notificationSchedulerEnabled: boolean;
   appUrl: string;
+}
+
+export interface BillingStatus {
+  provider?: "razorpay" | string;
+  razorpayEnabled: boolean;
+  checkoutEnabled: boolean;
+  publishableKeyConfigured: boolean;
+  webhookConfigured: boolean;
+  checkoutMode: "payment" | string;
+  keyId?: string | null;
+  currency?: string;
+  availablePlans: Array<{
+    planKey?: "pro_monthly" | "pro_annual" | "college" | string;
+    tier: "pro" | "college";
+    billingCycle?: "monthly" | "annual" | string;
+    label: string;
+    configured: boolean;
+    amount?: number;
+    currency?: string;
+    quoteBased?: boolean;
+  }>;
+}
+
+export interface BillingCheckoutSession {
+  provider?: "razorpay" | string;
+  id: string;
+  orderId?: string;
+  order_id?: string;
+  keyId?: string;
+  amount?: number;
+  currency?: string;
+  name?: string;
+  description?: string;
+  prefill?: {
+    name?: string;
+    email?: string;
+  };
+  notes?: Record<string, string>;
+  url?: string;
+  mode: "payment" | string;
+  targetTier: "pro" | "college";
+  billingCycle?: "monthly" | "annual" | string;
+  planKey?: string;
+}
+
+export interface BillingVerificationResult {
+  verified: boolean;
+  tier: "pro" | "college";
+  status: string;
+  paymentId: string;
+  orderId: string;
+}
+
+export interface BillingPortalSession {
+  id: string;
+  url: string;
+}
+
+export interface BillingSubscription {
+  id: string;
+  tier: "pro" | "college";
+  status: string;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd?: string | null;
+  trialEnd?: string | null;
+}
+
+export interface BillingAccount {
+  tier: "free" | "pro" | "college";
+  billingTier?: "pro" | "college" | null;
+  billingStatus?: string | null;
+  billingCycle?: "monthly" | "annual" | string | null;
+  razorpayCustomerId?: string | null;
+  subscription?: BillingSubscription | null;
+  canManageBilling: boolean;
 }
 
 export interface InvitePreview {
@@ -491,6 +568,14 @@ export interface AiStatus {
   fallbackMode: boolean;
   lastCheckedAt?: string | null;
   lastError?: string | null;
+  activeModel?: string | null;
+  modelChain?: string[];
+  attempts?: Array<{
+    provider: string;
+    model: string;
+    status: string;
+    reason?: string;
+  }>;
 }
 
 export interface ProgressHistoryItem {
@@ -519,6 +604,7 @@ export interface PrepRoadmapWeek {
 }
 
 export type PrepLanguage = "english" | "tamil" | "hindi";
+export type PrepCompanyKey = "google" | "meta" | "amazon" | "microsoft" | "zoho" | "tcs" | "infosys" | "accenture" | "custom";
 
 export interface PrepPlanTaskItem {
   title: string;
@@ -567,6 +653,9 @@ export interface PrepPlan {
   durationMonths: number;
   targetRole?: string | null;
   preferredLanguage?: PrepLanguage;
+  companyKey?: PrepCompanyKey;
+  companyName?: string | null;
+  customCompanyName?: string;
   version: number;
   isActive: boolean;
   sourcePlanId?: string | null;
@@ -1308,6 +1397,47 @@ export async function fetchServiceHealth() {
   });
 }
 
+export async function fetchBillingStatus() {
+  return request<BillingStatus>("/billing/status", {
+    skipAuth: true,
+  });
+}
+
+export async function createBillingCheckoutSession(payload: {
+  tier?: "pro" | "college";
+  billingCycle?: "monthly" | "annual" | string;
+  planKey?: string;
+} = {}) {
+  return request<BillingCheckoutSession>("/billing/checkout", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function verifyBillingPayment(payload: {
+  razorpay_order_id?: string;
+  razorpay_payment_id?: string;
+  razorpay_signature?: string;
+  orderId?: string;
+  paymentId?: string;
+  signature?: string;
+}) {
+  return request<BillingVerificationResult>("/billing/verify", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchBillingAccount() {
+  return request<BillingAccount>("/billing/account");
+}
+
+export async function createBillingPortalSession() {
+  return request<BillingPortalSession>("/billing/portal", {
+    method: "POST",
+  });
+}
+
 export async function savePushSubscription(payload: {
   subscription: {
     endpoint: string;
@@ -1423,6 +1553,7 @@ function normalizePrepPlan(plan: PrepPlan | null): PrepPlan | null {
   const metadata = normalizeRecord(plan.metadata);
   const targetTopics = normalizeStringList(plan.targetTopics, 8);
   const knownTopics = normalizeStringList(plan.knownTopics, 8);
+  const company = normalizeRecord(metadata.company);
 
   return {
     ...plan,
@@ -1433,6 +1564,9 @@ function normalizePrepPlan(plan: PrepPlan | null): PrepPlan | null {
     ).trim().toLowerCase() as PrepLanguage,
     knownTopics,
     targetTopics,
+    companyKey: String(plan.companyKey || company.key || "custom") as PrepCompanyKey,
+    companyName: String(plan.companyName || company.label || company.customCompanyName || "Custom company"),
+    customCompanyName: String(plan.customCompanyName || company.customCompanyName || ""),
     roadmap: toArray<Record<string, unknown>>(plan.roadmap).map((week, index) => ({
       week: Number(week?.week || index + 1),
       title: String(week?.title || `Week ${index + 1}`).trim(),
@@ -2197,8 +2331,8 @@ export async function renamePrepPlan(payload: {
 }
 
 export async function generatePrepPlan(payload: {
-  knownTopics: string[];
-  targetTopics: string[];
+  companyKey: PrepCompanyKey;
+  customCompanyName?: string;
   timePerDay?: number;
   durationMonths?: number;
   targetRole?: string;
@@ -2212,8 +2346,8 @@ export async function generatePrepPlan(payload: {
 
 export async function updatePrepPlan(payload: {
   planId: string;
-  knownTopics: string[];
-  targetTopics: string[];
+  companyKey: PrepCompanyKey;
+  customCompanyName?: string;
   timePerDay?: number;
   durationMonths?: number;
   targetRole?: string;

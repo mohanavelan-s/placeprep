@@ -1,12 +1,6 @@
 const { query } = require('../config/database');
 const env = require('../config/env');
-const {
-  getAIStatus,
-  getOpenAIClient,
-  markAIUnavailable,
-  markAIWorking,
-  normalizeErrorReason,
-} = require('../config/openai');
+const aiGateway = require('./aiGateway.service');
 const progressRepository = require('../repositories/progress.repository');
 const notificationRepository = require('../repositories/notification.repository');
 const prepPlanRepository = require('../repositories/prepPlan.repository');
@@ -60,19 +54,6 @@ function cleanList(values, limit = 6) {
 
 function compactText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
-}
-
-function safeJsonParse(content) {
-  try {
-    return JSON.parse(content);
-  } catch (error) {
-    const match = String(content || '').match(/\{[\s\S]*\}/);
-    if (match) {
-      return JSON.parse(match[0]);
-    }
-
-    throw error;
-  }
 }
 
 function pickText(value, fallback, maxLength) {
@@ -636,35 +617,15 @@ async function personalizeNotificationCopies(candidates, context) {
     return fallbackResult;
   }
 
-  const status = getAIStatus();
-  if (status.fallbackMode && ['quota_exceeded', 'no_key'].includes(status.reason)) {
-    return fallbackResult;
-  }
-
-  const client = getOpenAIClient();
-  if (!client) {
-    return fallbackResult;
-  }
-
-  try {
-    const response = await client.chat.completions.create({
-      model: env.aiModel,
-      temperature: 0.55,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: [
+  const result = await aiGateway.requestJson(
+    [
             'You write premium notification copy for PlacePrep, a private placement-prep command center.',
             'Tone: strict, direct, personal, disciplined, no fluff, no spam language, no exclamation marks.',
             'Use the actual weak areas, role target, streak, readiness, countdown, and next task.',
             'Do not shame the user. Push them clearly and specifically.',
             'Return only JSON.',
-          ].join(' '),
-        },
-        {
-          role: 'user',
-          content: [
+    ].join(' '),
+    [
             'Create a tailored notification brief for this user.',
             '',
             'Context JSON:',
@@ -729,19 +690,22 @@ async function personalizeNotificationCopies(candidates, context) {
             '- whyNow: max 16 words',
             '',
             'Return one notification item per candidate type.',
-          ].join('\n'),
-        },
-      ],
-    });
+    ].join('\n'),
+    () => null,
+    { label: 'notification-personalization' },
+  );
 
-    const data = safeJsonParse(response.choices[0]?.message?.content || '{}');
+  if (result.usedFallback || !result.data) {
+    return fallbackResult;
+  }
+
+  try {
+    const data = result.data;
     const itemMap = new Map(
       (Array.isArray(data.notifications) ? data.notifications : [])
         .map((item) => [compactText(item.type), item])
         .filter(([type]) => type)
     );
-
-    markAIWorking();
 
     return {
       summaryLine: pickText(data.summaryLine, fallbackResult.summaryLine, 140),
@@ -750,12 +714,7 @@ async function personalizeNotificationCopies(candidates, context) {
       ),
       usedFallback: false,
     };
-  } catch (error) {
-    const reason = normalizeErrorReason(error);
-    if (reason) {
-      markAIUnavailable(reason, error);
-    }
-
+  } catch {
     return fallbackResult;
   }
 }

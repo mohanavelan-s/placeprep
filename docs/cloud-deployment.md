@@ -15,6 +15,19 @@
 - `OWNER_EMAILS` defaults to `mohanavelan2006@gmail.com`; any matching account is promoted to admin with full college-tier access during signup, login/profile reads, and startup schema sync.
 - Keep `SMTP_FORCE_IPV4=true` on hosts that do not route IPv6; Gmail SMTP can otherwise resolve to IPv6 and fail before delivery starts.
 
+## Razorpay Billing
+
+- Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_WEBHOOK_SECRET` on the backend host.
+- Set `RAZORPAY_PRO_MONTHLY_AMOUNT=29900` for the INR 299/month Pro checkout.
+- Set `RAZORPAY_PRO_ANNUAL_AMOUNT=249900` for the INR 2,499/year Pro checkout.
+- Amounts use the smallest currency unit, so INR 299 is `29900`.
+- Keep `RAZORPAY_COLLEGE_AMOUNT` blank unless college checkout should be one fixed self-serve annual price. For quotes, collect payment separately or set the negotiated annual amount before checkout; INR 15,000/year is `1500000`, and INR 2,00,000/year is `20000000`.
+- The Checkout endpoint is `POST /api/billing/checkout`; it creates a Razorpay order and returns the browser checkout payload.
+- Standard Razorpay aliases are also available as `POST /api/create-order` and `POST /api/verify-payment`.
+- The browser verifies completed checkout through `POST /api/billing/verify`.
+- The Razorpay webhook endpoint is `POST /api/billing/webhook`.
+- Webhooks verify `x-razorpay-signature`, record event ids for idempotency, persist payment/order state, and reconcile paid access into user tiers.
+
 ## Database
 
 - Use managed PostgreSQL such as Supabase Postgres.

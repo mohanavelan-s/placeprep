@@ -31,7 +31,6 @@ Key API groups:
 - `/api/uploads/images`
 - `/api/resume`
 - `/api/ai`
-
-
+- `/api/billing`
 
 PlacePrep aggregates and recommends educational resources from third-party websites and creators. All copyrights, trademarks, and intellectual property rights belong to their respective owners. PlacePrep does not claim ownership of third-party content and provides links solely for educational discovery purposes.

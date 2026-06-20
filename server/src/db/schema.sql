@@ -77,6 +77,48 @@ ALTER TABLE invites DROP CONSTRAINT IF EXISTS invites_role_check;
 UPDATE invites SET role = 'user' WHERE role = 'viewer';
 ALTER TABLE invites ADD CONSTRAINT invites_role_check CHECK (role IN ('admin', 'user'));
 
+CREATE TABLE IF NOT EXISTS billing_customers (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  stripe_customer_id TEXT NOT NULL UNIQUE,
+  email TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id)
+);
+
+CREATE TABLE IF NOT EXISTS billing_subscriptions (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  stripe_customer_id TEXT NOT NULL,
+  stripe_subscription_id TEXT NOT NULL UNIQUE,
+  checkout_session_id TEXT,
+  tier TEXT NOT NULL,
+  status TEXT NOT NULL,
+  price_id TEXT,
+  cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
+  current_period_start TIMESTAMPTZ,
+  current_period_end TIMESTAMPTZ,
+  trial_start TIMESTAMPTZ,
+  trial_end TIMESTAMPTZ,
+  canceled_at TIMESTAMPTZ,
+  metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT billing_subscriptions_tier_check CHECK (tier IN ('pro', 'college'))
+);
+
+CREATE TABLE IF NOT EXISTS billing_events (
+  id UUID PRIMARY KEY,
+  stripe_event_id TEXT NOT NULL UNIQUE,
+  event_type TEXT NOT NULL,
+  processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  payload JSONB NOT NULL DEFAULT '{}'::JSONB,
+  metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS tasks (
   id UUID PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -421,6 +463,32 @@ ALTER TABLE invites ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}
 ALTER TABLE invites ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE invites ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
+ALTER TABLE billing_customers ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE billing_customers ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::JSONB;
+ALTER TABLE billing_customers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE billing_customers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS checkout_session_id TEXT;
+ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'pro';
+ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'incomplete';
+ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS price_id TEXT;
+ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS current_period_start TIMESTAMPTZ;
+ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMPTZ;
+ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS trial_start TIMESTAMPTZ;
+ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS trial_end TIMESTAMPTZ;
+ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS canceled_at TIMESTAMPTZ;
+ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::JSONB;
+ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE billing_subscriptions DROP CONSTRAINT IF EXISTS billing_subscriptions_tier_check;
+UPDATE billing_subscriptions SET tier = 'pro' WHERE tier IS NULL OR tier NOT IN ('pro', 'college');
+ALTER TABLE billing_subscriptions ADD CONSTRAINT billing_subscriptions_tier_check CHECK (tier IN ('pro', 'college'));
+
+ALTER TABLE billing_events ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::JSONB;
+ALTER TABLE billing_events ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::JSONB;
+ALTER TABLE billing_events ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS subcategory VARCHAR(120);
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'pending';
@@ -596,6 +664,10 @@ CREATE INDEX IF NOT EXISTS idx_app_settings_updated_at ON app_settings(updated_a
 CREATE INDEX IF NOT EXISTS idx_users_username_lower ON users (LOWER(username)) WHERE username IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_tier ON users(tier);
+CREATE INDEX IF NOT EXISTS idx_billing_customers_user_id ON billing_customers(user_id);
+CREATE INDEX IF NOT EXISTS idx_billing_subscriptions_user_status ON billing_subscriptions(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_billing_subscriptions_customer ON billing_subscriptions(stripe_customer_id);
+CREATE INDEX IF NOT EXISTS idx_billing_events_type_created_at ON billing_events(event_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_invites_code ON invites(code);
 CREATE INDEX IF NOT EXISTS idx_invites_created_at ON invites(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_invites_unused_expires_at ON invites(used, expires_at);

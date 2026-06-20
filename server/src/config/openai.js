@@ -14,6 +14,9 @@ let aiStatus = {
   reason: env.openaiApiKey ? 'working' : 'no_key',
   provider: env.aiProvider,
   model: env.aiModel,
+  modelChain: env.aiModelChain || [env.aiModel],
+  activeModel: env.aiModel,
+  attempts: [],
   fallbackMode: !env.openaiApiKey,
   lastCheckedAt: null,
   lastError: null,
@@ -24,27 +27,31 @@ function updateAIStatus(updates) {
     ...aiStatus,
     ...updates,
     provider: env.aiProvider,
-    model: env.aiModel,
+    model: updates.model || env.aiModel,
+    activeModel: updates.activeModel || updates.model || aiStatus.activeModel || env.aiModel,
+    modelChain: env.aiModelChain || [env.aiModel],
     lastCheckedAt: new Date().toISOString(),
   };
 }
 
-function markAIWorking() {
+function markAIWorking(details = {}) {
   updateAIStatus({
     aiEnabled: true,
     reason: 'working',
     fallbackMode: false,
     lastError: null,
+    ...details,
   });
 }
 
-function markAIUnavailable(reason, error = null) {
-  const safeReason = reason === 'quota_exceeded' || reason === 'no_key' ? reason : 'no_key';
+function markAIUnavailable(reason, error = null, details = {}) {
+  const safeReason = reason || 'ai_request_failed';
   updateAIStatus({
     aiEnabled: false,
     reason: safeReason,
     fallbackMode: true,
     lastError: error ? (error.message || String(error)) : null,
+    ...details,
   });
 }
 

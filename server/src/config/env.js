@@ -94,7 +94,12 @@ function normalizeWebPushSubject(value, fallbackEmail = '') {
 }
 
 const LEGACY_DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
-const OPENROUTER_DEFAULT_MODEL = 'openai/gpt-5.5-pro';
+const OPENROUTER_DEFAULT_MODEL = 'openai/gpt-5.1';
+const DEFAULT_OPENROUTER_MODEL_CHAIN = [
+  'anthropic/claude-fable-5',
+  'openai/gpt-5.1',
+  'google/gemini-3.1-pro',
+];
 
 function resolveAIModel(provider, configuredModel) {
   const model = String(configuredModel || '').trim();
@@ -126,6 +131,7 @@ const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   openaiModel: process.env.OPENAI_MODEL || LEGACY_DEFAULT_OPENAI_MODEL,
+  aiModelChain: splitCsv(process.env.AI_MODEL_CHAIN || ''),
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || '',
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || '',
@@ -146,6 +152,13 @@ const env = {
   resendFrom: process.env.RESEND_FROM || process.env.EMAIL_FROM || '',
   emailProvider: process.env.EMAIL_PROVIDER || 'resend',
   allowSmtpFallback: process.env.ALLOW_SMTP_FALLBACK === 'true',
+  razorpayKeyId: process.env.RAZORPAY_KEY_ID || '',
+  razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || '',
+  razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+  razorpayCurrency: process.env.RAZORPAY_CURRENCY || 'INR',
+  razorpayProMonthlyAmount: Number(process.env.RAZORPAY_PRO_MONTHLY_AMOUNT || process.env.RAZORPAY_PRO_AMOUNT || 0),
+  razorpayProAnnualAmount: Number(process.env.RAZORPAY_PRO_ANNUAL_AMOUNT || 0),
+  razorpayCollegeAmount: Number(process.env.RAZORPAY_COLLEGE_AMOUNT || 0),
   ownerEmails: splitCsv(process.env.OWNER_EMAILS || process.env.OWNER_EMAIL || 'mohanavelan2006@gmail.com')
     .map((email) => email.toLowerCase()),
   androidPublisherEmails: splitCsv(
@@ -200,6 +213,13 @@ env.aiProvider = process.env.AI_PROVIDER || detectAIProvider(env.openaiApiKey);
 env.aiBaseUrl = process.env.AI_BASE_URL
   || (env.aiProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' : undefined);
 env.aiModel = resolveAIModel(env.aiProvider, env.openaiModel);
+if (!env.aiModelChain.length) {
+  env.aiModelChain = env.aiProvider === 'openrouter'
+    ? DEFAULT_OPENROUTER_MODEL_CHAIN
+    : [env.aiModel];
+}
+env.aiModelChain = Array.from(new Set(env.aiModelChain.map((model) => String(model || '').trim()).filter(Boolean)));
+env.aiModel = env.aiModelChain[0] || env.aiModel;
 env.cloudinaryEnabled = Boolean(
   env.cloudinaryCloudName && env.cloudinaryApiKey && env.cloudinaryApiSecret
 );
@@ -210,6 +230,11 @@ env.smtpEnabled = Boolean(
   && (!env.smtpUser || env.smtpPass)
 );
 env.resendEnabled = Boolean(env.resendApiKey && env.resendFrom);
+env.razorpayEnabled = Boolean(env.razorpayKeyId && env.razorpayKeySecret);
+env.razorpayCheckoutEnabled = Boolean(
+  env.razorpayEnabled
+  && (env.razorpayProMonthlyAmount || env.razorpayProAnnualAmount || env.razorpayCollegeAmount)
+);
 
 const requestedEmailProvider = String(env.emailProvider || '').trim().toLowerCase();
 env.emailProvider = env.allowSmtpFallback && requestedEmailProvider === 'smtp' ? 'smtp' : 'resend';

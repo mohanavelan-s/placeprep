@@ -7,6 +7,7 @@ const validate = require('../middleware/validate');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
+const PREP_COMPANY_KEYS = ['google', 'meta', 'amazon', 'microsoft', 'zoho', 'tcs', 'infosys', 'accenture', 'custom'];
 
 router.use(requireAuth);
 
@@ -73,11 +74,13 @@ router.post(
 router.post(
   '/prep-architect',
   [
+    body('companyKey').optional().isIn(PREP_COMPANY_KEYS),
+    body('customCompanyName').optional().trim().isLength({ min: 2, max: 80 }),
     body('knownTopics').optional().isArray({ max: 8 }),
     body('targetTopics').optional().isArray({ max: 8 }),
     body('timePerDay').optional().isInt({ min: 60, max: 480 }),
     body('durationMonths').optional().isInt({ min: 1, max: 12 }),
-    body('targetRole').optional().isString(),
+    body('targetRole').optional().trim().isLength({ min: 2, max: 100 }),
     body('preferredLanguage').optional().isIn(['english', 'tamil', 'hindi']),
   ],
   validate,
@@ -88,11 +91,13 @@ router.post(
   '/prep-architect/update',
   [
     body('planId').isUUID(),
+    body('companyKey').optional().isIn(PREP_COMPANY_KEYS),
+    body('customCompanyName').optional().trim().isLength({ min: 2, max: 80 }),
     body('knownTopics').optional().isArray({ max: 8 }),
     body('targetTopics').optional().isArray({ max: 8 }),
     body('timePerDay').optional().isInt({ min: 60, max: 480 }),
     body('durationMonths').optional().isInt({ min: 1, max: 12 }),
-    body('targetRole').optional().isString(),
+    body('targetRole').optional().trim().isLength({ min: 2, max: 100 }),
     body('preferredLanguage').optional().isIn(['english', 'tamil', 'hindi']),
   ],
   validate,

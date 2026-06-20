@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, BellRing, CheckCircle2, Languages, Mail, Monitor, RefreshCw, Save, Send } from "lucide-react";
+import { AlertCircle, BellRing, CheckCircle2, CreditCard, ExternalLink, Languages, Mail, Monitor, RefreshCw, Save, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import AndroidAccessPanel from "@/components/AndroidAccessPanel";
@@ -34,6 +34,10 @@ import { isAndroidPublisherUser } from "@/lib/access";
 import { syncBrowserPushSubscription } from "@/lib/browser-push";
 import {
   clearNotificationHistory,
+  createBillingCheckoutSession,
+  createBillingPortalSession,
+  fetchBillingAccount,
+  fetchBillingStatus,
   fetchServiceHealth,
   fetchNotifications,
   fetchUserProfile,
@@ -43,6 +47,7 @@ import {
   testPushNotification,
   updateAccount,
   uploadImage,
+  verifyBillingPayment,
   type PrepNotification,
   type UserProfile,
 } from "@/lib/api";
@@ -121,6 +126,21 @@ type EmailDeliveryPopup = {
   detail?: string;
 };
 
+type RazorpayResponse = {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+};
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => {
+      on: (event: "payment.failed", handler: (response: { error?: { description?: string; reason?: string } }) => void) => void;
+      open: () => void;
+    };
+  }
+}
+
 function formatDeliveryReason(reason?: string) {
   if (!reason) {
     return "";
@@ -147,6 +167,20 @@ function formatDeliveryReason(reason?: string) {
   return cleaned.length > 58 ? `${cleaned.slice(0, 55)}...` : cleaned;
 }
 
+function formatBillingAmount(amount?: number, currency = "INR", billingCycle?: string) {
+  if (!amount) {
+    return "";
+  }
+
+  const formatted = new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amount / 100);
+  const suffix = billingCycle === "annual" ? "/year" : billingCycle === "monthly" ? "/month" : "";
+  return `${formatted}${suffix}`;
+}
+
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const { user, refreshProfile } = useAuth();
@@ -165,10 +199,21 @@ export default function SettingsPage() {
     queryFn: fetchServiceHealth,
     staleTime: 60_000,
   });
+  const billingStatusQuery = useQuery({
+    queryKey: ["billing", "status"],
+    queryFn: fetchBillingStatus,
+    staleTime: 60_000,
+  });
+  const billingAccountQuery = useQuery({
+    queryKey: ["billing", "account"],
+    queryFn: fetchBillingAccount,
+  });
 
   useQueryErrorLogger("SettingsPage:user-profile", profileQuery.error);
   useQueryErrorLogger("SettingsPage:notifications", notificationsQuery.error);
   useQueryErrorLogger("SettingsPage:service-health", healthQuery.error);
+  useQueryErrorLogger("SettingsPage:billing-status", billingStatusQuery.error);
+  useQueryErrorLogger("SettingsPage:billing-account", billingAccountQuery.error);
 
   const [name, setName] = useState(user?.name || "");
   const [username, setUsername] = useState(user?.username || "");
@@ -259,6 +304,113 @@ export default function SettingsPage() {
       toast.error(error instanceof Error ? error.message : "Unable to update account settings.");
     },
   });
+
+  async function loadRazorpayCheckout() {
+    if (window.Razorpay) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const existing = document.querySelector<HTMLScriptElement>('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+      if (existing) {
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error("Unable to load Razorpay checkout.")), { once: true });
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Unable to load Razorpay checkout."));
+      document.body.appendChild(script);
+    });
+  }
+
+  const checkoutMutation = useMutation({
+    mutationFn: async (plan: { tier: "pro" | "college"; billingCycle?: string; planKey?: string }) => {
+      const session = await createBillingCheckoutSession(plan);
+      await loadRazorpayCheckout();
+      if (!window.Razorpay || !session.keyId || !session.orderId) {
+        throw new Error("Razorpay checkout is not ready.");
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const checkout = new window.Razorpay({
+          key: session.keyId,
+          amount: session.amount,
+          currency: session.currency || "INR",
+          name: session.name || "PlacePrep",
+          description: session.description || "PlacePrep access",
+          order_id: session.orderId,
+          prefill: session.prefill || {},
+          notes: session.notes || {},
+          handler: async (response: RazorpayResponse) => {
+            try {
+              await verifyBillingPayment(response);
+              settled = true;
+              resolve();
+            } catch (error) {
+              settled = true;
+              reject(error);
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              if (!settled) {
+                settled = true;
+                reject(new Error("Razorpay checkout was closed."));
+              }
+            },
+          },
+        });
+        checkout.on("payment.failed", (response) => {
+          if (!settled) {
+            settled = true;
+            reject(new Error(response.error?.description || response.error?.reason || "Razorpay payment failed."));
+          }
+        });
+        checkout.open();
+      });
+    },
+    onSuccess: async () => {
+      toast.success("Payment verified. Your PlacePrep tier is updated.");
+      await queryClient.invalidateQueries({ queryKey: ["billing", "account"] });
+      await refreshProfile();
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to start Razorpay checkout.");
+    },
+  });
+
+  const billingPortalMutation = useMutation({
+    mutationFn: createBillingPortalSession,
+    onSuccess: (session) => {
+      window.location.assign(session.url);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to open the billing portal.");
+    },
+  });
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const billingResult = url.searchParams.get("billing");
+    if (billingResult === "success") {
+      toast.success("Payment completed. Your tier will update after confirmation.");
+      void queryClient.invalidateQueries({ queryKey: ["billing", "account"] });
+      void refreshProfile();
+    } else if (billingResult === "cancelled") {
+      toast.error("Payment checkout was cancelled.");
+    }
+
+    if (billingResult) {
+      url.searchParams.delete("billing");
+      url.searchParams.delete("session_id");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+  }, [queryClient, refreshProfile]);
 
   const profileMutation = useMutation({
     mutationFn: saveUserProfile,
@@ -610,6 +762,95 @@ export default function SettingsPage() {
           <Save className="h-4 w-4" />
           {accountMutation.isPending ? "Saving..." : "Save account settings"}
         </Button>
+      </section>
+
+      <section className="surface-panel p-6 md:p-7">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="section-label">Billing</p>
+            <h3 className="mt-2 font-heading text-3xl text-foreground">PlacePrep access</h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Current tier: <span className="font-medium capitalize text-foreground">{billingAccountQuery.data?.tier || user?.tier || "free"}</span>
+              {billingAccountQuery.data?.billingStatus ? ` / ${billingAccountQuery.data.billingStatus.replace(/_/g, " ")}` : ""}
+            </p>
+          </div>
+
+          {billingAccountQuery.data?.canManageBilling && (
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2"
+              disabled={billingPortalMutation.isPending}
+              onClick={() => billingPortalMutation.mutate()}
+            >
+              <ExternalLink className="h-4 w-4" />
+              {billingPortalMutation.isPending ? "Opening..." : "Manage billing"}
+            </Button>
+          )}
+        </div>
+
+        {billingAccountQuery.isError && (
+          <div className="mt-5">
+            <SoftSyncNotice
+              title="Billing details are temporarily unavailable."
+              description="Checkout configuration can still be checked. Retry to restore your subscription status."
+              actionLabel="Retry"
+              onAction={() => void billingAccountQuery.refetch()}
+            />
+          </div>
+        )}
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          {(billingStatusQuery.data?.availablePlans || []).map((plan) => {
+            const planKey = plan.planKey || `${plan.tier}-${plan.billingCycle || "default"}`;
+            const currentTier = billingAccountQuery.data?.billingTier || billingAccountQuery.data?.tier;
+            const currentCycle = billingAccountQuery.data?.billingCycle || null;
+            const isCurrent = currentTier === plan.tier
+              && (plan.tier !== "pro" || !currentCycle || currentCycle === plan.billingCycle);
+            const pendingThisPlan = checkoutMutation.isPending && checkoutMutation.variables?.planKey === plan.planKey;
+            const priceLabel = formatBillingAmount(plan.amount, plan.currency || billingStatusQuery.data?.currency || "INR", plan.billingCycle);
+            return (
+              <div key={planKey} className="rounded-lg border border-border/80 bg-background/45 p-5">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  {plan.tier}
+                  {plan.billingCycle ? ` / ${plan.billingCycle}` : ""}
+                </p>
+                <p className="mt-2 font-heading text-2xl text-foreground">{plan.label}</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {priceLabel || (plan.quoteBased ? "Quote-based annual plan" : "Amount not configured")}
+                </p>
+                <Button
+                  type="button"
+                  className="mt-5 gap-2"
+                  variant={isCurrent ? "outline" : "default"}
+                  disabled={isCurrent || checkoutMutation.isPending || !plan.configured}
+                  onClick={() => checkoutMutation.mutate({
+                    tier: plan.tier,
+                    billingCycle: plan.billingCycle,
+                    planKey: plan.planKey,
+                  })}
+                >
+                  <CreditCard className="h-4 w-4" />
+                  {isCurrent
+                    ? "Current plan"
+                    : !plan.configured
+                      ? plan.quoteBased ? "Quote required" : "Not configured"
+                    : pendingThisPlan
+                      ? "Opening checkout..."
+                      : plan.tier === "pro"
+                        ? `Choose ${plan.billingCycle === "annual" ? "Annual" : "Monthly"}`
+                        : "Choose College"}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+
+        {!billingStatusQuery.isPending && !(billingStatusQuery.data?.availablePlans || []).length && (
+          <p className="mt-5 text-sm text-muted-foreground">
+            Razorpay plans are not configured on this deployment yet.
+          </p>
+        )}
       </section>
 
       <section className="surface-panel p-6 md:p-7">

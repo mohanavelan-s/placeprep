@@ -106,6 +106,8 @@ PlacePrep is a full-stack, cloud-deployed, AI-powered placement preparation plat
 - Role model: `admin` and `user`
 - Protected backend routes
 - Protected frontend routes
+- Supabase Row-Level Security enabled on public tables
+- Live RLS policy record documented in `docs/supabase-rls-policies.sql`
 
 ## Cloud Deployment
 

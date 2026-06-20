@@ -1,10 +1,4 @@
-const {
-  getAIStatus,
-  getOpenAIClient,
-  markAIUnavailable,
-  markAIWorking,
-  normalizeErrorReason,
-} = require('../config/openai');
+const aiGateway = require('./aiGateway.service');
 const { withTransaction } = require('../config/database');
 const prepPlanRepository = require('../repositories/prepPlan.repository');
 const taskRepository = require('../repositories/task.repository');
@@ -535,6 +529,81 @@ const DEFAULT_ROLE_PREP_PROFILE = {
   outcomeLabel: 'interview signal',
 };
 
+const COMPANY_PREP_PROFILES = {
+  google: {
+    key: 'google',
+    label: 'Google',
+    hiringStyle: 'structured problem solving, clean communication, and scalable engineering judgment',
+    interviewLoop: ['DSA rounds', 'role deep-dive', 'Googliness and behavioral signals'],
+    focusTopics: ['Arrays', 'Strings', 'Graphs', 'Dynamic Programming', 'System Design'],
+    practiceSignals: ['edge-case narration', 'complexity tradeoffs', 'follow-up optimization'],
+  },
+  meta: {
+    key: 'meta',
+    label: 'Meta',
+    hiringStyle: 'speed, coding accuracy, product impact, and crisp tradeoff discussion',
+    interviewLoop: ['coding rounds', 'system/product design', 'behavioral ownership'],
+    focusTopics: ['Arrays', 'Strings', 'Binary Trees', 'Graphs', 'System Design'],
+    practiceSignals: ['fast pattern recognition', 'product-scale reasoning', 'impact storytelling'],
+  },
+  amazon: {
+    key: 'amazon',
+    label: 'Amazon',
+    hiringStyle: 'coding depth plus leadership-principle-backed ownership stories',
+    interviewLoop: ['online assessment', 'DSA rounds', 'bar raiser behavioral round'],
+    focusTopics: ['Arrays', 'Binary Trees', 'Graphs', 'Dynamic Programming', 'Object-Oriented Programming'],
+    practiceSignals: ['STAR answers', 'ownership examples', 'operational tradeoffs'],
+  },
+  microsoft: {
+    key: 'microsoft',
+    label: 'Microsoft',
+    hiringStyle: 'balanced problem solving, design clarity, collaboration, and fundamentals',
+    interviewLoop: ['coding rounds', 'design discussion', 'managerial/behavioral round'],
+    focusTopics: ['Arrays', 'Strings', 'Binary Trees', 'Object-Oriented Programming', 'System Design'],
+    practiceSignals: ['clear abstractions', 'testing mindset', 'collaborative explanation'],
+  },
+  zoho: {
+    key: 'zoho',
+    label: 'Zoho',
+    hiringStyle: 'implementation strength, fundamentals, debugging, and practical coding rounds',
+    interviewLoop: ['aptitude/coding screen', 'advanced programming', 'technical HR'],
+    focusTopics: ['Arrays', 'Strings', 'Recursion', 'Object-Oriented Programming', 'DBMS'],
+    practiceSignals: ['working code', 'manual dry runs', 'debug-ready reasoning'],
+  },
+  tcs: {
+    key: 'tcs',
+    label: 'TCS',
+    hiringStyle: 'aptitude readiness, programming basics, communication, and role fit',
+    interviewLoop: ['aptitude screen', 'coding round', 'technical/managerial/HR round'],
+    focusTopics: ['Arrays', 'Strings', 'SQL', 'DBMS', 'Operating Systems'],
+    practiceSignals: ['foundation accuracy', 'clear spoken answers', 'campus interview confidence'],
+  },
+  infosys: {
+    key: 'infosys',
+    label: 'Infosys',
+    hiringStyle: 'aptitude, programming fundamentals, DBMS/OS basics, and communication',
+    interviewLoop: ['aptitude and puzzle screen', 'coding round', 'technical HR'],
+    focusTopics: ['Arrays', 'Strings', 'SQL', 'DBMS', 'Object-Oriented Programming'],
+    practiceSignals: ['basic-to-medium coding', 'fundamentals recall', 'project explanation'],
+  },
+  accenture: {
+    key: 'accenture',
+    label: 'Accenture',
+    hiringStyle: 'aptitude, communication, coding basics, and project/application thinking',
+    interviewLoop: ['cognitive/technical assessment', 'coding', 'communication and HR'],
+    focusTopics: ['Arrays', 'Strings', 'SQL', 'Object-Oriented Programming', 'Aptitude'],
+    practiceSignals: ['communication polish', 'scenario answers', 'baseline coding accuracy'],
+  },
+  custom: {
+    key: 'custom',
+    label: 'Custom',
+    hiringStyle: 'company-specific role expectations and interview readiness',
+    interviewLoop: ['role-specific technical rounds', 'project discussion', 'behavioral round'],
+    focusTopics: ['Arrays', 'Strings', 'DBMS', 'System Design', 'Object-Oriented Programming'],
+    practiceSignals: ['role alignment', 'project evidence', 'interview explanation'],
+  },
+};
+
 const PREP_LANGUAGE_PROFILES = {
   english: {
     label: 'English',
@@ -628,15 +697,6 @@ function getPreferredLanguageProfile(value) {
   return PREP_LANGUAGE_PROFILES[normalizePreferredLanguage(value)];
 }
 
-function withTimeout(promise, timeoutMs) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
-    }),
-  ]);
-}
-
 function splitThemeTopics(theme) {
   return String(theme || '')
     .split(/\s+into\s+/i)
@@ -700,19 +760,6 @@ function resolvePlanTitles(plan, preferredTitle = '', titleSource = 'generated')
     autoTitle,
     titleSource: 'generated',
   };
-}
-
-function safeJsonParse(content) {
-  try {
-    return JSON.parse(content);
-  } catch (error) {
-    const match = String(content || '').match(/\{[\s\S]*\}/);
-    if (match) {
-      return JSON.parse(match[0]);
-    }
-
-    throw error;
-  }
 }
 
 function buildSearchUrl(query) {
@@ -831,6 +878,52 @@ function extractReferenceLabelFromUrl(url, fallbackLabel = 'Reference') {
 function getRolePrepProfile(targetRole) {
   const normalizedRole = String(targetRole || '').toLowerCase();
   return ROLE_PREP_PROFILES.find((profile) => profile.pattern.test(normalizedRole)) || DEFAULT_ROLE_PREP_PROFILE;
+}
+
+function normalizeCompanyKey(value) {
+  const key = String(value || 'custom')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return COMPANY_PREP_PROFILES[key] ? key : 'custom';
+}
+
+function getCompanyProfile(companyKey, customCompanyName = '') {
+  const key = normalizeCompanyKey(companyKey);
+  const baseProfile = COMPANY_PREP_PROFILES[key] || COMPANY_PREP_PROFILES.custom;
+  const customName = normalizePlanTitle(customCompanyName, '');
+
+  if (key !== 'custom') {
+    return baseProfile;
+  }
+
+  return {
+    ...baseProfile,
+    label: customName || 'Custom company',
+  };
+}
+
+function deriveTopicsForCompanyRole(companyProfile, targetRole, currentKnownTopics = [], currentTargetTopics = []) {
+  const roleProfile = getRolePrepProfile(targetRole);
+  const companyTopics = cleanTopics(companyProfile?.focusTopics || [], 6);
+  const roleTopics = cleanTopics([
+    ...roleProfile.biasTopics,
+    ...roleProfile.practiceTopics,
+    ...roleProfile.revisionTopics,
+  ], 8);
+  const targetTopics = cleanTopics([
+    ...currentTargetTopics,
+    ...companyTopics,
+    ...roleTopics,
+  ], 8);
+  const knownTopics = cleanTopics(currentKnownTopics, 8);
+
+  return {
+    knownTopics,
+    targetTopics: targetTopics.length ? targetTopics : cleanTopics(roleProfile.biasTopics, 8),
+  };
 }
 
 function isRevisionTopic(topic) {
@@ -981,6 +1074,14 @@ function buildCoachLine(knownTopics, prioritizedTopics, targetRole) {
   return `You already know ${foundation}. Now build disciplined pressure on ${primaryFocus} for ${roleProfile.outcomeLabel}.`;
 }
 
+function buildCompanyCoachLine(companyProfile, targetRole, prioritizedTopics) {
+  const companyName = companyProfile?.label || 'your target company';
+  const primaryFocus = prioritizedTopics[0] || companyProfile?.focusTopics?.[0] || 'core interview execution';
+  const hiringStyle = companyProfile?.hiringStyle || 'role-specific interview readiness';
+
+  return `${companyName} ${targetRole || 'placement'} prep starts with ${primaryFocus}. Train for ${hiringStyle}.`;
+}
+
 function buildTaskSummary({
   topic,
   revisionTopic,
@@ -988,19 +1089,23 @@ function buildTaskSummary({
   referenceLabel,
   targetRole,
   preferredLanguage = 'english',
+  companyName = '',
+  day = '',
 }) {
   const languageLabel = getPreferredLanguageProfile(preferredLanguage).label;
   const normalizedTaskType = String(taskType || '').toLowerCase();
+  const companyHint = companyName ? ` for ${companyName}` : '';
+  const dayHint = day ? `${day}: ` : '';
 
   if (normalizedTaskType.includes('project')) {
-    return `Use ${referenceLabel || 'the linked resource'} to build one small artifact around ${topic}. Define the input, the output, and one measurable improvement you can explain for ${targetRole || 'your target role'}. ${preferredLanguage === 'english' ? '' : `${languageLabel} reading links will open in translation where possible.`}`.trim();
+    return `${dayHint}Use ${referenceLabel || 'the linked resource'} to build one small artifact around ${topic}. Define the input, the output, and one measurable improvement you can explain${companyHint} for ${targetRole || 'your target role'}. ${preferredLanguage === 'english' ? '' : `${languageLabel} reading links will open in translation where possible.`}`.trim();
   }
 
   if (normalizedTaskType.includes('revision')) {
-    return `Review ${topic} with the linked reading, then explain the concept in one minute and connect it to ${revisionTopic || targetRole || 'the interview context'}. ${preferredLanguage === 'english' ? '' : `${languageLabel} reading links will open in translation where possible.`}`.trim();
+    return `${dayHint}Review ${topic} with the linked reading, then explain the concept in one minute and connect it to ${revisionTopic || targetRole || 'the interview context'}${companyHint}. ${preferredLanguage === 'english' ? '' : `${languageLabel} reading links will open in translation where possible.`}`.trim();
   }
 
-  return `Solve ${referenceLabel || topic} to rehearse ${topic}. Focus on naming the pattern early, choosing the right data structure, and explaining the time-space tradeoff out loud for ${targetRole || 'your interviews'}.`;
+  return `${dayHint}Solve ${referenceLabel || topic} to rehearse ${topic}. Focus on naming the pattern early, choosing the right data structure, and explaining the time-space tradeoff out loud${companyHint} for ${targetRole || 'your interviews'}.`;
 }
 
 function normalizeDurationMonths(value, fallback = 1) {
@@ -1056,14 +1161,17 @@ function buildRoadmap(prioritizedTopics, timePerDay, targetRole, durationMonths 
   });
 }
 
-function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole, targetTopics = [], preferredLanguage = 'english') {
+function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole, targetTopics = [], preferredLanguage = 'english', companyProfile = null) {
   const roleProfile = getRolePrepProfile(targetRole);
+  const companyTopics = cleanTopics(companyProfile?.focusTopics || [], 5);
   const practiceTopics = cleanTopics([
+    ...companyTopics.filter((topic) => !isRevisionTopic(topic)),
     ...prioritizedTopics.filter((topic) => !isRevisionTopic(topic)),
     ...targetTopics.filter((topic) => !isRevisionTopic(topic)),
     ...roleProfile.practiceTopics,
   ], 8);
   const revisionTopics = cleanTopics([
+    ...companyTopics.filter((topic) => isRevisionTopic(topic)),
     ...targetTopics.filter((topic) => isRevisionTopic(topic)),
     ...prioritizedTopics.filter((topic) => isRevisionTopic(topic)),
     ...roleProfile.revisionTopics,
@@ -1099,7 +1207,7 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole,
 
     return {
       day,
-      theme: `${primaryTopic} into ${revisionTopic}`,
+      theme: `${companyProfile?.label ? `${companyProfile.label}: ` : ''}${primaryTopic} into ${revisionTopic}`,
       totalEstimatedMinutes: chunks.reduce((sum, minutes) => sum + minutes, 0),
       items: [
         {
@@ -1116,6 +1224,8 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole,
             referenceLabel: primaryProblem.label,
             targetRole,
             preferredLanguage,
+            companyName: companyProfile?.label,
+            day,
           }),
         },
         {
@@ -1132,6 +1242,8 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole,
             referenceLabel: secondaryProblem.label,
             targetRole,
             preferredLanguage,
+            companyName: companyProfile?.label,
+            day,
           }),
         },
         {
@@ -1148,6 +1260,8 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole,
             referenceLabel: revisionTopic,
             targetRole,
             preferredLanguage,
+            companyName: companyProfile?.label,
+            day,
           }),
         },
         {
@@ -1164,6 +1278,8 @@ function buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole,
             referenceLabel: projectReference.label,
             targetRole,
             preferredLanguage,
+            companyName: companyProfile?.label,
+            day,
           }),
         },
       ],
@@ -1243,12 +1359,16 @@ function buildFallbackPlan({
   durationMonths = 1,
   targetRole,
   preferredLanguage = 'english',
+  companyProfile = null,
+  companyKey = 'custom',
+  customCompanyName = '',
   planId = null,
   version = 1,
 }) {
-  const prioritizedTopics = prioritizeTopics(knownTopics, targetTopics, targetRole);
+  const companyTopics = cleanTopics(companyProfile?.focusTopics || [], 5);
+  const prioritizedTopics = prioritizeTopics(knownTopics, cleanTopics([...companyTopics, ...targetTopics], 8), targetRole);
   const roadmap = buildRoadmap(prioritizedTopics, timePerDay, targetRole, durationMonths);
-  const tasks = buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole, targetTopics, preferredLanguage);
+  const tasks = buildDailyTasks(prioritizedTopics, knownTopics, timePerDay, targetRole, targetTopics, preferredLanguage, companyProfile);
   const resources = buildResources(prioritizedTopics, targetRole, preferredLanguage);
   const flashcards = buildFlashcards(prioritizedTopics, knownTopics, tasks, targetRole);
   const titles = resolvePlanTitles({
@@ -1266,10 +1386,15 @@ function buildFallbackPlan({
     durationMonths,
     targetRole,
     preferredLanguage,
+    companyKey,
+    customCompanyName,
+    companyProfile,
     title: titles.title,
     autoTitle: titles.autoTitle,
     titleSource: titles.titleSource,
-    coachLine: buildCoachLine(knownTopics, prioritizedTopics, targetRole),
+    coachLine: companyProfile
+      ? buildCompanyCoachLine(companyProfile, targetRole, prioritizedTopics)
+      : buildCoachLine(knownTopics, prioritizedTopics, targetRole),
     roadmap,
     tasks,
     resources,
@@ -1459,12 +1584,78 @@ function normalizeStoredPlanShape(plan) {
   };
 }
 
+function normalizeForDedupe(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function repairTaskSummaries(tasks, fallbackPlan) {
+  const seen = new Set();
+  const companyName = fallbackPlan.companyProfile?.label || '';
+
+  return tasks.map((dayPlan, dayIndex) => ({
+    ...dayPlan,
+    items: toArray(dayPlan.items).map((item, itemIndex) => {
+      const fallbackItem = fallbackPlan.tasks[dayIndex]?.items?.[itemIndex] || {};
+      const rawSummary = String(item.summary || fallbackItem.summary || '').trim();
+      const key = normalizeForDedupe(rawSummary);
+      const shouldRepair = !rawSummary || seen.has(key);
+      const repairedSummary = shouldRepair
+        ? buildTaskSummary({
+            topic: item.referenceLabel || item.title || dayPlan.theme,
+            revisionTopic: dayPlan.theme,
+            taskType: item.type,
+            referenceLabel: item.referenceLabel || item.title,
+            targetRole: fallbackPlan.targetRole,
+            preferredLanguage: fallbackPlan.preferredLanguage,
+            companyName,
+            day: dayPlan.day || `Day ${dayIndex + 1}`,
+          })
+        : rawSummary;
+
+      seen.add(normalizeForDedupe(repairedSummary));
+      return {
+        ...item,
+        summary: repairedSummary,
+      };
+    }),
+  }));
+}
+
+function repairFlashcards(flashcards, fallbackPlan) {
+  const seenAnswers = new Set();
+  const companyName = fallbackPlan.companyProfile?.label || '';
+
+  return toArray(flashcards).map((card, index) => {
+    const topic = String(card.topic || fallbackPlan.flashcards[index]?.topic || 'Prep').trim();
+    const answer = String(card.answer || '').trim();
+    const answerKey = normalizeForDedupe(answer);
+
+    if (answer && !seenAnswers.has(answerKey)) {
+      seenAnswers.add(answerKey);
+      return card;
+    }
+
+    const repaired = {
+      topic,
+      question: String(card.question || `How should you explain ${topic} under interview pressure?`).trim(),
+      answer: `${companyName ? `${companyName} focus: ` : ''}Define ${topic}, name the tradeoff, then connect it to ${fallbackPlan.targetRole || 'the role'} using one concrete task from the plan.`,
+    };
+    seenAnswers.add(normalizeForDedupe(repaired.answer));
+    return repaired;
+  });
+}
+
 function normalizePlanResult(rawPlan, fallbackPlan) {
   const rawRoadmap = toArray(rawPlan?.roadmap);
   const rawTaskDays = toArray(rawPlan?.tasks);
   const rawFlashcards = toArray(rawPlan?.flashcards);
   const relevantTopics = cleanTopics([
     ...fallbackPlan.targetTopics,
+    ...(fallbackPlan.companyProfile?.focusTopics || []),
     ...getRoleBiasTopics(fallbackPlan.targetRole),
     ...fallbackPlan.knownTopics,
   ], 12);
@@ -1559,60 +1750,17 @@ function normalizePlanResult(rawPlan, fallbackPlan) {
     titleSource: titles.titleSource,
     coachLine: String(rawPlan.coachLine || rawPlan.motivationLine || fallbackPlan.coachLine).trim(),
     roadmap,
-    tasks,
+    tasks: repairTaskSummaries(tasks, fallbackPlan),
     resources,
-    flashcards,
+    flashcards: repairFlashcards(flashcards, fallbackPlan),
   };
 }
 
-async function requestPlanJson(systemPrompt, userPrompt, fallbackFactory) {
-  const currentStatus = getAIStatus();
-  if (currentStatus.fallbackMode && ['quota_exceeded', 'no_key'].includes(currentStatus.reason)) {
-    return {
-      data: fallbackFactory(),
-      usedFallback: true,
-    };
-  }
-
-  const client = getOpenAIClient();
-  if (!client) {
-    return {
-      data: fallbackFactory(),
-      usedFallback: true,
-    };
-  }
-
-  try {
-    const response = await withTimeout(
-      client.chat.completions.create({
-        model: currentStatus.model,
-        temperature: 0.45,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-      }),
-      PLAN_REQUEST_TIMEOUT_MS,
-    );
-
-    markAIWorking();
-
-    return {
-      data: safeJsonParse(response.choices[0]?.message?.content || '{}'),
-      usedFallback: false,
-    };
-  } catch (error) {
-    const reason = normalizeErrorReason(error);
-    if (reason) {
-      markAIUnavailable(reason, error);
-    }
-
-    return {
-      data: fallbackFactory(error),
-      usedFallback: true,
-    };
-  }
+function requestPlanJson(systemPrompt, userPrompt, fallbackFactory) {
+  return aiGateway.requestJson(systemPrompt, userPrompt, fallbackFactory, {
+    label: 'prep-architect-plan',
+    timeoutMs: PLAN_REQUEST_TIMEOUT_MS,
+  });
 }
 
 function hydrateStoredPlan(plan) {
@@ -1632,6 +1780,9 @@ function hydrateStoredPlan(plan) {
     ...normalizedPlan,
     durationMonths: normalizeDurationMonths(normalizedPlan.durationMonths || normalizedPlan.metadata?.durationMonths || 1, 1),
     preferredLanguage: normalizePreferredLanguage(normalizedPlan.preferredLanguage || normalizedPlan.metadata?.preferredLanguage || 'english'),
+    companyKey: normalizedPlan.metadata?.company?.key || 'custom',
+    companyName: normalizedPlan.metadata?.company?.label || normalizedPlan.metadata?.company?.customCompanyName || null,
+    customCompanyName: normalizedPlan.metadata?.company?.customCompanyName || '',
     title: titles.title,
     autoTitle: titles.autoTitle,
     titleSource: titles.titleSource,
@@ -1641,23 +1792,46 @@ function hydrateStoredPlan(plan) {
 }
 
 function buildPriorPlanTaskLookup(previousTasks = []) {
-  const byIndex = new Map();
-  const byTitle = new Map();
+  const byDayIndex = new Map();
+  const byDayTitle = new Map();
 
   previousTasks.forEach((task) => {
     const rawIndex = task?.metadata?.itemIndex;
+    const rawDayIndex = task?.metadata?.planDayIndex;
     const itemIndex = Number.isInteger(Number(rawIndex)) ? Number(rawIndex) : null;
-    if (itemIndex !== null && !byIndex.has(itemIndex)) {
-      byIndex.set(itemIndex, task);
+    const dayIndex = Number.isInteger(Number(rawDayIndex)) ? Number(rawDayIndex) : null;
+    if (itemIndex !== null && dayIndex !== null) {
+      byDayIndex.set(`${dayIndex}:${itemIndex}`, task);
     }
 
     const normalizedTitle = String(task?.title || '').trim().toLowerCase();
-    if (normalizedTitle && !byTitle.has(normalizedTitle)) {
-      byTitle.set(normalizedTitle, task);
+    if (normalizedTitle && dayIndex !== null) {
+      byDayTitle.set(`${dayIndex}:${normalizedTitle}`, task);
     }
   });
 
-  return { byIndex, byTitle };
+  return { byDayIndex, byDayTitle };
+}
+
+function dateDiffDays(left, right) {
+  const leftDate = String(left || '').slice(0, 10);
+  const rightDate = String(right || '').slice(0, 10);
+  const [leftYear, leftMonth, leftDay] = leftDate.split('-').map(Number);
+  const [rightYear, rightMonth, rightDay] = rightDate.split('-').map(Number);
+  const leftTime = Date.UTC(leftYear || 1970, (leftMonth || 1) - 1, leftDay || 1);
+  const rightTime = Date.UTC(rightYear || 1970, (rightMonth || 1) - 1, rightDay || 1);
+
+  return Math.max(0, Math.floor((leftTime - rightTime) / 86400000));
+}
+
+function getPlanDayIndex(plan, scheduledFor) {
+  const taskDays = toArray(plan.tasks);
+  if (!taskDays.length) {
+    return 0;
+  }
+
+  const startDate = String(plan.createdAt || new Date().toISOString()).slice(0, 10);
+  return dateDiffDays(scheduledFor, startDate) % taskDays.length;
 }
 
 function extractProblemSlug(value) {
@@ -1709,27 +1883,30 @@ function isCodingLabCandidate(item = {}) {
   return /dsa|coding|leetcode|hackerrank|codechef|algorithm|sql|dbms|database|array|string|tree|graph|stack|queue|dynamic|recursion|backtracking/i.test(combined);
 }
 
-function planTasksForSync(plan, planId, previousTasks = []) {
-  const firstDay = plan.tasks[0];
-  if (!firstDay?.items?.length) {
+function planTasksForSync(plan, planId, previousTasks = [], scheduledFor = null) {
+  const planDayIndex = getPlanDayIndex(plan, scheduledFor || getTodayInTimezone('Asia/Calcutta'));
+  const activeDay = plan.tasks[planDayIndex] || plan.tasks[0];
+  if (!activeDay?.items?.length) {
     return [];
   }
 
   const lookup = buildPriorPlanTaskLookup(previousTasks);
 
-  return firstDay.items.slice(0, 4).map((item, index) => {
-    const matchedTask = lookup.byIndex.get(index)
-      || lookup.byTitle.get(String(item.title || '').trim().toLowerCase())
+  return activeDay.items.slice(0, 4).map((item, index) => {
+    const normalizedTitle = String(item.title || '').trim().toLowerCase();
+    const matchedTask = lookup.byDayIndex.get(`${planDayIndex}:${index}`)
+      || lookup.byDayTitle.get(`${planDayIndex}:${normalizedTitle}`)
       || null;
     const platform = inferProblemPlatform(item);
     const codingLabEnabled = isCodingLabCandidate(item);
     const problemSlug = extractProblemSlug(item.referenceUrl || item.referenceLabel || item.title);
+    const description = item.summary || `${activeDay.day}: ${item.title} inside ${activeDay.theme}`;
 
     return {
       title: item.title,
-      description: item.summary || `${firstDay.day}: ${firstDay.theme}`,
+      description,
       category: item.type === 'Project' ? 'Project' : item.type === 'Revision' ? 'Core' : 'DSA',
-      subcategory: firstDay.theme,
+      subcategory: activeDay.theme,
       status: matchedTask?.status || 'pending',
       priority: index <= 1 ? 'high' : 'medium',
       intensity: item.type === 'Project' ? 'high' : 'medium',
@@ -1738,17 +1915,18 @@ function planTasksForSync(plan, planId, previousTasks = []) {
       estimatedMinutes: clamp(item.estimatedMinutes, 10, 240),
       actualMinutes: Number(matchedTask?.actualMinutes || 0),
       difficulty: /easy/i.test(item.difficulty) ? 2 : /hard/i.test(item.difficulty) ? 4 : 3,
-      weakArea: firstDay.theme,
+      weakArea: activeDay.theme,
       aiGenerated: true,
       metadata: {
         source: 'prep-architect',
         planId,
-        day: firstDay.day,
-        planDay: firstDay.day,
-        theme: firstDay.theme,
+        day: activeDay.day,
+        planDay: activeDay.day,
+        planDayIndex,
+        theme: activeDay.theme,
         itemIndex: index,
-        summary: item.summary || null,
-        bundleTitle: `${firstDay.day || 'Day 1'} Tasks`,
+        summary: description,
+        bundleTitle: `${activeDay.day || `Day ${planDayIndex + 1}`} Tasks`,
         codingLabEnabled,
         problemPlatform: platform,
         problemSlug: problemSlug || null,
@@ -1773,7 +1951,7 @@ async function syncTodayTasks(user, plan) {
   }
 
   const previousTasks = await taskRepository.listRecentPrepArchitectTasksByPlan(user.id, plan.id);
-  const tasksToCreate = planTasksForSync(plan, plan.id, previousTasks);
+  const tasksToCreate = planTasksForSync(plan, plan.id, previousTasks, scheduledFor);
 
   await Promise.all(
     tasksToCreate.map((task) =>
@@ -1812,11 +1990,14 @@ async function syncUserWithActivePlan(user, plan = null) {
     nextCoachMetadata.prepArchitectPlanTitle = plan.title || plan.metadata?.title || null;
     nextCoachMetadata.prepArchitectCoachLine = plan.coachLine || plan.metadata?.coachLine || null;
     nextCoachMetadata.prepArchitectLanguage = plan.preferredLanguage || plan.metadata?.preferredLanguage || 'english';
+    nextCoachMetadata.prepArchitectCompany = plan.companyName || plan.metadata?.company?.label || null;
   } else {
     delete nextCoachMetadata.prepArchitectUpdatedAt;
     delete nextCoachMetadata.prepArchitectPlanId;
     delete nextCoachMetadata.prepArchitectPlanTitle;
     delete nextCoachMetadata.prepArchitectCoachLine;
+    delete nextCoachMetadata.prepArchitectLanguage;
+    delete nextCoachMetadata.prepArchitectCompany;
   }
 
   const updates = {
@@ -1858,6 +2039,16 @@ async function persistPlan(user, plan, sourcePlanId = null) {
         usedFallback: plan.usedFallback,
         durationMonths: plan.durationMonths,
         preferredLanguage: normalizePreferredLanguage(plan.preferredLanguage || 'english'),
+        company: {
+          key: plan.companyKey || plan.companyProfile?.key || 'custom',
+          label: plan.companyProfile?.label || plan.customCompanyName || 'Custom company',
+          customCompanyName: plan.customCompanyName || '',
+          hiringStyle: plan.companyProfile?.hiringStyle || null,
+          interviewLoop: plan.companyProfile?.interviewLoop || [],
+          focusTopics: plan.companyProfile?.focusTopics || [],
+          practiceSignals: plan.companyProfile?.practiceSignals || [],
+        },
+        ai: plan.aiDiagnostics || null,
       },
     }, client);
   });
@@ -1878,6 +2069,9 @@ async function persistPlan(user, plan, sourcePlanId = null) {
     durationMonths: plan.durationMonths,
     targetRole: plan.targetRole,
     preferredLanguage: normalizePreferredLanguage(plan.preferredLanguage || 'english'),
+    companyKey: plan.companyKey || plan.companyProfile?.key || 'custom',
+    companyName: plan.companyProfile?.label || plan.customCompanyName || 'Custom company',
+    customCompanyName: plan.customCompanyName || '',
     usedFallback: plan.usedFallback,
   };
 
@@ -1907,24 +2101,31 @@ function triggerPlanReadyEmail(user, plan) {
 }
 
 function buildPlanRequestPayload(user, payload = {}, currentPlan = null) {
-  const knownTopics = cleanTopics(payload.knownTopics || currentPlan?.knownTopics || user.strongTopics, 8);
-  const targetTopics = cleanTopics(payload.targetTopics || currentPlan?.targetTopics || user.weakAreas, 8);
   const timePerDay = clamp(payload.timePerDay || currentPlan?.timePerDay || 120, 60, 480);
   const durationMonths = normalizeDurationMonths(payload.durationMonths || currentPlan?.durationMonths || currentPlan?.metadata?.durationMonths || 1, 1);
   const targetRole = String(payload.targetRole || currentPlan?.targetRole || user.targetRole || 'Placement Engineer').trim();
   const preferredLanguage = normalizePreferredLanguage(payload.preferredLanguage || currentPlan?.preferredLanguage || currentPlan?.metadata?.preferredLanguage || 'english');
-
-  if (!knownTopics.length && !targetTopics.length) {
-    throw new AppError('Add at least one known topic or one target topic to build a plan.', 400);
-  }
+  const currentCompany = currentPlan?.metadata?.company || {};
+  const companyKey = normalizeCompanyKey(payload.companyKey || currentCompany.key || 'custom');
+  const customCompanyName = normalizePlanTitle(payload.customCompanyName || currentCompany.customCompanyName || currentCompany.label || '');
+  const companyProfile = getCompanyProfile(companyKey, customCompanyName);
+  const derivedTopics = deriveTopicsForCompanyRole(
+    companyProfile,
+    targetRole,
+    payload.knownTopics || currentPlan?.knownTopics || user.strongTopics,
+    payload.targetTopics || currentPlan?.targetTopics || user.weakAreas,
+  );
 
   return {
-    knownTopics,
-    targetTopics,
+    knownTopics: derivedTopics.knownTopics,
+    targetTopics: derivedTopics.targetTopics,
     timePerDay,
     durationMonths,
     targetRole,
     preferredLanguage,
+    companyKey,
+    customCompanyName: companyKey === 'custom' ? customCompanyName : '',
+    companyProfile,
   };
 }
 
@@ -1934,13 +2135,16 @@ async function generatePlan(user, payload = {}) {
   const input = buildPlanRequestPayload(user, payload);
   const fallbackPlan = buildFallbackPlan(input);
 
-  const { data, usedFallback } = await requestPlanJson(
+  const aiResult = await requestPlanJson(
     'Act as a placement preparation coach. Return only JSON with title, roadmap, tasks, resources, flashcards, and coachLine.',
     [
       'Act as a placement preparation coach.',
       '',
-      `User knows: ${input.knownTopics.join(', ') || 'Starting fresh'}`,
-      `User wants to learn: ${input.targetTopics.join(', ') || 'Need role-guided focus'}`,
+      `Target company: ${input.companyProfile.label}`,
+      `Company hiring style: ${input.companyProfile.hiringStyle}`,
+      `Likely interview loop: ${input.companyProfile.interviewLoop.join('; ')}`,
+      `Signals to practice: ${input.companyProfile.practiceSignals.join('; ')}`,
+      `Server-derived preparation focus: ${input.targetTopics.join(', ')}`,
       `Time per day: ${input.timePerDay} minutes`,
       `Plan duration: ${input.durationMonths} month${input.durationMonths === 1 ? '' : 's'}`,
       `Target role: ${input.targetRole}`,
@@ -1962,7 +2166,7 @@ async function generatePlan(user, payload = {}) {
       '',
       'Rules:',
       `* ${getPreferredLanguageProfile(input.preferredLanguage).promptLine}`,
-      '* Blend the selected role with the user target topics. The role should shape the plan, but the listed target topics must stay visible in the roadmap, tasks, and resources.',
+      '* Build specifically for the selected company and role. Keep the server-derived focus visible in the roadmap, tasks, and resources.',
       '* Make the daily work role-aware: data analyst plans should lean into SQL, analysis, dashboards, and insight delivery; data engineer plans should lean into pipelines, modeling, warehousing, and orchestration; software roles should lean into coding patterns, CS fundamentals, and systems.',
       '* Keep the roadmap and daily tasks tightly relevant to the provided topics. Do not introduce random focus areas outside the chosen role and target topics.',
       '* Focus on weak areas',
@@ -1971,6 +2175,8 @@ async function generatePlan(user, payload = {}) {
       '* Avoid broad generic search links when a direct problem or targeted creator search is possible',
       '* For readable article or newsletter resources, prefer URLs that can be translated when the preferred language is not English.',
       '* Every task item should include a short actionable summary under the key "summary".',
+      '* Generate at least 5 daily task groups. Every day needs a distinct theme and every task needs a distinct summary.',
+      '* Do not repeat flashcard answers. Each answer must connect to a different interview signal or planned task.',
       '',
       'Return JSON in this exact shape:',
       '{',
@@ -1985,13 +2191,20 @@ async function generatePlan(user, payload = {}) {
     () => fallbackPlan
   );
 
-  const normalizedPlan = normalizePlanResult(data, fallbackPlan);
+  const normalizedPlan = normalizePlanResult(aiResult.data, fallbackPlan);
 
   const plan = await persistPlan(user, {
     ...input,
     ...normalizedPlan,
     preferredLanguage: input.preferredLanguage,
-    usedFallback,
+    usedFallback: aiResult.usedFallback,
+    aiDiagnostics: {
+      provider: aiResult.provider || null,
+      model: aiResult.model || null,
+      attempts: aiResult.attempts || [],
+      usedFallback: aiResult.usedFallback,
+      fallbackReason: aiResult.fallbackReason || null,
+    },
   });
   await tierService.consumeFeature(user, 'plan_generations');
   triggerPlanReadyEmail(user, plan);
@@ -2014,14 +2227,17 @@ async function updatePlan(user, payload = {}) {
     version: Number(currentPlan.version || 1) + 1,
   });
 
-  const { data, usedFallback } = await requestPlanJson(
+  const aiResult = await requestPlanJson(
     'Act as a placement preparation coach. Return only JSON with title, roadmap, tasks, resources, flashcards, and coachLine.',
     [
       'Act as a placement preparation coach.',
       '',
       `Current plan id: ${currentPlan.id}`,
-      `User knows: ${input.knownTopics.join(', ') || 'Starting fresh'}`,
-      `User wants to learn: ${input.targetTopics.join(', ') || 'Need role-guided focus'}`,
+      `Target company: ${input.companyProfile.label}`,
+      `Company hiring style: ${input.companyProfile.hiringStyle}`,
+      `Likely interview loop: ${input.companyProfile.interviewLoop.join('; ')}`,
+      `Signals to practice: ${input.companyProfile.practiceSignals.join('; ')}`,
+      `Server-derived preparation focus: ${input.targetTopics.join(', ')}`,
       `Time per day: ${input.timePerDay} minutes`,
       `Plan duration: ${input.durationMonths} month${input.durationMonths === 1 ? '' : 's'}`,
       `Target role: ${input.targetRole}`,
@@ -2029,7 +2245,7 @@ async function updatePlan(user, payload = {}) {
       '',
       'Regenerate the title, roadmap, tasks, resources, and flashcards while keeping the plan realistic and editable.',
       getPreferredLanguageProfile(input.preferredLanguage).promptLine,
-      'Blend the selected role with the target topics so the result feels role-specific instead of generic.',
+      'Build specifically for the selected company and role, using the server-derived preparation focus.',
       'For data analyst and data engineer roles, lean into SQL, analytics, pipelines, warehousing, dashboards, and role-specific project work when relevant.',
       'Keep the plan tightly relevant to the supplied target topics. Avoid drifting into unrelated areas.',
       'Make flashcards specific to the planned work and useful for fast recall under interview pressure.',
@@ -2037,18 +2253,27 @@ async function updatePlan(user, payload = {}) {
       'Prefer creator-specific YouTube resources and direct articles/newsletters over generic searches.',
       'For readable article or newsletter resources, prefer URLs that can be translated when the preferred language is not English.',
       'Every task item must include a short actionable summary under the key "summary".',
+      'Generate at least 5 daily task groups with distinct themes and unique task summaries.',
+      'Do not repeat flashcard answers; connect each one to a different interview signal or planned task.',
       'Return the same JSON structure as the original plan generation request.',
     ].join('\n'),
     () => fallbackPlan
   );
 
-  const normalizedPlan = normalizePlanResult(data, fallbackPlan);
+  const normalizedPlan = normalizePlanResult(aiResult.data, fallbackPlan);
 
   const plan = await persistPlan(user, {
     ...input,
     ...normalizedPlan,
     preferredLanguage: input.preferredLanguage,
-    usedFallback,
+    usedFallback: aiResult.usedFallback,
+    aiDiagnostics: {
+      provider: aiResult.provider || null,
+      model: aiResult.model || null,
+      attempts: aiResult.attempts || [],
+      usedFallback: aiResult.usedFallback,
+      fallbackReason: aiResult.fallbackReason || null,
+    },
   }, currentPlan.id);
   await tierService.consumeFeature(user, 'plan_generations');
   triggerPlanReadyEmail(user, plan);

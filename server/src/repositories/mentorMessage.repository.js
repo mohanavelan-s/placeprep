@@ -10,8 +10,9 @@ const mentorMessageColumns = `
   created_at AS "createdAt"
 `;
 
-async function createMessage(payload) {
-  const result = await query(
+async function createMessage(payload, client = null) {
+  const executor = client || { query };
+  const result = await executor.query(
     `INSERT INTO mentor_messages (
       id,
       user_id,
