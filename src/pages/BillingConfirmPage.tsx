@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, CreditCard, Loader2, ShieldCheck } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -6,7 +6,6 @@ import { toast } from "sonner";
 
 import PlacePrepLogo from "@/components/PlacePrepLogo";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/AuthContext";
 import {
   createBillingCheckoutSession,
@@ -140,7 +139,6 @@ export default function BillingConfirmPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user, refreshProfile } = useAuth();
-  const [contactNumber, setContactNumber] = useState("");
   const planKey = searchParams.get("planKey") || "";
 
   const billingStatusQuery = useQuery({
@@ -163,7 +161,6 @@ export default function BillingConfirmPage() {
         tier: selectedPlan.tier,
         billingCycle: selectedPlan.billingCycle,
         planKey: selectedPlan.planKey,
-        contact: contactNumber.trim() || undefined,
       });
 
       if (session.mode === "hosted" || session.url) {
@@ -315,29 +312,10 @@ export default function BillingConfirmPage() {
                   <CreditCard className="h-6 w-6 text-muted-foreground" />
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-[0.86fr_1.14fr]">
-                  <div className="border-y border-border/80 py-5">
-                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Amount payable</p>
-                    <p className="mt-2 text-4xl font-semibold text-foreground">{priceLabel}</p>
-                    <p className="mt-2 text-sm text-muted-foreground">Billed to {user?.email || "your PlacePrep account"}</p>
-                  </div>
-
-                  <div className="border-y border-border/80 py-5">
-                    <label htmlFor="billing-contact" className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                      Mobile number
-                    </label>
-                    <Input
-                      id="billing-contact"
-                      value={contactNumber}
-                      onChange={(event) => setContactNumber(event.target.value)}
-                      placeholder="Optional, helps Razorpay skip contact details"
-                      className="mt-3 h-11"
-                      inputMode="tel"
-                    />
-                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                      Use a 10 digit Indian number, or include country code.
-                    </p>
-                  </div>
+                <div className="border-y border-border/80 py-5">
+                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Amount payable</p>
+                  <p className="mt-2 text-4xl font-semibold text-foreground">{priceLabel}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Billed to {user?.email || "your PlacePrep account"}</p>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-3">
