@@ -5,6 +5,7 @@ const env = require('../config/env');
 const { withTransaction } = require('../config/database');
 const billingRepository = require('../repositories/billing.repository');
 const userRepository = require('../repositories/user.repository');
+const { sendBillingReceiptEmail } = require('./email.service');
 const AppError = require('../utils/appError');
 
 let razorpayClient = null;
@@ -565,6 +566,64 @@ async function reconcileUserTier(userId, latestSubscription = null, client = nul
   return currentUser;
 }
 
+async function sendBillingReceiptForSubscription(subscription, payment = null) {
+  if (!subscription || !ACCESS_STATUSES.has(subscription.status)) {
+    return null;
+  }
+
+  const latest = await billingRepository.findSubscriptionByStripeId(subscription.stripeSubscriptionId);
+  const current = latest || subscription;
+  if (current.metadata?.receiptEmailSentAt) {
+    return null;
+  }
+
+  const receiptUser = await userRepository.findById(current.userId);
+  if (!receiptUser?.email) {
+    return null;
+  }
+
+  const emailResult = await sendBillingReceiptEmail({
+    user: receiptUser,
+    subscription: current,
+    payment,
+  });
+
+  const now = new Date().toISOString();
+  await billingRepository.upsertSubscription({
+    userId: current.userId,
+    stripeCustomerId: current.stripeCustomerId,
+    stripeSubscriptionId: current.stripeSubscriptionId,
+    checkoutSessionId: current.checkoutSessionId,
+    tier: current.tier,
+    status: current.status,
+    priceId: current.priceId,
+    cancelAtPeriodEnd: current.cancelAtPeriodEnd,
+    currentPeriodStart: current.currentPeriodStart,
+    currentPeriodEnd: current.currentPeriodEnd,
+    trialStart: current.trialStart,
+    trialEnd: current.trialEnd,
+    canceledAt: current.canceledAt,
+    metadata: emailResult.sent
+      ? {
+          receiptEmailSentAt: now,
+          receiptEmailReason: emailResult.reason,
+        }
+      : {
+          receiptEmailLastAttemptAt: now,
+          receiptEmailReason: emailResult.reason,
+          receiptEmailLastError: emailResult.error || emailResult.reason,
+        },
+  });
+
+  return emailResult;
+}
+
+function scheduleBillingReceiptEmail(subscription, payment = null) {
+  void sendBillingReceiptForSubscription(subscription, payment).catch((error) => {
+    console.error('[billing] Failed to schedule billing receipt email.', error);
+  });
+}
+
 async function verifyOrderCheckoutPayment(user, { orderId, paymentId, signature }) {
   if (!verifyPaymentSignature({ orderId, paymentId, signature })) {
     throw new AppError('Razorpay payment signature is invalid.', 400, {
@@ -572,7 +631,7 @@ async function verifyOrderCheckoutPayment(user, { orderId, paymentId, signature 
     });
   }
 
-  return withTransaction(async (client) => {
+  const result = await withTransaction(async (client) => {
     const existing = await billingRepository.findSubscriptionByStripeId(orderId, client);
     if (!existing || existing.userId !== user.id) {
       throw new AppError('Razorpay order does not belong to this account.', 404, {
@@ -634,8 +693,14 @@ async function verifyOrderCheckoutPayment(user, { orderId, paymentId, signature 
       status: persisted.status,
       paymentId,
       orderId,
+      subscription: persisted,
+      payment,
     };
   });
+
+  scheduleBillingReceiptEmail(result.subscription, result.payment);
+  const { subscription, payment, ...publicResult } = result;
+  return publicResult;
 }
 
 async function verifyPaymentLinkCheckoutPayment(user, {
@@ -651,7 +716,7 @@ async function verifyPaymentLinkCheckoutPayment(user, {
     });
   }
 
-  return withTransaction(async (client) => {
+  const result = await withTransaction(async (client) => {
     const existing = await billingRepository.findSubscriptionByStripeId(paymentLinkId, client);
     if (!existing || existing.userId !== user.id) {
       throw new AppError('Razorpay payment link does not belong to this account.', 404, {
@@ -728,8 +793,14 @@ async function verifyPaymentLinkCheckoutPayment(user, {
       status: persisted.status,
       paymentId,
       paymentLinkId,
+      subscription: persisted,
+      payment,
     };
   });
+
+  scheduleBillingReceiptEmail(result.subscription, result.payment);
+  const { subscription, payment, ...publicResult } = result;
+  return publicResult;
 }
 
 async function verifyCheckoutPayment(user, payload = {}) {
@@ -927,6 +998,10 @@ async function handleWebhook(rawBody, signature) {
       subscription: processed,
     };
   });
+
+  if (result.subscription && ACCESS_STATUSES.has(result.subscription.status)) {
+    scheduleBillingReceiptEmail(result.subscription);
+  }
 
   return {
     received: true,

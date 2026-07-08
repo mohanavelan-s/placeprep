@@ -12,6 +12,7 @@ const subjectMap = {
   countdown_urgency: 'PlacePrep | Deadline pressure is rising',
   motivation: 'PlacePrep | Show up tonight',
   test_notification: 'PlacePrep | Notification test',
+  billing_receipt: 'PlacePrep | Payment receipt',
 };
 
 let transporter = null;
@@ -1011,6 +1012,192 @@ function buildPlanReadyHtml({ user, plan }) {
   `;
 }
 
+function formatBillingAmount(amount, currency = 'INR') {
+  const value = Number(amount || 0) / 100;
+  return `${String(currency || 'INR').toUpperCase()} ${value.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function buildBillingPlanLabel(subscription = {}) {
+  const planKey = compactText(subscription.metadata?.planKey);
+  if (planKey === 'pro_monthly') {
+    return 'PlacePrep Pro Monthly';
+  }
+  if (planKey === 'pro_annual') {
+    return 'PlacePrep Pro Annual';
+  }
+  if (planKey === 'college') {
+    return 'PlacePrep College';
+  }
+
+  const tier = compactText(subscription.tier || 'pro');
+  const cycle = compactText(subscription.metadata?.billingCycle || 'access');
+  return `PlacePrep ${tier.charAt(0).toUpperCase()}${tier.slice(1)} ${cycle}`;
+}
+
+function buildBillingReceiptDetails({ subscription, payment }) {
+  const metadata = subscription?.metadata || {};
+  const amount = Number(metadata.amount || payment?.amount || 0);
+  const currency = metadata.currency || payment?.currency || 'INR';
+  return {
+    planLabel: buildBillingPlanLabel(subscription),
+    amountLabel: formatBillingAmount(amount, currency),
+    tier: compactText(subscription?.tier || metadata.targetTier || 'pro'),
+    billingCycle: compactText(metadata.billingCycle || 'access'),
+    status: compactText(subscription?.status || payment?.status || 'active'),
+    paymentId: compactText(payment?.id || metadata.razorpayPaymentId || ''),
+    orderId: compactText(payment?.order_id || metadata.razorpayOrderId || ''),
+    paymentLinkId: compactText(payment?.payment_link_id || metadata.razorpayPaymentLinkId || ''),
+    method: compactText(payment?.method || metadata.method || ''),
+    periodStart: subscription?.currentPeriodStart ? formatDateTimeInTimezone(subscription.currentPeriodStart, env.defaultTimezone) : '',
+    periodEnd: subscription?.currentPeriodEnd ? formatDateTimeInTimezone(subscription.currentPeriodEnd, env.defaultTimezone) : '',
+    receiptUrl: compactText(payment?.short_url || ''),
+  };
+}
+
+function buildBillingReceiptText({ user, subscription, payment }) {
+  const details = buildBillingReceiptDetails({ subscription, payment });
+  const lines = [
+    `${user.name || user.username || 'PlacePrep user'},`,
+    '',
+    'Your PlacePrep access is active.',
+    '',
+    `Plan: ${details.planLabel}`,
+    `Amount paid: ${details.amountLabel}`,
+    `Tier: ${details.tier}`,
+    `Billing cycle: ${details.billingCycle}`,
+    `Status: ${details.status}`,
+    details.periodEnd ? `Access valid until: ${details.periodEnd}` : null,
+    details.paymentId ? `Razorpay payment ID: ${details.paymentId}` : null,
+    details.orderId ? `Razorpay order ID: ${details.orderId}` : null,
+    details.paymentLinkId ? `Razorpay payment link ID: ${details.paymentLinkId}` : null,
+    details.method ? `Payment method: ${details.method}` : null,
+    '',
+    `Open PlacePrep: ${getAppUrl()}/settings`,
+  ];
+
+  return lines.filter(Boolean).join('\n');
+}
+
+function buildBillingReceiptHtml({ user, subscription, payment }) {
+  const details = buildBillingReceiptDetails({ subscription, payment });
+  const rows = [
+    ['Plan', details.planLabel],
+    ['Amount paid', details.amountLabel],
+    ['Tier', details.tier],
+    ['Billing cycle', details.billingCycle],
+    ['Status', details.status],
+    ['Access valid until', details.periodEnd],
+    ['Razorpay payment ID', details.paymentId],
+    ['Razorpay order ID', details.orderId],
+    ['Razorpay payment link ID', details.paymentLinkId],
+    ['Payment method', details.method],
+  ].filter(([, value]) => value);
+
+  return `
+    <div style="background:#0a0a0d;padding:32px 0;font-family:Inter,Arial,sans-serif;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="100%" style="max-width:560px;background:#111116;border:1px solid rgba(255,255,255,0.07);border-radius:22px;overflow:hidden;">
+              <tr>
+                <td style="padding:30px 30px 14px 30px;">
+                  <div style="color:#9a9a9a;font-size:11px;letter-spacing:0.32em;text-transform:uppercase;">PlacePrep Billing</div>
+                  <h1 style="margin:14px 0 0 0;color:#f2efef;font-family:'Cormorant Garamond',Georgia,serif;font-size:40px;font-weight:500;line-height:1.05;">
+                    Access activated.
+                  </h1>
+                  <div style="margin-top:12px;color:#c7c1c1;font-size:15px;line-height:1.7;">
+                    Your payment was verified and your PlacePrep access has been updated.
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:14px 30px 0 30px;">
+                  <div style="padding:18px;border:1px solid rgba(255,255,255,0.06);border-radius:18px;background:linear-gradient(180deg, rgba(140,41,41,0.10), rgba(255,255,255,0.02));">
+                    <div style="color:#9a9a9a;font-size:11px;letter-spacing:0.28em;text-transform:uppercase;">Receipt details</div>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:10px;color:#f2efef;font-size:14px;line-height:1.8;">
+                      ${rows.map(([label, value]) => `
+                        <tr>
+                          <td style="padding:5px 12px 5px 0;color:#9a9a9a;vertical-align:top;">${escapeHtml(label)}</td>
+                          <td style="padding:5px 0;color:#f2efef;vertical-align:top;">${escapeHtml(value)}</td>
+                        </tr>
+                      `).join('')}
+                    </table>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:24px 30px 30px 30px;">
+                  <a href="${escapeHtml(`${getAppUrl()}/settings`)}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#8b0000;color:#f5eded;text-decoration:none;font-size:13px;letter-spacing:0.18em;text-transform:uppercase;">
+                    Open billing
+                  </a>
+                  <div style="margin-top:18px;border-top:1px solid rgba(255,255,255,0.08);padding-top:18px;color:#9a9a9a;font-size:13px;line-height:1.8;">
+                    <div>${escapeHtml(user.name || user.username || 'PlacePrep user')}</div>
+                    <div>${escapeHtml(user.email || '')}</div>
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+}
+
+async function sendBillingReceiptEmail({ user, subscription, payment = null }) {
+  if (!subscription) {
+    return {
+      attempted: false,
+      sent: false,
+      reason: 'no_subscription',
+    };
+  }
+
+  if (!user?.email) {
+    return {
+      attempted: false,
+      sent: false,
+      reason: 'no_recipient',
+    };
+  }
+
+  if (!isEmailDeliveryReady()) {
+    return {
+      attempted: false,
+      sent: false,
+      reason: 'email_not_configured',
+    };
+  }
+
+  try {
+    const details = buildBillingReceiptDetails({ subscription, payment });
+    await sendMailMessage({
+      to: user.email,
+      subject: `PlacePrep | ${details.planLabel} receipt`,
+      text: buildBillingReceiptText({ user, subscription, payment }),
+      html: buildBillingReceiptHtml({ user, subscription, payment }),
+    });
+
+    return {
+      attempted: true,
+      sent: true,
+      reason: 'sent',
+    };
+  } catch (error) {
+    console.error('[billing] Failed to send payment receipt email.', error);
+    const normalizedError = normalizeEmailError(error, 'billing_receipt_email_failed');
+    return {
+      attempted: true,
+      sent: false,
+      reason: normalizedError.reason,
+      error: normalizedError.error,
+    };
+  }
+}
+
 async function sendNotificationDigestEmail({ user, notifications, summary, context = {} }) {
   if (!notifications?.length) {
     return {
@@ -1230,6 +1417,7 @@ module.exports = {
   sendAdminAssignmentEmail,
   sendWelcomeEmail,
   sendPlanReadyEmail,
+  sendBillingReceiptEmail,
   sendInviteSignupAlertEmail,
   isEmailDeliveryReady,
 };

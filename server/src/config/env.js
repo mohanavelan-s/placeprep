@@ -70,6 +70,19 @@ function isValidWebPushSubject(value) {
   return false;
 }
 
+function resolveNotificationCron() {
+  const configured = process.env.NOTIFICATION_SWEEP_CRON || process.env.NOTIFICATION_CRON || '';
+  const morningHour = Number(process.env.NOTIFICATION_MORNING_HOUR || 8);
+  const eveningHour = Number(process.env.NOTIFICATION_EVENING_HOUR || 20);
+  const twiceDailyCron = `0 ${morningHour},${eveningHour} * * *`;
+
+  if (!configured || configured === '0 20 * * *') {
+    return twiceDailyCron;
+  }
+
+  return configured;
+}
+
 function normalizeWebPushSubject(value, fallbackEmail = '') {
   const text = String(value || '').trim();
   if (isValidWebPushSubject(text)) {
@@ -151,7 +164,7 @@ const env = {
   resendApiKey: process.env.RESEND_API_KEY || '',
   resendFrom: process.env.RESEND_FROM || process.env.EMAIL_FROM || '',
   emailProvider: process.env.EMAIL_PROVIDER || 'resend',
-  allowSmtpFallback: process.env.ALLOW_SMTP_FALLBACK !== 'false',
+  allowSmtpFallback: process.env.ALLOW_SMTP_FALLBACK === 'true',
   razorpayKeyId: process.env.RAZORPAY_KEY_ID || '',
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || '',
   razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
@@ -181,7 +194,7 @@ const env = {
     process.env.SMTP_USER || process.env.SMPT_USER || 'support@placeprep.app',
   ),
   inviteSignupNotifyEmail: process.env.INVITE_SIGNUP_NOTIFY_EMAIL || process.env.SMTP_USER || process.env.SMPT_USER || '',
-  notificationCron: process.env.NOTIFICATION_SWEEP_CRON || process.env.NOTIFICATION_CRON || '*/15 * * * *',
+  notificationCron: resolveNotificationCron(),
   notificationMorningHour: Number(process.env.NOTIFICATION_MORNING_HOUR || 8),
   notificationEveningHour: Number(process.env.NOTIFICATION_EVENING_HOUR || 20),
   notificationSlotWindowMinutes: Number(process.env.NOTIFICATION_SLOT_WINDOW_MINUTES || 75),

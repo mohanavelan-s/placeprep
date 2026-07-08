@@ -17,6 +17,8 @@ const { buildPrepArchitectTaskVisibilityClause } = require('../utils/taskVisibil
 const { formatDateInTimezone, getTodayInTimezone } = require('../utils/date');
 
 const priorityMap = {
+  plan_pulse: 7,
+  consistency_pulse: 6,
   countdown_urgency: 5,
   missed_streak: 4,
   pending_tasks: 3,
@@ -26,6 +28,8 @@ const priorityMap = {
 };
 
 const titleMap = {
+  plan_pulse: 'Plan pulse',
+  consistency_pulse: 'Consistency pulse',
   countdown_urgency: 'Deadline pressure',
   missed_streak: 'Streak warning',
   pending_tasks: 'Pending tasks',
@@ -339,6 +343,31 @@ function buildNotificationCandidates({
   const slotKey = deliveryWindow?.key || 'manual';
   const dedupeSuffix = `${today}:${slotKey}`;
 
+  if (slotKey === 'morning' || slotKey === 'evening') {
+    candidates.push({
+      type: 'plan_pulse',
+      dedupeKey: `plan-pulse:${dedupeSuffix}`,
+      metadata: {
+        pendingCount: taskSnapshot.pendingCount,
+        overdueCount: taskSnapshot.overdueCount,
+        remainingCount: taskSnapshot.remainingCount,
+        planPaceLabel: taskSnapshot.planPaceLabel,
+        deliveryWindow: slotKey,
+      },
+    });
+
+    candidates.push({
+      type: 'consistency_pulse',
+      dedupeKey: `consistency-pulse:${dedupeSuffix}`,
+      metadata: {
+        readinessScore: readiness,
+        consistencyScore: Number(summary?.consistencyScore || 0),
+        streak: Number(summary?.streak || 0),
+        deliveryWindow: slotKey,
+      },
+    });
+  }
+
   if ((daysSinceLastLogin >= 1 || hoursSinceLastLogin >= 6) && slotKey !== 'morning') {
     candidates.push({
       type: 'daily_inactivity',
@@ -523,6 +552,30 @@ function buildFallbackNotificationCopy(candidate, context) {
   const rhythmLabel = isMorning ? 'morning' : isEvening ? 'evening' : 'next block';
 
   switch (candidate.type) {
+    case 'plan_pulse':
+      return {
+        subject: `PlacePrep | ${isMorning ? 'Morning plan' : 'Evening plan'}`,
+        headline: context.planPaceLabel || `${planTheme} is the current plan pressure.`,
+        preview: context.pendingCount > 0
+          ? `${context.pendingCount} tasks are still open for ${role}.`
+          : `Use ${planTheme} to keep the plan moving.`,
+        message: context.pendingCount > 0
+          ? `Your ${role} plan still has ${context.pendingCount} open tasks. Start with ${nextTaskTitle} and protect the ${rhythmLabel} block.`
+          : `Your ${role} plan stays alive through ${planTheme}. Build one clean ${rhythmLabel} block and log it honestly.`,
+        actionLabel: isMorning ? 'Start plan' : 'Close plan',
+        actionText: `Work on ${nextTaskTitle} for ${nextTaskDuration}.`,
+        whyNow: context.planPaceLabel || `${planTheme} is the next visible part of the plan.`,
+      };
+    case 'consistency_pulse':
+      return {
+        subject: `PlacePrep | ${isMorning ? 'Morning consistency' : 'Evening consistency'}`,
+        headline: `Consistency is ${Math.round(context.consistencyScore)}. Streak is ${Math.round(context.streak)}.`,
+        preview: isMorning ? 'Set the day with one clean rep.' : 'Close the day without leaving drift behind.',
+        message: `Your ${role} consistency is built through ${focus}. Do one measurable ${rhythmLabel} block and keep the streak honest.`,
+        actionLabel: isMorning ? 'Set rhythm' : 'Log progress',
+        actionText: `Complete ${nextTaskTitle}, then record the outcome.`,
+        whyNow: `Readiness is ${Math.round(context.readinessScore)} and consistency is ${Math.round(context.consistencyScore)}.`,
+      };
     case 'daily_inactivity':
       return {
         subject: `PlacePrep | ${isMorning ? 'Morning reset' : 'Return to the work'}`,
