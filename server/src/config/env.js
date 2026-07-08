@@ -151,7 +151,7 @@ const env = {
   resendApiKey: process.env.RESEND_API_KEY || '',
   resendFrom: process.env.RESEND_FROM || process.env.EMAIL_FROM || '',
   emailProvider: process.env.EMAIL_PROVIDER || 'resend',
-  allowSmtpFallback: process.env.ALLOW_SMTP_FALLBACK === 'true',
+  allowSmtpFallback: process.env.ALLOW_SMTP_FALLBACK !== 'false',
   razorpayKeyId: process.env.RAZORPAY_KEY_ID || '',
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || '',
   razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
