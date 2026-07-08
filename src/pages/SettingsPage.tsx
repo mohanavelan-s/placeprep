@@ -161,17 +161,12 @@ function applyRazorpayCheckoutSizing() {
     container.style.setProperty("align-items", "center", "important");
     container.style.setProperty("justify-content", "center", "important");
 
-    const scale = window.innerWidth >= 1100 && window.innerHeight >= 700
-      ? Math.min(1.32, Math.max(1, Math.min((window.innerWidth - 48) / 780, (window.innerHeight - 48) / 460)))
-      : 1;
-
     frame.style.setProperty("position", "fixed", "important");
     frame.style.setProperty("top", "50%", "important");
     frame.style.setProperty("left", "50%", "important");
     frame.style.setProperty("right", "auto", "important");
     frame.style.setProperty("bottom", "auto", "important");
-    frame.style.setProperty("transform", `translate(-50%, -50%) scale(${scale})`, "important");
-    frame.style.setProperty("transform-origin", "center center", "important");
+    frame.style.setProperty("transform", "translate(-50%, -50%)", "important");
     frame.style.setProperty("width", "calc(100vw - 24px)", "important");
     frame.style.setProperty("height", "calc(100vh - 24px)", "important");
     frame.style.setProperty("max-width", "1280px", "important");
