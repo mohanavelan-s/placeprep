@@ -24,6 +24,7 @@ router.post(
     body('tier').optional().isIn(['pro', 'college']),
     body('billingCycle').optional().isIn(['monthly', 'annual']),
     body('planKey').optional().isIn(['pro_monthly', 'pro_annual', 'college']),
+    body('contact').optional().isString().trim().isLength({ max: 24 }),
   ],
   validate,
   asyncHandler(controller.createCheckoutSession)

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, CreditCard, Loader2, ShieldCheck } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import PlacePrepLogo from "@/components/PlacePrepLogo";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/AuthContext";
 import {
   createBillingCheckoutSession,
@@ -139,6 +140,7 @@ export default function BillingConfirmPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user, refreshProfile } = useAuth();
+  const [contactNumber, setContactNumber] = useState("");
   const planKey = searchParams.get("planKey") || "";
 
   const billingStatusQuery = useQuery({
@@ -161,6 +163,7 @@ export default function BillingConfirmPage() {
         tier: selectedPlan.tier,
         billingCycle: selectedPlan.billingCycle,
         planKey: selectedPlan.planKey,
+        contact: contactNumber.trim() || undefined,
       });
 
       if (session.mode === "hosted" || session.url) {
@@ -254,30 +257,33 @@ export default function BillingConfirmPage() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,hsl(0_55%_33%_/_0.13),transparent_35%)]" />
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-6 sm:px-8 lg:px-10">
         <header className="flex items-center justify-between gap-4 border-b border-border/70 pb-5">
-          <Link to="/settings" className="flex items-center gap-3 text-sm text-muted-foreground transition hover:text-foreground">
-            <PlacePrepLogo className="h-9 w-9" />
-            <span className="text-xs uppercase tracking-[0.28em]">PlacePrep Billing</span>
+          <Link to="/settings" className="flex min-w-0 items-center gap-3 text-sm text-muted-foreground transition hover:text-foreground">
+            <PlacePrepLogo compact />
+            <div className="min-w-0">
+              <p className="font-heading text-xl leading-none text-foreground">PlacePrep</p>
+              <p className="mt-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Billing confirmation</p>
+            </div>
           </Link>
-          <Button asChild variant="outline" className="gap-2">
+          <Button asChild variant="outline" className="h-10 gap-2 px-4">
             <Link to="/settings">
               <ArrowLeft className="h-4 w-4" />
-              Back to Settings
+              Back
             </Link>
           </Button>
         </header>
 
-        <section className="grid flex-1 items-center gap-8 py-10 lg:grid-cols-[1fr_0.86fr]">
-          <div>
+        <section className="grid flex-1 items-center gap-10 py-10 lg:grid-cols-[0.92fr_1.08fr]">
+          <div className="max-w-2xl">
             <p className="text-xs uppercase tracking-[0.36em] text-muted-foreground">Confirm access</p>
-            <h1 className="mt-4 max-w-3xl font-heading text-4xl font-light leading-tight text-foreground sm:text-5xl">
-              Review your PlacePrep plan before Razorpay.
+            <h1 className="mt-4 font-heading text-4xl font-light leading-tight text-foreground sm:text-5xl">
+              Review the plan. Then pay on Razorpay.
             </h1>
-            <p className="mt-5 max-w-2xl text-sm leading-7 text-muted-foreground">
-              PlacePrep creates the payment securely on the backend, then sends you to Razorpay for the final UPI, card, wallet, or netbanking step.
+            <p className="mt-5 text-sm leading-7 text-muted-foreground">
+              PlacePrep creates the payment securely on the backend. Razorpay handles the final UPI, card, wallet, or netbanking step.
             </p>
           </div>
 
-          <div className="rounded-lg border border-border/80 bg-card/80 p-6 shadow-2xl shadow-black/20 backdrop-blur">
+          <div className="border-t border-border/80 pt-6 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-0">
             {billingStatusQuery.isPending ? (
               <div className="flex min-h-[360px] flex-col items-center justify-center gap-4 text-center">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -298,37 +304,54 @@ export default function BillingConfirmPage() {
                 </Button>
               </div>
             ) : selectedPlan ? (
-              <div className="space-y-6">
+              <div className="space-y-7">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs uppercase tracking-[0.28em] text-muted-foreground">
                       {selectedPlan.tier} {selectedPlan.billingCycle ? `/ ${selectedPlan.billingCycle}` : ""}
                     </p>
-                    <h2 className="mt-2 font-heading text-3xl text-foreground">{selectedPlan.label}</h2>
+                    <h2 className="mt-2 font-heading text-4xl text-foreground">{selectedPlan.label}</h2>
                   </div>
                   <CreditCard className="h-6 w-6 text-muted-foreground" />
                 </div>
 
-                <div className="rounded-lg border border-border/80 bg-background/70 p-5">
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Amount payable</p>
-                  <p className="mt-2 text-3xl font-semibold text-foreground">{priceLabel}</p>
-                  <p className="mt-2 text-sm text-muted-foreground">Billed to {user?.email || "your PlacePrep account"}</p>
+                <div className="grid gap-4 md:grid-cols-[0.86fr_1.14fr]">
+                  <div className="border-y border-border/80 py-5">
+                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Amount payable</p>
+                    <p className="mt-2 text-4xl font-semibold text-foreground">{priceLabel}</p>
+                    <p className="mt-2 text-sm text-muted-foreground">Billed to {user?.email || "your PlacePrep account"}</p>
+                  </div>
+
+                  <div className="border-y border-border/80 py-5">
+                    <label htmlFor="billing-contact" className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                      Mobile number
+                    </label>
+                    <Input
+                      id="billing-contact"
+                      value={contactNumber}
+                      onChange={(event) => setContactNumber(event.target.value)}
+                      placeholder="Optional, helps Razorpay skip contact details"
+                      className="mt-3 h-11"
+                      inputMode="tel"
+                    />
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                      Use a 10 digit Indian number, or include country code.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-3">
                   {planBenefits(selectedPlan).map((benefit) => (
-                    <div key={benefit} className="flex gap-3 text-sm leading-6 text-muted-foreground">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-400" />
+                    <div key={benefit} className="border-t border-border/70 pt-4 text-sm leading-6 text-muted-foreground">
+                      <CheckCircle2 className="mb-3 h-4 w-4 text-green-400" />
                       <span>{benefit}</span>
                     </div>
                   ))}
                 </div>
 
-                <div className="rounded-lg border border-border/70 bg-background/45 p-4">
-                  <div className="flex gap-3 text-sm leading-6 text-muted-foreground">
-                    <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
-                    <span>Razorpay handles the final payment page. PlacePrep verifies payment before updating access.</span>
-                  </div>
+                <div className="flex gap-3 border-y border-border/70 py-4 text-sm leading-6 text-muted-foreground">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
+                  <span>Razorpay handles the final payment page. PlacePrep verifies payment before updating access.</span>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-[1fr_auto]">

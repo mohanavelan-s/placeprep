@@ -249,6 +249,20 @@ function buildCheckoutReference(plan, user) {
   return `pp_${compactPlanKey}_${Date.now().toString(36)}_${String(user.id).replace(/-/g, '').slice(0, 6)}`;
 }
 
+function normalizeRazorpayContact(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+
+  if (digits.length === 10) {
+    return `91${digits}`;
+  }
+
+  if (digits.length >= 8 && digits.length <= 15) {
+    return digits;
+  }
+
+  return null;
+}
+
 function buildBillingNotes(user, plan, extra = {}) {
   return {
     placeprepUserId: user.id,
@@ -343,8 +357,9 @@ async function createRazorpayOrderSession(user, plan) {
   };
 }
 
-async function createRazorpayPaymentLinkSession(user, plan) {
+async function createRazorpayPaymentLinkSession(user, plan, payload = {}) {
   const referenceId = buildCheckoutReference(plan, user);
+  const contact = normalizeRazorpayContact(payload.contact);
   let paymentLink;
   try {
     paymentLink = await getRazorpayClient().paymentLink.create({
@@ -356,6 +371,7 @@ async function createRazorpayPaymentLinkSession(user, plan) {
       customer: {
         name: user.name || user.email || 'PlacePrep learner',
         email: user.email,
+        ...(contact ? { contact } : {}),
       },
       notify: {
         sms: false,
@@ -366,6 +382,7 @@ async function createRazorpayPaymentLinkSession(user, plan) {
       callback_method: 'get',
       notes: buildBillingNotes(user, plan, {
         razorpayPaymentLinkReferenceId: referenceId,
+        ...(contact ? { contact } : {}),
       }),
     });
   } catch (error) {
@@ -383,6 +400,7 @@ async function createRazorpayPaymentLinkSession(user, plan) {
       razorpayPaymentLinkReferenceId: referenceId,
       shortUrl: paymentLink.short_url || null,
       callbackUrl: getPaymentLinkCallbackUrl(),
+      contactProvided: Boolean(contact),
     },
   });
 
@@ -408,7 +426,7 @@ async function createCheckoutSession(user, payload = {}) {
   requireRazorpayConfigured();
 
   if (getCheckoutMode() === 'hosted') {
-    return createRazorpayPaymentLinkSession(user, plan);
+    return createRazorpayPaymentLinkSession(user, plan, payload);
   }
 
   return createRazorpayOrderSession(user, plan);

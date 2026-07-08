@@ -1409,6 +1409,7 @@ export async function createBillingCheckoutSession(payload: {
   tier?: "pro" | "college";
   billingCycle?: "monthly" | "annual" | string;
   planKey?: string;
+  contact?: string;
 } = {}) {
   return request<BillingCheckoutSession>("/billing/checkout", {
     method: "POST",
