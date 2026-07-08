@@ -75,7 +75,7 @@ export interface BillingStatus {
   checkoutEnabled: boolean;
   publishableKeyConfigured: boolean;
   webhookConfigured: boolean;
-  checkoutMode: "payment" | string;
+  checkoutMode: "payment" | "hosted" | string;
   keyId?: string | null;
   currency?: string;
   availablePlans: Array<{
@@ -1423,6 +1423,12 @@ export async function verifyBillingPayment(payload: {
   orderId?: string;
   paymentId?: string;
   signature?: string;
+  razorpay_payment_link_id?: string;
+  razorpay_payment_link_reference_id?: string;
+  razorpay_payment_link_status?: string;
+  paymentLinkId?: string;
+  paymentLinkReferenceId?: string;
+  paymentLinkStatus?: string;
 }) {
   return request<BillingVerificationResult>("/billing/verify", {
     method: "POST",

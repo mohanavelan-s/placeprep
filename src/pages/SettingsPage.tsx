@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { AlertCircle, BellRing, CheckCircle2, CreditCard, ExternalLink, Languages, Mail, Monitor, RefreshCw, Save, Send } from "lucide-react";
 import { toast } from "sonner";
 
@@ -34,7 +35,6 @@ import { isAndroidPublisherUser } from "@/lib/access";
 import { syncBrowserPushSubscription } from "@/lib/browser-push";
 import {
   clearNotificationHistory,
-  createBillingCheckoutSession,
   createBillingPortalSession,
   fetchBillingAccount,
   fetchBillingStatus,
@@ -126,67 +126,6 @@ type EmailDeliveryPopup = {
   detail?: string;
 };
 
-type RazorpayResponse = {
-  razorpay_order_id: string;
-  razorpay_payment_id: string;
-  razorpay_signature: string;
-};
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => {
-      on: (event: "payment.failed", handler: (response: { error?: { description?: string; reason?: string } }) => void) => void;
-      open: () => void;
-      close?: () => void;
-    };
-  }
-}
-
-function applyRazorpayCheckoutSizing() {
-  let attempts = 0;
-
-  const applySizing = () => {
-    attempts += 1;
-    const container = document.querySelector<HTMLElement>(".razorpay-container");
-    const frame = container?.querySelector<HTMLIFrameElement>("iframe");
-
-    if (!container || !frame) {
-      return false;
-    }
-
-    container.style.setProperty("z-index", "2147483647", "important");
-    container.style.setProperty("position", "fixed", "important");
-    container.style.setProperty("inset", "0", "important");
-    container.style.setProperty("display", "flex", "important");
-    container.style.setProperty("align-items", "center", "important");
-    container.style.setProperty("justify-content", "center", "important");
-
-    frame.style.setProperty("position", "fixed", "important");
-    frame.style.setProperty("top", "50%", "important");
-    frame.style.setProperty("left", "50%", "important");
-    frame.style.setProperty("right", "auto", "important");
-    frame.style.setProperty("bottom", "auto", "important");
-    frame.style.setProperty("transform", "translate(-50%, -50%)", "important");
-    frame.style.setProperty("width", "calc(100vw - 24px)", "important");
-    frame.style.setProperty("height", "calc(100vh - 24px)", "important");
-    frame.style.setProperty("max-width", "1280px", "important");
-    frame.style.setProperty("max-height", "860px", "important");
-    frame.style.setProperty("border-radius", "12px", "important");
-    frame.style.setProperty("box-shadow", "0 28px 90px rgba(0, 0, 0, 0.55)", "important");
-    return true;
-  };
-
-  applySizing();
-  const interval = window.setInterval(() => {
-    const applied = applySizing();
-    if ((applied && attempts >= 8) || attempts >= 30) {
-      window.clearInterval(interval);
-    }
-  }, 150);
-
-  return () => window.clearInterval(interval);
-}
-
 function formatDeliveryReason(reason?: string) {
   if (!reason) {
     return "";
@@ -229,6 +168,7 @@ function formatBillingAmount(amount?: number, currency = "INR", billingCycle?: s
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { user, refreshProfile } = useAuth();
   const { language, setLanguage } = useLanguage();
   const runningInsideAndroidApp = isPlacePrepAndroidApp();
@@ -348,113 +288,6 @@ export default function SettingsPage() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to update account settings.");
-    },
-  });
-
-  async function loadRazorpayCheckout() {
-    if (window.Razorpay) {
-      return;
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      const existing = document.querySelector<HTMLScriptElement>('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
-      if (existing) {
-        existing.addEventListener("load", () => resolve(), { once: true });
-        existing.addEventListener("error", () => reject(new Error("Unable to load Razorpay checkout.")), { once: true });
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.async = true;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Unable to load Razorpay checkout."));
-      document.body.appendChild(script);
-    });
-  }
-
-  const checkoutMutation = useMutation({
-    mutationFn: async (plan: { tier: "pro" | "college"; billingCycle?: string; planKey?: string }) => {
-      const session = await createBillingCheckoutSession(plan);
-      if (session.mode === "hosted" || session.url) {
-        if (!session.url) {
-          throw new Error("Razorpay hosted checkout did not return a payment URL.");
-        }
-        window.location.assign(session.url);
-        await new Promise<void>(() => undefined);
-        return;
-      }
-
-      await loadRazorpayCheckout();
-      if (!window.Razorpay || !session.keyId || !session.orderId) {
-        throw new Error("Razorpay checkout is not ready.");
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        let settled = false;
-        let stopSizing: (() => void) | undefined;
-
-        const finish = () => {
-          stopSizing?.();
-        };
-
-        const checkout = new window.Razorpay({
-          key: session.keyId,
-          amount: session.amount,
-          currency: session.currency || "INR",
-          name: session.name || "PlacePrep",
-          description: session.description || "PlacePrep access",
-          order_id: session.orderId,
-          prefill: session.prefill || {},
-          notes: session.notes || {},
-          timeout: 300,
-          retry: {
-            enabled: true,
-            max_count: 2,
-          },
-          theme: {
-            color: "#9f2d2d",
-          },
-          handler: async (response: RazorpayResponse) => {
-            try {
-              await verifyBillingPayment(response);
-              settled = true;
-              finish();
-              resolve();
-            } catch (error) {
-              settled = true;
-              finish();
-              reject(error);
-            }
-          },
-          modal: {
-            ondismiss: () => {
-              if (!settled) {
-                settled = true;
-                finish();
-                reject(new Error("Razorpay checkout was closed. Start checkout again to generate a fresh QR."));
-              }
-            },
-          },
-        });
-        checkout.on("payment.failed", (response) => {
-          if (!settled) {
-            settled = true;
-            finish();
-            reject(new Error(response.error?.description || response.error?.reason || "Razorpay payment failed."));
-          }
-        });
-        checkout.open();
-        stopSizing = applyRazorpayCheckoutSizing();
-      });
-    },
-    onSuccess: async () => {
-      toast.success("Payment verified. Your PlacePrep tier is updated.");
-      await queryClient.invalidateQueries({ queryKey: ["billing", "account"] });
-      await refreshProfile();
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Unable to start Razorpay checkout.");
     },
   });
 
@@ -909,7 +742,6 @@ export default function SettingsPage() {
             const currentCycle = billingAccountQuery.data?.billingCycle || null;
             const isCurrent = currentTier === plan.tier
               && (plan.tier !== "pro" || !currentCycle || currentCycle === plan.billingCycle);
-            const pendingThisPlan = checkoutMutation.isPending && checkoutMutation.variables?.planKey === plan.planKey;
             const priceLabel = formatBillingAmount(plan.amount, plan.currency || billingStatusQuery.data?.currency || "INR", plan.billingCycle);
             return (
               <div key={planKey} className="rounded-lg border border-border/80 bg-background/45 p-5">
@@ -925,20 +757,14 @@ export default function SettingsPage() {
                   type="button"
                   className="mt-5 gap-2"
                   variant={isCurrent ? "outline" : "default"}
-                  disabled={isCurrent || checkoutMutation.isPending || !plan.configured}
-                  onClick={() => checkoutMutation.mutate({
-                    tier: plan.tier,
-                    billingCycle: plan.billingCycle,
-                    planKey: plan.planKey,
-                  })}
+                  disabled={isCurrent || !plan.configured || !plan.planKey}
+                  onClick={() => navigate(`/billing/confirm?planKey=${encodeURIComponent(String(plan.planKey || ""))}`)}
                 >
                   <CreditCard className="h-4 w-4" />
                   {isCurrent
                     ? "Current plan"
                     : !plan.configured
                       ? plan.quoteBased ? "Quote required" : "Not configured"
-                    : pendingThisPlan
-                      ? "Opening checkout..."
                       : plan.tier === "pro"
                         ? `Choose ${plan.billingCycle === "annual" ? "Annual" : "Monthly"}`
                         : "Choose College"}

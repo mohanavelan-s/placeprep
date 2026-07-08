@@ -16,6 +16,7 @@ const AdminConsolePage = lazy(() => import("./pages/AdminConsolePage.tsx"));
 const AssessmentsPage = lazy(() => import("./pages/AssessmentsPage.tsx"));
 const AiMentorPage = lazy(() => import("./pages/AiMentorPage.tsx"));
 const AuthPage = lazy(() => import("./pages/AuthPage.tsx"));
+const BillingConfirmPage = lazy(() => import("./pages/BillingConfirmPage.tsx"));
 const CodingLabPage = lazy(() => import("./pages/CodingLabPage.tsx"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage.tsx"));
 const LandingPage = lazy(() => import("./pages/LandingPage.tsx"));
@@ -72,6 +73,7 @@ function TitleUpdater() {
       "/progress": "Progress Intel",
       "/profile": "Profile",
       "/settings": "Settings",
+      "/billing/confirm": "Confirm Billing",
       "/ai-mentor": "Nocturne Mentor",
     };
     const pageName = location.pathname.startsWith("/coding-lab")
@@ -126,6 +128,7 @@ function AppRoutes() {
             <Route path="/progress" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/profile" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/settings" element={<Navigate to="/auth?mode=login" replace />} />
+            <Route path="/billing/confirm" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/ai-mentor" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
@@ -144,6 +147,7 @@ function AppRoutes() {
           <Route path="/welcome" element={<LandingPage />} />
           <Route path="/auth" element={<Navigate to="/dashboard" replace />} />
           <Route path="/invite" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/billing/confirm" element={<BillingConfirmPage />} />
           <Route element={<ProtectedWorkspaceLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/prep-architect" element={<PrepArchitectPage />} />
