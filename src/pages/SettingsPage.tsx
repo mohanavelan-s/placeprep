@@ -376,6 +376,15 @@ export default function SettingsPage() {
   const checkoutMutation = useMutation({
     mutationFn: async (plan: { tier: "pro" | "college"; billingCycle?: string; planKey?: string }) => {
       const session = await createBillingCheckoutSession(plan);
+      if (session.mode === "hosted" || session.url) {
+        if (!session.url) {
+          throw new Error("Razorpay hosted checkout did not return a payment URL.");
+        }
+        window.location.assign(session.url);
+        await new Promise<void>(() => undefined);
+        return;
+      }
+
       await loadRazorpayCheckout();
       if (!window.Razorpay || !session.keyId || !session.orderId) {
         throw new Error("Razorpay checkout is not ready.");
@@ -462,7 +471,30 @@ export default function SettingsPage() {
   useEffect(() => {
     const url = new URL(window.location.href);
     const billingResult = url.searchParams.get("billing");
-    if (billingResult === "success") {
+    const paymentId = url.searchParams.get("razorpay_payment_id") || "";
+    const paymentLinkId = url.searchParams.get("razorpay_payment_link_id") || "";
+    const paymentLinkReferenceId = url.searchParams.get("razorpay_payment_link_reference_id") || "";
+    const paymentLinkStatus = url.searchParams.get("razorpay_payment_link_status") || "";
+    const signature = url.searchParams.get("razorpay_signature") || "";
+
+    if (paymentId && paymentLinkId && paymentLinkReferenceId && paymentLinkStatus && signature) {
+      void verifyBillingPayment({
+        razorpay_payment_id: paymentId,
+        razorpay_payment_link_id: paymentLinkId,
+        razorpay_payment_link_reference_id: paymentLinkReferenceId,
+        razorpay_payment_link_status: paymentLinkStatus,
+        razorpay_signature: signature,
+      })
+        .then(async () => {
+          toast.success("Payment verified. Your PlacePrep tier is updated.");
+          await queryClient.invalidateQueries({ queryKey: ["billing", "account"] });
+          await refreshProfile();
+        })
+        .catch((error) => {
+          toast.error(error instanceof Error ? error.message : "Payment completed, but verification is still pending.");
+          void queryClient.invalidateQueries({ queryKey: ["billing", "account"] });
+        });
+    } else if (billingResult === "success") {
       toast.success("Payment completed. Your tier will update after confirmation.");
       void queryClient.invalidateQueries({ queryKey: ["billing", "account"] });
       void refreshProfile();
@@ -470,9 +502,14 @@ export default function SettingsPage() {
       toast.error("Payment checkout was cancelled.");
     }
 
-    if (billingResult) {
+    if (billingResult || paymentLinkId || paymentId || signature) {
       url.searchParams.delete("billing");
       url.searchParams.delete("session_id");
+      url.searchParams.delete("razorpay_payment_id");
+      url.searchParams.delete("razorpay_payment_link_id");
+      url.searchParams.delete("razorpay_payment_link_reference_id");
+      url.searchParams.delete("razorpay_payment_link_status");
+      url.searchParams.delete("razorpay_signature");
       window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
     }
   }, [queryClient, refreshProfile]);

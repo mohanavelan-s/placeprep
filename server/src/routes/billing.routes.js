@@ -40,6 +40,12 @@ router.post(
     body('orderId').optional().isString().trim(),
     body('paymentId').optional().isString().trim(),
     body('signature').optional().isString().trim(),
+    body('razorpay_payment_link_id').optional().isString().trim(),
+    body('razorpay_payment_link_reference_id').optional().isString().trim(),
+    body('razorpay_payment_link_status').optional().isString().trim(),
+    body('paymentLinkId').optional().isString().trim(),
+    body('paymentLinkReferenceId').optional().isString().trim(),
+    body('paymentLinkStatus').optional().isString().trim(),
   ],
   validate,
   asyncHandler(controller.verifyCheckoutPayment)

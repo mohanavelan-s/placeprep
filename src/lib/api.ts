@@ -95,6 +95,7 @@ export interface BillingCheckoutSession {
   id: string;
   orderId?: string;
   order_id?: string;
+  paymentLinkId?: string;
   keyId?: string;
   amount?: number;
   currency?: string;
@@ -106,7 +107,7 @@ export interface BillingCheckoutSession {
   };
   notes?: Record<string, string>;
   url?: string;
-  mode: "payment" | string;
+  mode: "payment" | "hosted" | string;
   targetTier: "pro" | "college";
   billingCycle?: "monthly" | "annual" | string;
   planKey?: string;
@@ -117,7 +118,8 @@ export interface BillingVerificationResult {
   tier: "pro" | "college";
   status: string;
   paymentId: string;
-  orderId: string;
+  orderId?: string;
+  paymentLinkId?: string;
 }
 
 export interface BillingPortalSession {

@@ -142,6 +142,30 @@ async function findSubscriptionByStripeId(stripeSubscriptionId, client = null) {
   return result.rows[0] || null;
 }
 
+async function findSubscriptionByMetadataValue(key, value, client = null) {
+  const allowedKeys = new Set([
+    'razorpayPaymentLinkId',
+    'razorpayPaymentLinkReferenceId',
+    'razorpayOrderId',
+  ]);
+
+  if (!allowedKeys.has(key) || !value) {
+    return null;
+  }
+
+  const execute = getExecutor(client);
+  const result = await execute(
+    `SELECT ${subscriptionColumns}
+     FROM billing_subscriptions
+     WHERE metadata ->> $1 = $2
+     ORDER BY updated_at DESC, created_at DESC
+     LIMIT 1`,
+    [key, value],
+  );
+
+  return result.rows[0] || null;
+}
+
 async function upsertSubscription(payload, client = null) {
   const execute = getExecutor(client);
   const result = await execute(
@@ -263,6 +287,7 @@ module.exports = {
   findCustomerByStripeId,
   upsertCustomer,
   findSubscriptionByStripeId,
+  findSubscriptionByMetadataValue,
   upsertSubscription,
   listSubscriptionsByUserId,
   findLatestSubscriptionByUserId,

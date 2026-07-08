@@ -155,6 +155,8 @@ const env = {
   razorpayKeyId: process.env.RAZORPAY_KEY_ID || '',
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || '',
   razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+  razorpayCheckoutMode: String(process.env.RAZORPAY_CHECKOUT_MODE || 'payment').trim().toLowerCase(),
+  razorpayPaymentLinkCallbackUrl: process.env.RAZORPAY_PAYMENT_LINK_CALLBACK_URL || '',
   razorpayCurrency: process.env.RAZORPAY_CURRENCY || 'INR',
   razorpayProMonthlyAmount: Number(process.env.RAZORPAY_PRO_MONTHLY_AMOUNT || process.env.RAZORPAY_PRO_AMOUNT || 0),
   razorpayProAnnualAmount: Number(process.env.RAZORPAY_PRO_ANNUAL_AMOUNT || 0),

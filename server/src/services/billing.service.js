@@ -164,6 +164,18 @@ function toRazorpayError(error) {
   });
 }
 
+function getCheckoutMode() {
+  return env.razorpayCheckoutMode === 'hosted' ? 'hosted' : 'payment';
+}
+
+function getPaymentLinkCallbackUrl() {
+  if (env.razorpayPaymentLinkCallbackUrl) {
+    return env.razorpayPaymentLinkCallbackUrl;
+  }
+
+  return `${env.clientUrl || env.appUrl}/settings?billing=return`;
+}
+
 function getStatus() {
   const availablePlans = Object.values(BILLING_PLANS)
     .map((plan) => ({
@@ -183,7 +195,7 @@ function getStatus() {
     checkoutEnabled: env.razorpayCheckoutEnabled,
     publishableKeyConfigured: Boolean(env.razorpayKeyId),
     webhookConfigured: Boolean(env.razorpayWebhookSecret),
-    checkoutMode: 'payment',
+    checkoutMode: getCheckoutMode(),
     keyId: env.razorpayKeyId || null,
     currency: env.razorpayCurrency,
     availablePlans,
@@ -232,59 +244,79 @@ async function getAccount(user) {
     };
   }
 }
-async function createCheckoutSession(user, payload = {}) {
-  const plan = resolvePlan(payload);
-  requireRazorpayConfigured();
-
+function buildCheckoutReference(plan, user) {
   const compactPlanKey = plan.planKey.replace(/[^a-z0-9]/gi, '').slice(0, 12).toLowerCase();
-  const receipt = `pp_${compactPlanKey}_${Date.now().toString(36)}_${String(user.id).replace(/-/g, '').slice(0, 6)}`;
-  let order;
-  try {
-    order = await getRazorpayClient().orders.create({
-      amount: plan.amount,
-      currency: env.razorpayCurrency,
-      receipt,
-      notes: {
-        placeprepUserId: user.id,
-        placeprepUserEmail: user.email,
-        targetTier: plan.tier,
-        billingCycle: plan.billingCycle,
-        planKey: plan.planKey,
-        source: 'placeprep-billing',
-      },
-    });
-  } catch (error) {
-    throw toRazorpayError(error);
-  }
+  return `pp_${compactPlanKey}_${Date.now().toString(36)}_${String(user.id).replace(/-/g, '').slice(0, 6)}`;
+}
 
+function buildBillingNotes(user, plan, extra = {}) {
+  return {
+    placeprepUserId: user.id,
+    placeprepUserEmail: user.email,
+    targetTier: plan.tier,
+    billingCycle: plan.billingCycle,
+    planKey: plan.planKey,
+    source: 'placeprep-billing',
+    ...extra,
+  };
+}
+
+async function persistPendingCheckout({ user, plan, providerId, checkoutSessionId, status, priceId, metadata }) {
   await billingRepository.upsertCustomer({
     userId: user.id,
     stripeCustomerId: `razorpay_user_${user.id}`,
     email: user.email,
     metadata: {
       provider: 'razorpay',
-      source: 'order-created',
+      source: 'checkout-created',
     },
   });
 
-  await billingRepository.upsertSubscription({
+  return billingRepository.upsertSubscription({
     userId: user.id,
     stripeCustomerId: `razorpay_user_${user.id}`,
-    stripeSubscriptionId: order.id,
-    checkoutSessionId: order.id,
+    stripeSubscriptionId: providerId,
+    checkoutSessionId,
     tier: plan.tier,
-    status: order.status || 'created',
-    priceId: `${env.razorpayCurrency}_${plan.planKey}_${plan.amount}`,
+    status: status || 'created',
+    priceId: priceId || `${env.razorpayCurrency}_${plan.planKey}_${plan.amount}`,
     currentPeriodStart: null,
     currentPeriodEnd: null,
     metadata: {
       provider: 'razorpay',
-      razorpayOrderId: order.id,
       planKey: plan.planKey,
       billingCycle: plan.billingCycle,
       billingDurationMonths: plan.durationMonths,
       amount: plan.amount,
       currency: env.razorpayCurrency,
+      checkoutMode: getCheckoutMode(),
+      ...metadata,
+    },
+  });
+}
+
+async function createRazorpayOrderSession(user, plan) {
+  const receipt = buildCheckoutReference(plan, user);
+  let order;
+  try {
+    order = await getRazorpayClient().orders.create({
+      amount: plan.amount,
+      currency: env.razorpayCurrency,
+      receipt,
+      notes: buildBillingNotes(user, plan),
+    });
+  } catch (error) {
+    throw toRazorpayError(error);
+  }
+
+  await persistPendingCheckout({
+    user,
+    plan,
+    providerId: order.id,
+    checkoutSessionId: order.id,
+    status: order.status || 'created',
+    metadata: {
+      razorpayOrderId: order.id,
       receipt,
     },
   });
@@ -311,15 +343,132 @@ async function createCheckoutSession(user, payload = {}) {
   };
 }
 
-function verifyPaymentSignature({ orderId, paymentId, signature }) {
+async function createRazorpayPaymentLinkSession(user, plan) {
+  const referenceId = buildCheckoutReference(plan, user);
+  let paymentLink;
+  try {
+    paymentLink = await getRazorpayClient().paymentLink.create({
+      amount: plan.amount,
+      currency: env.razorpayCurrency,
+      accept_partial: false,
+      reference_id: referenceId,
+      description: `${plan.label} access`,
+      customer: {
+        name: user.name || user.email || 'PlacePrep learner',
+        email: user.email,
+      },
+      notify: {
+        sms: false,
+        email: false,
+      },
+      reminder_enable: false,
+      callback_url: getPaymentLinkCallbackUrl(),
+      callback_method: 'get',
+      notes: buildBillingNotes(user, plan, {
+        razorpayPaymentLinkReferenceId: referenceId,
+      }),
+    });
+  } catch (error) {
+    throw toRazorpayError(error);
+  }
+
+  await persistPendingCheckout({
+    user,
+    plan,
+    providerId: paymentLink.id,
+    checkoutSessionId: paymentLink.id,
+    status: paymentLink.status || 'created',
+    metadata: {
+      razorpayPaymentLinkId: paymentLink.id,
+      razorpayPaymentLinkReferenceId: referenceId,
+      shortUrl: paymentLink.short_url || null,
+      callbackUrl: getPaymentLinkCallbackUrl(),
+    },
+  });
+
+  return {
+    provider: 'razorpay',
+    id: paymentLink.id,
+    paymentLinkId: paymentLink.id,
+    keyId: env.razorpayKeyId,
+    amount: paymentLink.amount || plan.amount,
+    currency: paymentLink.currency || env.razorpayCurrency,
+    name: 'PlacePrep',
+    description: `${plan.label} access`,
+    url: paymentLink.short_url,
+    targetTier: plan.tier,
+    billingCycle: plan.billingCycle,
+    planKey: plan.planKey,
+    mode: 'hosted',
+  };
+}
+
+async function createCheckoutSession(user, payload = {}) {
+  const plan = resolvePlan(payload);
+  requireRazorpayConfigured();
+
+  if (getCheckoutMode() === 'hosted') {
+    return createRazorpayPaymentLinkSession(user, plan);
+  }
+
+  return createRazorpayOrderSession(user, plan);
+}
+
+function verifyHmacPayload(payload, signature) {
   const expected = crypto
     .createHmac('sha256', env.razorpayKeySecret)
-    .update(`${orderId}|${paymentId}`)
+    .update(payload)
     .digest('hex');
 
   const received = String(signature || '');
   return expected.length === received.length
     && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received));
+}
+
+function verifyPaymentSignature({ orderId, paymentId, signature }) {
+  return verifyHmacPayload(`${orderId}|${paymentId}`, signature);
+}
+
+function verifyPaymentLinkSignature({ paymentLinkId, paymentLinkReferenceId, paymentLinkStatus, paymentId, signature }) {
+  return verifyHmacPayload(`${paymentLinkId}|${paymentLinkReferenceId}|${paymentLinkStatus}|${paymentId}`, signature);
+}
+
+function assertExpectedPaymentDetails({ existing, payment, paymentLink = null, providerId }) {
+  const expectedAmount = Number(existing.metadata?.amount || 0);
+  const expectedCurrency = String(existing.metadata?.currency || env.razorpayCurrency).toUpperCase();
+  const paymentAmount = Number(payment?.amount || paymentLink?.amount || 0);
+  const paymentCurrency = String(payment?.currency || paymentLink?.currency || '').toUpperCase();
+
+  if (!expectedAmount || paymentAmount !== expectedAmount) {
+    throw new AppError('Razorpay payment amount does not match this plan.', 400, {
+      code: 'razorpay_amount_mismatch',
+      expectedAmount,
+      paymentAmount,
+      providerId,
+    });
+  }
+
+  if (paymentCurrency !== expectedCurrency) {
+    throw new AppError('Razorpay payment currency does not match this plan.', 400, {
+      code: 'razorpay_currency_mismatch',
+      expectedCurrency,
+      paymentCurrency,
+      providerId,
+    });
+  }
+
+  if (payment?.status !== 'captured') {
+    throw new AppError('Razorpay payment is not captured yet.', 402, {
+      code: 'razorpay_payment_not_captured',
+      status: payment?.status,
+      providerId,
+    });
+  }
+
+  return {
+    expectedAmount,
+    expectedCurrency,
+  };
 }
 
 function buildBillingMetadata(currentUser, subscription, activeBillingTier = null) {
@@ -398,19 +547,7 @@ async function reconcileUserTier(userId, latestSubscription = null, client = nul
   return currentUser;
 }
 
-async function verifyCheckoutPayment(user, payload = {}) {
-  requireRazorpayConfigured();
-
-  const orderId = String(payload.razorpay_order_id || payload.orderId || '').trim();
-  const paymentId = String(payload.razorpay_payment_id || payload.paymentId || '').trim();
-  const signature = String(payload.razorpay_signature || payload.signature || '').trim();
-
-  if (!orderId || !paymentId || !signature) {
-    throw new AppError('Razorpay payment verification payload is incomplete.', 400, {
-      code: 'razorpay_verification_payload_invalid',
-    });
-  }
-
+async function verifyOrderCheckoutPayment(user, { orderId, paymentId, signature }) {
   if (!verifyPaymentSignature({ orderId, paymentId, signature })) {
     throw new AppError('Razorpay payment signature is invalid.', 400, {
       code: 'razorpay_signature_invalid',
@@ -432,53 +569,28 @@ async function verifyCheckoutPayment(user, payload = {}) {
       throw toRazorpayError(error);
     }
 
-    const expectedAmount = Number(existing.metadata?.amount || 0);
-    const expectedCurrency = String(existing.metadata?.currency || env.razorpayCurrency).toUpperCase();
-    const paymentAmount = Number(payment.amount || 0);
-    const paymentCurrency = String(payment.currency || '').toUpperCase();
     const paymentOrderId = String(payment.order_id || '').trim();
-
     if (paymentOrderId !== orderId) {
       throw new AppError('Razorpay payment does not belong to this order.', 400, {
         code: 'razorpay_order_mismatch',
       });
     }
 
-    if (!expectedAmount || paymentAmount !== expectedAmount) {
-      throw new AppError('Razorpay payment amount does not match this plan.', 400, {
-        code: 'razorpay_amount_mismatch',
-        expectedAmount,
-        paymentAmount,
-      });
-    }
+    const { expectedAmount, expectedCurrency } = assertExpectedPaymentDetails({
+      existing,
+      payment,
+      providerId: orderId,
+    });
 
-    if (paymentCurrency !== expectedCurrency) {
-      throw new AppError('Razorpay payment currency does not match this plan.', 400, {
-        code: 'razorpay_currency_mismatch',
-        expectedCurrency,
-        paymentCurrency,
-      });
-    }
-
-    if (payment.status !== 'captured') {
-      throw new AppError('Razorpay payment is not captured yet.', 402, {
-        code: 'razorpay_payment_not_captured',
-        status: payment.status,
-      });
-    }
-
-    const status = 'active';
     const periodStart = new Date();
-    const periodEnd = ACCESS_STATUSES.has(status)
-      ? addMonths(periodStart, Number(existing.metadata?.billingDurationMonths || 1))
-      : null;
+    const periodEnd = addMonths(periodStart, Number(existing.metadata?.billingDurationMonths || 1));
     const persisted = await billingRepository.upsertSubscription({
       userId: user.id,
       stripeCustomerId: existing.stripeCustomerId || `razorpay_user_${user.id}`,
       stripeSubscriptionId: orderId,
       checkoutSessionId: orderId,
       tier: existing.tier,
-      status,
+      status: 'active',
       priceId: existing.priceId,
       currentPeriodStart: periodStart,
       currentPeriodEnd: periodEnd,
@@ -506,6 +618,135 @@ async function verifyCheckoutPayment(user, payload = {}) {
       orderId,
     };
   });
+}
+
+async function verifyPaymentLinkCheckoutPayment(user, {
+  paymentLinkId,
+  paymentLinkReferenceId,
+  paymentLinkStatus,
+  paymentId,
+  signature,
+}) {
+  if (!verifyPaymentLinkSignature({ paymentLinkId, paymentLinkReferenceId, paymentLinkStatus, paymentId, signature })) {
+    throw new AppError('Razorpay payment link signature is invalid.', 400, {
+      code: 'razorpay_payment_link_signature_invalid',
+    });
+  }
+
+  return withTransaction(async (client) => {
+    const existing = await billingRepository.findSubscriptionByStripeId(paymentLinkId, client);
+    if (!existing || existing.userId !== user.id) {
+      throw new AppError('Razorpay payment link does not belong to this account.', 404, {
+        code: 'razorpay_payment_link_missing',
+      });
+    }
+
+    const expectedReferenceId = String(existing.metadata?.razorpayPaymentLinkReferenceId || '').trim();
+    if (!expectedReferenceId || paymentLinkReferenceId !== expectedReferenceId) {
+      throw new AppError('Razorpay payment link reference does not match this checkout.', 400, {
+        code: 'razorpay_payment_link_reference_mismatch',
+      });
+    }
+
+    let payment;
+    let paymentLink;
+    try {
+      [payment, paymentLink] = await Promise.all([
+        getRazorpayClient().payments.fetch(paymentId),
+        getRazorpayClient().paymentLink.fetch(paymentLinkId),
+      ]);
+    } catch (error) {
+      throw toRazorpayError(error);
+    }
+
+    const fetchedLinkStatus = String(paymentLink.status || paymentLinkStatus || '').toLowerCase();
+    if (fetchedLinkStatus !== 'paid') {
+      throw new AppError('Razorpay payment link is not paid yet.', 402, {
+        code: 'razorpay_payment_link_not_paid',
+        status: fetchedLinkStatus,
+      });
+    }
+
+    const { expectedAmount, expectedCurrency } = assertExpectedPaymentDetails({
+      existing,
+      payment,
+      paymentLink,
+      providerId: paymentLinkId,
+    });
+
+    const periodStart = new Date();
+    const periodEnd = addMonths(periodStart, Number(existing.metadata?.billingDurationMonths || 1));
+    const persisted = await billingRepository.upsertSubscription({
+      userId: user.id,
+      stripeCustomerId: existing.stripeCustomerId || `razorpay_user_${user.id}`,
+      stripeSubscriptionId: paymentLinkId,
+      checkoutSessionId: paymentLinkId,
+      tier: existing.tier,
+      status: 'active',
+      priceId: existing.priceId,
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: periodEnd,
+      metadata: {
+        provider: 'razorpay',
+        razorpayPaymentLinkId: paymentLinkId,
+        razorpayPaymentLinkReferenceId: paymentLinkReferenceId,
+        razorpayPaymentLinkStatus: fetchedLinkStatus,
+        razorpayPaymentId: paymentId,
+        planKey: existing.metadata?.planKey || null,
+        billingCycle: existing.metadata?.billingCycle || null,
+        billingDurationMonths: existing.metadata?.billingDurationMonths || null,
+        amount: expectedAmount,
+        currency: expectedCurrency,
+        paymentStatus: payment.status,
+        method: payment.method,
+      },
+    }, client);
+
+    await reconcileUserTier(user.id, persisted, client);
+
+    return {
+      verified: true,
+      tier: persisted.tier,
+      status: persisted.status,
+      paymentId,
+      paymentLinkId,
+    };
+  });
+}
+
+async function verifyCheckoutPayment(user, payload = {}) {
+  requireRazorpayConfigured();
+
+  const orderId = String(payload.razorpay_order_id || payload.orderId || '').trim();
+  const paymentId = String(payload.razorpay_payment_id || payload.paymentId || '').trim();
+  const signature = String(payload.razorpay_signature || payload.signature || '').trim();
+  const paymentLinkId = String(payload.razorpay_payment_link_id || payload.paymentLinkId || '').trim();
+  const paymentLinkReferenceId = String(payload.razorpay_payment_link_reference_id || payload.paymentLinkReferenceId || '').trim();
+  const paymentLinkStatus = String(payload.razorpay_payment_link_status || payload.paymentLinkStatus || '').trim();
+
+  if (paymentLinkId || paymentLinkReferenceId || paymentLinkStatus) {
+    if (!paymentLinkId || !paymentLinkReferenceId || !paymentLinkStatus || !paymentId || !signature) {
+      throw new AppError('Razorpay payment link verification payload is incomplete.', 400, {
+        code: 'razorpay_payment_link_verification_payload_invalid',
+      });
+    }
+
+    return verifyPaymentLinkCheckoutPayment(user, {
+      paymentLinkId,
+      paymentLinkReferenceId,
+      paymentLinkStatus,
+      paymentId,
+      signature,
+    });
+  }
+
+  if (!orderId || !paymentId || !signature) {
+    throw new AppError('Razorpay payment verification payload is incomplete.', 400, {
+      code: 'razorpay_verification_payload_invalid',
+    });
+  }
+
+  return verifyOrderCheckoutPayment(user, { orderId, paymentId, signature });
 }
 
 function verifyWebhookSignature(rawBody, signature) {
@@ -537,35 +778,59 @@ function verifyWebhookSignature(rawBody, signature) {
   return JSON.parse(raw.toString('utf8'));
 }
 
+async function findExistingSubscriptionForWebhook(event, client = null) {
+  const payment = event?.payload?.payment?.entity || null;
+  const order = event?.payload?.order?.entity || null;
+  const paymentLink = event?.payload?.payment_link?.entity || null;
+  const notes = payment?.notes || order?.notes || paymentLink?.notes || {};
+  const candidates = [
+    payment?.order_id,
+    order?.id,
+    paymentLink?.id,
+    payment?.payment_link_id,
+    notes.razorpayPaymentLinkId,
+  ].map((value) => String(value || '').trim()).filter(Boolean);
+
+  for (const candidate of candidates) {
+    const subscription = await billingRepository.findSubscriptionByStripeId(candidate, client);
+    if (subscription) {
+      return { subscription, providerId: candidate, payment, order, paymentLink, notes };
+    }
+  }
+
+  const referenceId = String(
+    paymentLink?.reference_id
+      || payment?.payment_link_reference_id
+      || notes.razorpayPaymentLinkReferenceId
+      || ''
+  ).trim();
+
+  if (referenceId) {
+    const subscription = await billingRepository.findSubscriptionByMetadataValue('razorpayPaymentLinkReferenceId', referenceId, client);
+    if (subscription) {
+      return { subscription, providerId: subscription.stripeSubscriptionId, payment, order, paymentLink, notes };
+    }
+  }
+
+  return null;
+}
+
 async function processWebhookEvent(event, client = null) {
-  const entity = event?.payload?.payment?.entity || event?.payload?.order?.entity || {};
-  const orderId = entity.order_id || entity.id;
-  if (!orderId) {
+  const resolved = await findExistingSubscriptionForWebhook(event, client);
+  if (!resolved) {
     return null;
   }
 
-  const existing = await billingRepository.findSubscriptionByStripeId(orderId, client);
-  if (!existing) {
-    return null;
-  }
-
+  const { subscription: existing, providerId, payment, order, paymentLink } = resolved;
+  const entity = payment || paymentLink || order || {};
   const expectedAmount = Number(existing.metadata?.amount || 0);
   const expectedCurrency = String(existing.metadata?.currency || env.razorpayCurrency).toUpperCase();
   const entityAmount = entity.amount ? Number(entity.amount) : null;
   const entityCurrency = entity.currency ? String(entity.currency).toUpperCase() : null;
 
-  if (entity.order_id && entity.order_id !== orderId) {
-    console.warn('Ignoring Razorpay webhook with mismatched order id', {
-      subscriptionOrderId: orderId,
-      entityOrderId: entity.order_id,
-      event: event.event,
-    });
-    return null;
-  }
-
   if (entityAmount && expectedAmount && entityAmount !== expectedAmount) {
     console.warn('Ignoring Razorpay webhook with mismatched amount', {
-      orderId,
+      providerId,
       expectedAmount,
       entityAmount,
       event: event.event,
@@ -575,7 +840,7 @@ async function processWebhookEvent(event, client = null) {
 
   if (entityCurrency && entityCurrency !== expectedCurrency) {
     console.warn('Ignoring Razorpay webhook with mismatched currency', {
-      orderId,
+      providerId,
       expectedCurrency,
       entityCurrency,
       event: event.event,
@@ -583,7 +848,8 @@ async function processWebhookEvent(event, client = null) {
     return null;
   }
 
-  const status = entity.status === 'captured' ? 'active' : entity.status || existing.status;
+  const rawStatus = String(entity.status || existing.status || '').toLowerCase();
+  const status = rawStatus === 'captured' || rawStatus === 'paid' ? 'active' : rawStatus;
   const periodStart = ACCESS_STATUSES.has(status) && !existing.currentPeriodStart
     ? new Date()
     : existing.currentPeriodStart;
@@ -593,8 +859,8 @@ async function processWebhookEvent(event, client = null) {
   const persisted = await billingRepository.upsertSubscription({
     userId: existing.userId,
     stripeCustomerId: existing.stripeCustomerId,
-    stripeSubscriptionId: orderId,
-    checkoutSessionId: existing.checkoutSessionId || orderId,
+    stripeSubscriptionId: existing.stripeSubscriptionId,
+    checkoutSessionId: existing.checkoutSessionId || providerId,
     tier: existing.tier,
     status,
     priceId: existing.priceId,
@@ -603,7 +869,10 @@ async function processWebhookEvent(event, client = null) {
     metadata: {
       provider: 'razorpay',
       webhookEvent: event.event,
-      razorpayPaymentId: entity.id,
+      razorpayOrderId: payment?.order_id || order?.id || existing.metadata?.razorpayOrderId || null,
+      razorpayPaymentLinkId: paymentLink?.id || payment?.payment_link_id || existing.metadata?.razorpayPaymentLinkId || null,
+      razorpayPaymentLinkReferenceId: paymentLink?.reference_id || existing.metadata?.razorpayPaymentLinkReferenceId || null,
+      razorpayPaymentId: payment?.id || existing.metadata?.razorpayPaymentId || null,
       planKey: existing.metadata?.planKey || null,
       billingCycle: existing.metadata?.billingCycle || null,
       billingDurationMonths: existing.metadata?.billingDurationMonths || null,
@@ -618,7 +887,7 @@ async function processWebhookEvent(event, client = null) {
 
 async function handleWebhook(rawBody, signature) {
   const event = verifyWebhookSignature(rawBody, signature);
-  event.id = event.id || `${event.event}:${event.created_at || Date.now()}:${event.payload?.payment?.entity?.id || event.payload?.order?.entity?.id || 'unknown'}`;
+  event.id = event.id || `${event.event}:${event.created_at || Date.now()}:${event.payload?.payment?.entity?.id || event.payload?.order?.entity?.id || event.payload?.payment_link?.entity?.id || 'unknown'}`;
   event.type = event.event || 'razorpay.event';
 
   const result = await withTransaction(async (client) => {
