@@ -137,8 +137,41 @@ declare global {
     Razorpay?: new (options: Record<string, unknown>) => {
       on: (event: "payment.failed", handler: (response: { error?: { description?: string; reason?: string } }) => void) => void;
       open: () => void;
+      close?: () => void;
     };
   }
+}
+
+function applyRazorpayCheckoutSizing() {
+  let attempts = 0;
+
+  const applySizing = () => {
+    attempts += 1;
+    const container = document.querySelector<HTMLElement>(".razorpay-container");
+    const frame = container?.querySelector<HTMLIFrameElement>("iframe");
+
+    if (!container || !frame) {
+      return false;
+    }
+
+    container.style.setProperty("z-index", "2147483647", "important");
+    frame.style.setProperty("width", "min(1040px, calc(100vw - 32px))", "important");
+    frame.style.setProperty("height", "min(780px, calc(100vh - 32px))", "important");
+    frame.style.setProperty("max-width", "calc(100vw - 32px)", "important");
+    frame.style.setProperty("max-height", "calc(100vh - 32px)", "important");
+    frame.style.setProperty("border-radius", "10px", "important");
+    return true;
+  };
+
+  applySizing();
+  const interval = window.setInterval(() => {
+    const applied = applySizing();
+    if ((applied && attempts >= 8) || attempts >= 30) {
+      window.clearInterval(interval);
+    }
+  }, 150);
+
+  return () => window.clearInterval(interval);
 }
 
 function formatDeliveryReason(reason?: string) {
@@ -337,6 +370,12 @@ export default function SettingsPage() {
 
       await new Promise<void>((resolve, reject) => {
         let settled = false;
+        let stopSizing: (() => void) | undefined;
+
+        const finish = () => {
+          stopSizing?.();
+        };
+
         const checkout = new window.Razorpay({
           key: session.keyId,
           amount: session.amount,
@@ -346,13 +385,23 @@ export default function SettingsPage() {
           order_id: session.orderId,
           prefill: session.prefill || {},
           notes: session.notes || {},
+          timeout: 300,
+          retry: {
+            enabled: true,
+            max_count: 2,
+          },
+          theme: {
+            color: "#9f2d2d",
+          },
           handler: async (response: RazorpayResponse) => {
             try {
               await verifyBillingPayment(response);
               settled = true;
+              finish();
               resolve();
             } catch (error) {
               settled = true;
+              finish();
               reject(error);
             }
           },
@@ -360,7 +409,8 @@ export default function SettingsPage() {
             ondismiss: () => {
               if (!settled) {
                 settled = true;
-                reject(new Error("Razorpay checkout was closed."));
+                finish();
+                reject(new Error("Razorpay checkout was closed. Start checkout again to generate a fresh QR."));
               }
             },
           },
@@ -368,10 +418,12 @@ export default function SettingsPage() {
         checkout.on("payment.failed", (response) => {
           if (!settled) {
             settled = true;
+            finish();
             reject(new Error(response.error?.description || response.error?.reason || "Razorpay payment failed."));
           }
         });
         checkout.open();
+        stopSizing = applyRazorpayCheckoutSizing();
       });
     },
     onSuccess: async () => {
