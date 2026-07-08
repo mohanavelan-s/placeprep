@@ -29,6 +29,9 @@ function buildOwnerCoachMetadata(coachMetadata = {}) {
     ...(isPlainObject(coachMetadata) ? coachMetadata : {}),
     accessTier: 'standard',
     owner: true,
+    unlimitedAccess: true,
+    billingTier: OWNER_TIER,
+    billingStatus: 'owner_unlimited',
   };
 }
 

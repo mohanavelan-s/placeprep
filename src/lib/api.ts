@@ -914,7 +914,7 @@ interface RegisterPayload {
 
 const DEFAULT_API_BASE_URL = "/api";
 const PRODUCTION_API_FALLBACK_URLS = [
-  "https://placeprep-api-production-3670.up.railway.app/api",
+  "https://placeprep-api-production-8fc4.up.railway.app/api",
 ] as const;
 const KNOWN_ENDPOINT_SUFFIXES = [
   "/api/health",

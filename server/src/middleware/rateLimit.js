@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 
 const env = require('../config/env');
+const { isOwnerEmail } = require('../utils/ownerAccess');
 
 function attachRateLimitIdentity(req, res, next) {
   const authHeader = req.headers.authorization || '';
@@ -14,6 +15,9 @@ function attachRateLimitIdentity(req, res, next) {
 
   try {
     const payload = jwt.verify(token, env.jwtSecret);
+    if (isOwnerEmail(payload?.email)) {
+      req.rateLimitOwner = true;
+    }
     if (payload?.sub) {
       req.rateLimitUserId = payload.sub;
     }
@@ -34,6 +38,7 @@ function createLimiter({ windowMs, max, message }) {
   return rateLimit({
     windowMs,
     max,
+    skip: (req) => Boolean(req.rateLimitOwner),
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: buildKey,

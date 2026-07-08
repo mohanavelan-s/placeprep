@@ -147,6 +147,11 @@ function getRazorpayClient() {
   return razorpayClient;
 }
 
+function isMissingBillingStorageError(error) {
+  return error?.code === '42P01'
+    || /billing_(customers|subscriptions|events)/i.test(String(error?.message || ''));
+}
+
 function toRazorpayError(error) {
   const statusCode = Number(error?.statusCode || error?.status_code || 500);
   const code = error?.error?.code || error?.code || 'razorpay_request_failed';
@@ -186,25 +191,47 @@ function getStatus() {
 }
 
 async function getAccount(user) {
-  const reconciledUser = await reconcileUserTier(user.id);
-  const [customer, latestSubscription] = await Promise.all([
-    billingRepository.findCustomerByUserId(user.id),
-    billingRepository.findLatestSubscriptionByUserId(user.id),
-  ]);
-  const currentUser = reconciledUser || await userRepository.findById(user.id);
+  try {
+    const reconciledUser = await reconcileUserTier(user.id);
+    const [customer, latestSubscription] = await Promise.all([
+      billingRepository.findCustomerByUserId(user.id),
+      billingRepository.findLatestSubscriptionByUserId(user.id),
+    ]);
+    const currentUser = reconciledUser || await userRepository.findById(user.id);
 
-  return {
-    tier: currentUser?.tier || user.tier || 'free',
-    billingTier: currentUser?.coachMetadata?.billingTier || null,
-    billingStatus: currentUser?.coachMetadata?.billingStatus || null,
-    billingCycle: currentUser?.coachMetadata?.billingCycle || latestSubscription?.metadata?.billingCycle || null,
-    razorpayCustomerId: customer?.stripeCustomerId || null,
-    customer,
-    subscription: latestSubscription,
-    canManageBilling: false,
-  };
+    return {
+      tier: currentUser?.tier || user.tier || 'free',
+      billingTier: currentUser?.coachMetadata?.billingTier || null,
+      billingStatus: currentUser?.coachMetadata?.billingStatus || null,
+      billingCycle: currentUser?.coachMetadata?.billingCycle || latestSubscription?.metadata?.billingCycle || null,
+      razorpayCustomerId: customer?.stripeCustomerId || null,
+      customer,
+      subscription: latestSubscription,
+      canManageBilling: false,
+    };
+  } catch (error) {
+    if (!isMissingBillingStorageError(error)) {
+      throw error;
+    }
+
+    console.warn('[billing] Billing account storage is not migrated yet; returning profile tier only.', {
+      userId: user.id,
+      reason: error.message,
+    });
+    const currentUser = await userRepository.findById(user.id);
+    return {
+      tier: currentUser?.tier || user.tier || 'free',
+      billingTier: currentUser?.coachMetadata?.billingTier || null,
+      billingStatus: currentUser?.coachMetadata?.billingStatus || null,
+      billingCycle: currentUser?.coachMetadata?.billingCycle || null,
+      razorpayCustomerId: null,
+      customer: null,
+      subscription: null,
+      canManageBilling: false,
+      migrationRequired: true,
+    };
+  }
 }
-
 async function createCheckoutSession(user, payload = {}) {
   const plan = resolvePlan(payload);
   requireRazorpayConfigured();
