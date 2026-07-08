@@ -431,7 +431,43 @@ async function verifyCheckoutPayment(user, payload = {}) {
     } catch (error) {
       throw toRazorpayError(error);
     }
-    const status = payment.status === 'captured' ? 'active' : payment.status;
+
+    const expectedAmount = Number(existing.metadata?.amount || 0);
+    const expectedCurrency = String(existing.metadata?.currency || env.razorpayCurrency).toUpperCase();
+    const paymentAmount = Number(payment.amount || 0);
+    const paymentCurrency = String(payment.currency || '').toUpperCase();
+    const paymentOrderId = String(payment.order_id || '').trim();
+
+    if (paymentOrderId !== orderId) {
+      throw new AppError('Razorpay payment does not belong to this order.', 400, {
+        code: 'razorpay_order_mismatch',
+      });
+    }
+
+    if (!expectedAmount || paymentAmount !== expectedAmount) {
+      throw new AppError('Razorpay payment amount does not match this plan.', 400, {
+        code: 'razorpay_amount_mismatch',
+        expectedAmount,
+        paymentAmount,
+      });
+    }
+
+    if (paymentCurrency !== expectedCurrency) {
+      throw new AppError('Razorpay payment currency does not match this plan.', 400, {
+        code: 'razorpay_currency_mismatch',
+        expectedCurrency,
+        paymentCurrency,
+      });
+    }
+
+    if (payment.status !== 'captured') {
+      throw new AppError('Razorpay payment is not captured yet.', 402, {
+        code: 'razorpay_payment_not_captured',
+        status: payment.status,
+      });
+    }
+
+    const status = 'active';
     const periodStart = new Date();
     const periodEnd = ACCESS_STATUSES.has(status)
       ? addMonths(periodStart, Number(existing.metadata?.billingDurationMonths || 1))
@@ -453,6 +489,8 @@ async function verifyCheckoutPayment(user, payload = {}) {
         planKey: existing.metadata?.planKey || null,
         billingCycle: existing.metadata?.billingCycle || null,
         billingDurationMonths: existing.metadata?.billingDurationMonths || null,
+        amount: expectedAmount,
+        currency: expectedCurrency,
         paymentStatus: payment.status,
         method: payment.method,
       },
@@ -511,6 +549,40 @@ async function processWebhookEvent(event, client = null) {
     return null;
   }
 
+  const expectedAmount = Number(existing.metadata?.amount || 0);
+  const expectedCurrency = String(existing.metadata?.currency || env.razorpayCurrency).toUpperCase();
+  const entityAmount = entity.amount ? Number(entity.amount) : null;
+  const entityCurrency = entity.currency ? String(entity.currency).toUpperCase() : null;
+
+  if (entity.order_id && entity.order_id !== orderId) {
+    console.warn('Ignoring Razorpay webhook with mismatched order id', {
+      subscriptionOrderId: orderId,
+      entityOrderId: entity.order_id,
+      event: event.event,
+    });
+    return null;
+  }
+
+  if (entityAmount && expectedAmount && entityAmount !== expectedAmount) {
+    console.warn('Ignoring Razorpay webhook with mismatched amount', {
+      orderId,
+      expectedAmount,
+      entityAmount,
+      event: event.event,
+    });
+    return null;
+  }
+
+  if (entityCurrency && entityCurrency !== expectedCurrency) {
+    console.warn('Ignoring Razorpay webhook with mismatched currency', {
+      orderId,
+      expectedCurrency,
+      entityCurrency,
+      event: event.event,
+    });
+    return null;
+  }
+
   const status = entity.status === 'captured' ? 'active' : entity.status || existing.status;
   const periodStart = ACCESS_STATUSES.has(status) && !existing.currentPeriodStart
     ? new Date()
@@ -535,6 +607,8 @@ async function processWebhookEvent(event, client = null) {
       planKey: existing.metadata?.planKey || null,
       billingCycle: existing.metadata?.billingCycle || null,
       billingDurationMonths: existing.metadata?.billingDurationMonths || null,
+      amount: expectedAmount,
+      currency: expectedCurrency,
     },
   }, client);
 
