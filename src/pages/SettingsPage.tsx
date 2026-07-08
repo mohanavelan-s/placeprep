@@ -155,11 +155,23 @@ function applyRazorpayCheckoutSizing() {
     }
 
     container.style.setProperty("z-index", "2147483647", "important");
-    frame.style.setProperty("width", "min(1040px, calc(100vw - 32px))", "important");
-    frame.style.setProperty("height", "min(780px, calc(100vh - 32px))", "important");
-    frame.style.setProperty("max-width", "calc(100vw - 32px)", "important");
-    frame.style.setProperty("max-height", "calc(100vh - 32px)", "important");
-    frame.style.setProperty("border-radius", "10px", "important");
+    container.style.setProperty("position", "fixed", "important");
+    container.style.setProperty("inset", "0", "important");
+    container.style.setProperty("display", "flex", "important");
+    container.style.setProperty("align-items", "center", "important");
+    container.style.setProperty("justify-content", "center", "important");
+    frame.style.setProperty("position", "fixed", "important");
+    frame.style.setProperty("top", "50%", "important");
+    frame.style.setProperty("left", "50%", "important");
+    frame.style.setProperty("right", "auto", "important");
+    frame.style.setProperty("bottom", "auto", "important");
+    frame.style.setProperty("transform", "translate(-50%, -50%)", "important");
+    frame.style.setProperty("width", "calc(100vw - 24px)", "important");
+    frame.style.setProperty("height", "calc(100vh - 24px)", "important");
+    frame.style.setProperty("max-width", "1280px", "important");
+    frame.style.setProperty("max-height", "860px", "important");
+    frame.style.setProperty("border-radius", "12px", "important");
+    frame.style.setProperty("box-shadow", "0 28px 90px rgba(0, 0, 0, 0.55)", "important");
     return true;
   };
 
