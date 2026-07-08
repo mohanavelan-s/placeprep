@@ -236,7 +236,8 @@ async function createCheckoutSession(user, payload = {}) {
   const plan = resolvePlan(payload);
   requireRazorpayConfigured();
 
-  const receipt = `placeprep_${plan.planKey}_${Date.now()}_${String(user.id).slice(0, 8)}`;
+  const compactPlanKey = plan.planKey.replace(/[^a-z0-9]/gi, '').slice(0, 12).toLowerCase();
+  const receipt = `pp_${compactPlanKey}_${Date.now().toString(36)}_${String(user.id).replace(/-/g, '').slice(0, 6)}`;
   let order;
   try {
     order = await getRazorpayClient().orders.create({
