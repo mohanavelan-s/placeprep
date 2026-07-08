@@ -239,10 +239,28 @@ env.razorpayCheckoutEnabled = Boolean(
 );
 
 const requestedEmailProvider = String(env.emailProvider || '').trim().toLowerCase();
-env.emailProvider = env.allowSmtpFallback && requestedEmailProvider === 'smtp' ? 'smtp' : 'resend';
+const supportedEmailProviders = new Set(['resend', 'smtp']);
+const availableEmailProviders = [
+  env.resendEnabled ? 'resend' : null,
+  env.smtpEnabled ? 'smtp' : null,
+].filter(Boolean);
 
-env.emailFrom = env.emailProvider === 'resend' ? env.resendFrom : env.smtpFrom;
-env.emailEnabled = env.emailProvider === 'resend' ? env.resendEnabled : env.smtpEnabled;
+env.emailProvider = supportedEmailProviders.has(requestedEmailProvider)
+  ? requestedEmailProvider
+  : (availableEmailProviders[0] || 'resend');
+
+const secondaryEmailProvider = env.emailProvider === 'resend' ? 'smtp' : 'resend';
+env.emailProviders = [
+  env.emailProvider,
+  env.allowSmtpFallback ? secondaryEmailProvider : null,
+]
+  .filter(Boolean)
+  .filter((provider, index, providers) => providers.indexOf(provider) === index)
+  .filter((provider) => (provider === 'resend' ? env.resendEnabled : env.smtpEnabled));
+
+const activeEmailProvider = env.emailProviders[0] || env.emailProvider;
+env.emailFrom = activeEmailProvider === 'resend' ? env.resendFrom : env.smtpFrom;
+env.emailEnabled = env.emailProviders.length > 0;
 env.inviteOnlyAccess = !env.publicSignupEnabled;
 env.androidPublisherEmails = Array.from(new Set([
   ...env.androidPublisherEmails,

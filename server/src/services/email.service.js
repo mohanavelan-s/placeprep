@@ -17,8 +17,24 @@ const subjectMap = {
 let transporter = null;
 let transporterPromise = null;
 
+function getConfiguredEmailProviders() {
+  if (Array.isArray(env.emailProviders) && env.emailProviders.length) {
+    return env.emailProviders;
+  }
+
+  if (env.emailProvider === 'smtp' && env.smtpEnabled) {
+    return ['smtp'];
+  }
+
+  if (env.emailProvider === 'resend' && env.resendEnabled) {
+    return ['resend'];
+  }
+
+  return [];
+}
+
 function isEmailDeliveryReady() {
-  return env.emailEnabled;
+  return getConfiguredEmailProviders().length > 0;
 }
 
 function isIpv6NetworkFailure(error) {
@@ -34,6 +50,8 @@ function normalizeEmailError(error, fallback = 'email_failed') {
     ? 'smtp_ipv6_unreachable'
     : error?.code === 'RESEND_NOT_CONFIGURED'
       ? 'resend_not_configured'
+    : error?.code === 'SMTP_NOT_CONFIGURED'
+      ? 'smtp_not_configured'
     : /^RESEND_/i.test(error?.code || '')
       ? 'resend_delivery_failed'
     : error?.code === 'ETIMEDOUT' || /timed out|timeout/i.test(error?.message || '')
@@ -90,6 +108,12 @@ async function resolveSmtpHostForTransport() {
 }
 
 async function createTransporter() {
+  if (!env.smtpEnabled) {
+    const error = new Error('SMTP email delivery is not configured.');
+    error.code = 'SMTP_NOT_CONFIGURED';
+    throw error;
+  }
+
   const resolvedHost = await resolveSmtpHostForTransport();
   const transportOptions = {
     host: resolvedHost.host,
@@ -176,21 +200,35 @@ async function sendResendMail(mailOptions) {
 }
 
 async function sendMailMessage(mailOptions) {
-  if (!isEmailDeliveryReady()) {
+  const providers = getConfiguredEmailProviders();
+  if (!providers.length) {
     return null;
   }
 
-  const message = {
-    ...mailOptions,
-    from: mailOptions.from || env.emailFrom,
-  };
+  let lastError = null;
 
-  if (env.emailProvider === 'resend') {
-    return sendResendMail(message);
+  for (const provider of providers) {
+    const message = {
+      ...mailOptions,
+      from: mailOptions.from || (provider === 'resend' ? env.resendFrom : env.smtpFrom) || env.emailFrom,
+    };
+
+    try {
+      if (provider === 'resend') {
+        return await sendResendMail(message);
+      }
+
+      const transport = await getTransporter();
+      return await transport.sendMail(message);
+    } catch (error) {
+      lastError = error;
+      if (providers.length > 1) {
+        console.warn(`[email] ${provider} delivery failed. Trying next configured provider.`, error?.code || error?.message || error);
+      }
+    }
   }
 
-  const transport = await getTransporter();
-  return transport.sendMail(message);
+  throw lastError || new Error('Email delivery failed.');
 }
 
 function escapeHtml(value) {
