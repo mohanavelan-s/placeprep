@@ -61,6 +61,10 @@ export interface ServiceHealth {
   timestamp: string;
   emailEnabled: boolean;
   emailProvider?: "smtp" | "resend";
+  emailProviders?: Array<"smtp" | "resend" | string>;
+  smtpEnabled?: boolean;
+  resendEnabled?: boolean;
+  notificationCron?: string;
   razorpayEnabled?: boolean;
   razorpayCheckoutEnabled?: boolean;
   judge0Enabled?: boolean;
@@ -372,7 +376,18 @@ export type NotificationType =
   | "countdown_urgency"
   | "motivation"
   | "coach_capsule"
-  | "test_notification";
+  | "test_notification"
+  | "plan_pulse"
+  | "consistency_pulse"
+  | "trial_warning_3_days"
+  | "trial_warning_2_days"
+  | "trial_warning_1_day"
+  | "trial_expired"
+  | "payment_success"
+  | "payment_failed"
+  | "subscription_renewed"
+  | "subscription_cancelled"
+  | "plan_upgraded";
 
 export interface PrepNotification {
   id: string;
@@ -916,7 +931,7 @@ interface RegisterPayload {
 
 const DEFAULT_API_BASE_URL = "/api";
 const PRODUCTION_API_FALLBACK_URLS = [
-  "https://placeprep-api-production-8fc4.up.railway.app/api",
+  "https://placeprep-api-production-851e.up.railway.app/api",
 ] as const;
 const KNOWN_ENDPOINT_SUFFIXES = [
   "/api/health",
@@ -1057,9 +1072,10 @@ function resolveApiBaseUrls() {
   const productionFallbackUrls = shouldIncludeProductionApiFallback(primaryUrl)
     ? PRODUCTION_API_FALLBACK_URLS
     : [];
+  const preferSameOriginApi = shouldPreferSameOriginApi() && isLocalApiBaseUrl(primaryUrl);
 
   return Array.from(new Set([
-    ...(shouldPreferSameOriginApi() ? [DEFAULT_API_BASE_URL] : []),
+    ...(preferSameOriginApi ? [DEFAULT_API_BASE_URL] : []),
     primaryUrl,
     ...fallbackUrls,
     ...productionFallbackUrls,

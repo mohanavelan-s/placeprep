@@ -10,7 +10,7 @@ For a stable live APK, point both debug and release to the Railway production AP
 
 Examples:
 
-- Production: `https://placeprep-api-production-3670.up.railway.app/api/`
+- Production: `https://placeprep-api-production-851e.up.railway.app/api/`
 - Local emulator: `http://10.0.2.2:5000/api/`
 - Ngrok: `https://your-ngrok-domain.ngrok-free.app/api/`
 
@@ -24,8 +24,8 @@ Release-ready project properties already live in `android/gradle.properties`:
 
 Current project default:
 
-- `PLACEPREP_API_BASE_URL_RELEASE=https://placeprep-api-production-3670.up.railway.app/api/`
-- `PLACEPREP_API_BASE_URL_DEBUG=https://placeprep-api-production-3670.up.railway.app/api/`
+- `PLACEPREP_API_BASE_URL_RELEASE=https://placeprep-api-production-851e.up.railway.app/api/`
+- `PLACEPREP_API_BASE_URL_DEBUG=https://placeprep-api-production-851e.up.railway.app/api/`
 
 To build a signed APK:
 

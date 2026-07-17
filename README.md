@@ -3,7 +3,7 @@
 Live deployment:
 
 - Web app: [https://placeprep-nine.vercel.app/](https://placeprep-nine.vercel.app/)
-- Backend health: [https://placeprep-api-production-8fc4.up.railway.app/api/health](https://placeprep-api-production-8fc4.up.railway.app/api/health)
+- Backend health: [https://placeprep-api-production-851e.up.railway.app/api/health](https://placeprep-api-production-851e.up.railway.app/api/health)
 
 Access:
 
