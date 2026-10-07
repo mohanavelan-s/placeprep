@@ -930,9 +930,7 @@ interface RegisterPayload {
 }
 
 const DEFAULT_API_BASE_URL = "/api";
-const PRODUCTION_API_FALLBACK_URLS = [
-  "https://placeprep-api-production-851e.up.railway.app/api",
-] as const;
+const PRODUCTION_API_FALLBACK_URLS = [] as const;
 const KNOWN_ENDPOINT_SUFFIXES = [
   "/api/health",
   "/health",
@@ -1172,12 +1170,13 @@ function buildAttemptDetail({
 
 async function request<T>(path: string, options: RequestOptions = {}) {
   try {
-    if (typeof window !== "undefined" && isDemoModeEnabled()) {
+    const token = getStoredToken();
+    const hasRealToken = Boolean(token && token !== "demo-session-token");
+    if (typeof window !== "undefined" && isDemoModeEnabled() && !hasRealToken) {
       return await handleDemoRequest<T>(path, options);
     }
 
     const method = options.method || "GET";
-    const token = getStoredToken();
     const attempts: string[] = [];
     let lastNetworkError: unknown = null;
 
@@ -1298,6 +1297,7 @@ export function getStoredUser() {
 }
 
 export function persistSession(session: AuthResult) {
+  clearDemoMode();
   window.localStorage.setItem(TOKEN_STORAGE_KEY, session.token);
   window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(session.user));
 }
@@ -1312,6 +1312,14 @@ export async function login(payload: { identifier: string; password: string }) {
   return request<AuthResult>("/auth/login", {
     method: "POST",
     body: JSON.stringify(payload),
+    skipAuth: true,
+  });
+}
+
+export async function loginWithGoogle(credential: string) {
+  return request<AuthResult>("/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ credential }),
     skipAuth: true,
   });
 }
@@ -1954,6 +1962,12 @@ export async function clearResumeAnalysisHistory() {
   });
 }
 
+export async function deleteResume(resumeId: string) {
+  return request<{ success: boolean; deletedCount: number; id: string }>(`/resume/${resumeId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function fetchLatestApk() {
   return request<ApkVersion | null>("/apk/latest");
 }
@@ -2013,14 +2027,49 @@ export async function fetchProgressSummary() {
 }
 
 export async function fetchCoachStudents() {
-  const students = await request<StudentOversightRecord[]>("/coach/students");
-  return students.map((entry) => ({
-    ...entry,
-    recentProofs: (entry.recentProofs || []).map((image) => ({
-      ...image,
-      secureUrl: normalizeAssetUrl(image.secureUrl),
-    })),
-  }));
+  const students = await request<any[]>("/coach/students");
+  return (Array.isArray(students) ? students : []).map((entry) => {
+    const student = entry.student || entry;
+    return {
+      ...entry,
+      student,
+      invitedBy: entry.invitedBy || {
+        id: null,
+        name: null,
+        username: null,
+        inviteCode: null,
+        invitedAt: student?.createdAt || new Date().toISOString(),
+      },
+      progress: {
+        streak: Number(entry.progress?.streak ?? student?.currentStreak ?? 0),
+        consistencyScore: Number(entry.progress?.consistencyScore ?? student?.consistencyScore ?? 0),
+        readinessScore: Number(entry.progress?.readinessScore ?? student?.readinessScore ?? 0),
+        solvedProblems: Number(entry.progress?.solvedProblems ?? student?.solvedProblems ?? 0),
+        averageTimePerProblem: Number(entry.progress?.averageTimePerProblem ?? 0),
+        failedAttempts: Number(entry.progress?.failedAttempts ?? 0),
+        totalHours: Number(entry.progress?.totalHours ?? 0),
+        tasksCompleted: Number(entry.progress?.tasksCompleted ?? 0),
+        statDate: entry.progress?.statDate || null,
+        weeklyProgress: Array.isArray(entry.progress?.weeklyProgress) ? entry.progress.weeklyProgress : [],
+        topicStrength: Array.isArray(entry.progress?.topicStrength) ? entry.progress.topicStrength : [],
+      },
+      taskSummary: entry.taskSummary || {
+        userId: student?.id,
+        total: 0,
+        pending: 0,
+        inProgress: 0,
+        completed: 0,
+        skipped: 0,
+        overdue: 0,
+      },
+      recentProofs: (Array.isArray(entry.recentProofs) ? entry.recentProofs : []).map((image: any) => ({
+        ...image,
+        secureUrl: normalizeAssetUrl(image.secureUrl),
+      })),
+      progressHistory: Array.isArray(entry.progressHistory) ? entry.progressHistory : [],
+      practiceCapsules: Array.isArray(entry.practiceCapsules) ? entry.practiceCapsules : [],
+    } as StudentOversightRecord;
+  });
 }
 
 export async function fetchCoachGroups() {
@@ -2081,6 +2130,25 @@ export async function clearCoachPracticeCapsuleHistory(payload: {
   return request<ScopedHistoryClearResult>("/coach/practice-capsules/history", {
     method: "DELETE",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteCoachStudent(studentUserId: string) {
+  return request<{ success: boolean; deletedCount: number; studentUserId: string }>(`/coach/students/${studentUserId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function deleteCoachStudentsBulk(studentUserIds: string[]) {
+  return request<{ success: boolean; deletedCount: number; studentUserIds: string[] }>("/coach/students", {
+    method: "DELETE",
+    body: JSON.stringify({ studentUserIds }),
+  });
+}
+
+export async function deleteCoachGroup(groupId: string) {
+  return request<{ success: boolean; deletedCount: number; groupId: string }>(`/coach/groups/${groupId}`, {
+    method: "DELETE",
   });
 }
 
@@ -2164,6 +2232,12 @@ export async function markAllNotificationsRead() {
 
 export async function clearNotificationHistory() {
   return request<HistoryClearResult>("/notifications/history", {
+    method: "DELETE",
+  });
+}
+
+export async function deleteNotification(notificationId: string) {
+  return request<{ success: boolean; deletedCount: number; id: string }>(`/notifications/${notificationId}`, {
     method: "DELETE",
   });
 }
@@ -2268,6 +2342,19 @@ export async function fetchCodingSubmissions(filters: { limit?: number } = {}) {
   const limit = Math.max(1, Math.min(50, Number(filters.limit || 20)));
   const submissions = await request<CodingSubmission[]>(`/coding/submissions?limit=${limit}`);
   return submissions.map(normalizeCodingSubmission);
+}
+
+export async function deleteCodingSubmission(submissionId: string) {
+  return request<{ success: boolean; deletedCount: number; id: string }>(`/coding/submissions/${submissionId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function clearCodingSubmissions(submissionIds?: string[]) {
+  return request<{ success: boolean; deletedCount: number }>("/coding/submissions", {
+    method: "DELETE",
+    body: JSON.stringify(submissionIds?.length ? { submissionIds } : {}),
+  });
 }
 
 export async function generateAiTasks(payload: {
@@ -2402,7 +2489,11 @@ export async function clearMentorHistory() {
 }
 
 export async function fetchActivePowerPocket() {
-  return request<PowerPocketSession | null>("/power-pocket/active");
+  const session = await request<PowerPocketSession | null>("/power-pocket/active");
+  if (!session || !session.id) {
+    return null;
+  }
+  return session;
 }
 
 export async function startPowerPocket(payload: {
@@ -2430,8 +2521,26 @@ export async function endPowerPocket(
   });
 }
 
+export async function deletePowerPocketSession(sessionId: string) {
+  return request<{ success: boolean; deletedCount: number; id: string }>(`/power-pocket/${sessionId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function clearPowerPocketHistory() {
+  return request<{ success: boolean; deletedCount: number }>("/power-pocket/history", {
+    method: "DELETE",
+  });
+}
+
 export async function clearUploadedProofHistory() {
   return request<HistoryClearResult>("/uploads/images/history", {
+    method: "DELETE",
+  });
+}
+
+export async function deleteUploadedProof(imageId: string) {
+  return request<{ success: boolean; deletedCount: number; id: string }>(`/uploads/images/${imageId}`, {
     method: "DELETE",
   });
 }
@@ -2476,6 +2585,19 @@ export async function applyAssessmentPlanUpdate(assessmentId: string) {
     session: normalizeAssessmentSession(result.session) as AssessmentSession,
     updatedPlan: normalizePrepPlan(result.updatedPlan) as PrepPlan,
   };
+}
+
+export async function deleteAssessmentSession(assessmentId: string) {
+  return request<{ success: boolean; deletedCount: number; id: string }>(`/assessments/${assessmentId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function clearAssessmentHistory(sessionIds?: string[]) {
+  return request<{ success: boolean; deletedCount: number }>("/assessments/history", {
+    method: "DELETE",
+    body: JSON.stringify(sessionIds?.length ? { sessionIds } : {}),
+  });
 }
 
 export async function scoreResumeAgainstJobDescription(payload: {

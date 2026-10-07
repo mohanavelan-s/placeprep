@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="placeprep-favicon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d44b4b" />
+      <stop offset="100%" stop-color="#b88a43" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="18" fill="#111116" stroke="#662626" />
+  <path d="M20 46V18h16.5c7 0 11.5 3.8 11.5 10.1 0 6.5-4.7 10.5-12 10.5H28.5V46H20Z" fill="url(#placeprep-favicon)" />
+  <path d="M28.5 32.1h7.1c3.2 0 4.9-1.5 4.9-4 0-2.6-1.7-4-4.9-4h-7.1v8Z" fill="#111116" opacity="0.75" />
+</svg>

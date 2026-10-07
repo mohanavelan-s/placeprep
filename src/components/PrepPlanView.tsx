@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
-import { ArrowUpRight, BookOpen, Brain, CalendarDays, Layers3 } from "lucide-react";
+import { ArrowUpRight, BookOpen, Brain, CalendarDays, Code2, Layers3 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import type { PrepPlan } from "@/lib/api";
 import { formatHoursFromMinutes } from "@/lib/time";
@@ -100,39 +101,71 @@ export default function PrepPlanView({ plan }: PrepPlanViewProps) {
               </div>
 
               <div className="mt-4 space-y-3">
-                {dayPlan.items.map((item) => (
-                  <details
-                    key={`${dayPlan.day}-${item.title}`}
-                    className="task-row-lift rounded-xl border border-border/70 bg-background/40 px-4 py-3"
-                  >
-                    <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
-                      <div>
-                        <p className="text-base font-medium text-foreground">{item.title}</p>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          {item.type} / {formatHoursFromMinutes(item.estimatedMinutes)} / {item.difficulty}
-                        </p>
-                      </div>
-                      <span className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Expand</span>
-                    </summary>
+                {dayPlan.items.map((item) => {
+                  const isCoding = item.type === "dsa" || item.type === "coding" || item.type === "sql"
+                    || Boolean(item.codingLabUrl)
+                    || /leetcode|hackerrank|codeforces|codechef/i.test(item.referenceUrl || "")
+                    || /leetcode|fix names|duplicate emails|salary|two sum|reverse/i.test(item.title);
+                  const codingUrl = item.codingLabUrl
+                    || `/coding-lab?title=${encodeURIComponent(item.title)}${item.referenceUrl ? `&url=${encodeURIComponent(item.referenceUrl)}` : ""}`;
 
-                    <div className="mt-4 space-y-3 border-t border-border/70 pt-4">
-                      <p className="text-sm leading-6 text-foreground/80">
-                        {item.summary || "Use this task to build recall, execution, and a clearer interview explanation."}
-                      </p>
-                      {item.referenceUrl && (
-                        <a
-                          href={item.referenceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-sm text-primary transition hover:text-primary/80"
-                        >
-                          {item.referenceLabel || item.title}
-                          <ArrowUpRight className="h-4 w-4" />
-                        </a>
-                      )}
-                    </div>
-                  </details>
-                ))}
+                  return (
+                    <details
+                      key={`${dayPlan.day}-${item.title}`}
+                      className="task-row-lift rounded-xl border border-border/70 bg-background/40 px-4 py-3"
+                    >
+                      <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-base font-medium text-foreground">{item.title}</p>
+                          <p className="mt-2 text-sm text-muted-foreground">
+                            {item.type} / {formatHoursFromMinutes(item.estimatedMinutes)} / {item.difficulty}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isCoding && (
+                            <Link
+                              to={codingUrl}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/15 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/25"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Code2 className="h-3.5 w-3.5" />
+                              Lab
+                            </Link>
+                          )}
+                          <span className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Expand</span>
+                        </div>
+                      </summary>
+
+                      <div className="mt-4 space-y-3 border-t border-border/70 pt-4">
+                        <p className="text-sm leading-6 text-foreground/80">
+                          {item.summary || "Use this task to build recall, execution, and a clearer interview explanation."}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-3 pt-1">
+                          {isCoding && (
+                            <Link
+                              to={codingUrl}
+                              className="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90"
+                            >
+                              <Code2 className="h-4 w-4" />
+                              Practice in Coding Lab
+                            </Link>
+                          )}
+                          {item.referenceUrl && (
+                            <a
+                              href={item.referenceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-sm text-primary transition hover:text-primary/80"
+                            >
+                              {item.referenceLabel || item.title}
+                              <ArrowUpRight className="h-4 w-4" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </details>
+                  );
+                })}
               </div>
             </div>
           ))}

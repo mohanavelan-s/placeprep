@@ -116,15 +116,19 @@ export default function PrepArchitectPage() {
   }, [language, latestPlanQuery.data, user?.targetRole]);
 
   const generateMutation = useMutation({
-    mutationFn: () =>
-      generatePrepPlan({
+    mutationFn: () => {
+      if (companyKey === "custom" && !customCompanyName.trim()) {
+        throw new Error("Company name is required when choosing a custom company.");
+      }
+      return generatePrepPlan({
         companyKey,
-        customCompanyName: companyKey === "custom" ? customCompanyName.trim() || undefined : undefined,
+        customCompanyName: companyKey === "custom" ? customCompanyName.trim() : undefined,
         timePerDay: parseHoursToMinutes(timePerDayHours, 120),
         durationMonths: Math.min(12, Math.max(1, Number(durationMonths || 1))),
         targetRole,
         preferredLanguage,
-      }),
+      });
+    },
     onSuccess: async (result) => {
       queryClient.setQueryData(["prep-plan", "latest"], result);
       await Promise.all([
@@ -142,16 +146,20 @@ export default function PrepArchitectPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: () =>
-      updatePrepPlan({
+    mutationFn: () => {
+      if (companyKey === "custom" && !customCompanyName.trim()) {
+        throw new Error("Company name is required when choosing a custom company.");
+      }
+      return updatePrepPlan({
         planId: latestPlanQuery.data?.id || "",
         companyKey,
-        customCompanyName: companyKey === "custom" ? customCompanyName.trim() || undefined : undefined,
+        customCompanyName: companyKey === "custom" ? customCompanyName.trim() : undefined,
         timePerDay: parseHoursToMinutes(timePerDayHours, 120),
         durationMonths: Math.min(12, Math.max(1, Number(durationMonths || 1))),
         targetRole,
         preferredLanguage,
-      }),
+      });
+    },
     onSuccess: async (result) => {
       queryClient.setQueryData(["prep-plan", "latest"], result);
       await Promise.all([
@@ -357,7 +365,18 @@ export default function PrepArchitectPage() {
 
           <div className="flex flex-wrap gap-3">
             {!latestPlan && (
-              <Button type="button" className="gap-2" onClick={() => generateMutation.mutate()} disabled={pending || !canGeneratePlan}>
+              <Button
+                type="button"
+                className="gap-2"
+                onClick={() => {
+                  if (companyKey === "custom" && !customCompanyName.trim()) {
+                    toast.error("Please enter a custom company name before generating the plan.");
+                    return;
+                  }
+                  generateMutation.mutate();
+                }}
+                disabled={pending || !canGeneratePlan}
+              >
                 <Sparkles className="h-4 w-4" />
                 {pending ? "Building your plan..." : "Generate Plan"}
               </Button>
@@ -368,14 +387,36 @@ export default function PrepArchitectPage() {
                   <PencilLine className="h-4 w-4" />
                   Edit Plan
                 </Button>
-                <Button type="button" className="gap-2" onClick={() => updateMutation.mutate()} disabled={pending || !canGeneratePlan}>
+                <Button
+                  type="button"
+                  className="gap-2"
+                  onClick={() => {
+                    if (companyKey === "custom" && !customCompanyName.trim()) {
+                      toast.error("Please enter a custom company name before regenerating the plan.");
+                      return;
+                    }
+                    updateMutation.mutate();
+                  }}
+                  disabled={pending || !canGeneratePlan}
+                >
                   <RefreshCcw className="h-4 w-4" />
                   {pending ? "Building your plan..." : "Regenerate Plan"}
                 </Button>
               </>
             )}
             {latestPlan && isEditing && (
-              <Button type="button" className="gap-2" onClick={() => updateMutation.mutate()} disabled={pending || !canGeneratePlan}>
+              <Button
+                type="button"
+                className="gap-2"
+                onClick={() => {
+                  if (companyKey === "custom" && !customCompanyName.trim()) {
+                    toast.error("Please enter a custom company name before updating the plan.");
+                    return;
+                  }
+                  updateMutation.mutate();
+                }}
+                disabled={pending || !canGeneratePlan}
+              >
                 <RefreshCcw className="h-4 w-4" />
                 {pending ? "Building your plan..." : "Update Plan"}
               </Button>
@@ -407,13 +448,19 @@ export default function PrepArchitectPage() {
               </Select>
 
               {companyKey === "custom" && (
-                <Input
-                  value={customCompanyName}
-                  onChange={(event) => setCustomCompanyName(event.target.value)}
-                  placeholder="Company name"
-                  maxLength={80}
-                  className="mt-3 h-11 border-border/80 bg-background/70"
-                />
+                <div className="mt-3 space-y-1.5">
+                  <Input
+                    value={customCompanyName}
+                    onChange={(event) => setCustomCompanyName(event.target.value)}
+                    placeholder="Enter target company name (required)"
+                    maxLength={80}
+                    className={`h-11 bg-background/70 ${!customCompanyName.trim() ? "border-amber-400 focus-visible:ring-amber-400" : "border-border/80"}`}
+                    required
+                  />
+                  {!customCompanyName.trim() && (
+                    <p className="text-xs text-amber-400 font-medium">Target company name is required.</p>
+                  )}
+                </div>
               )}
 
               <p className="mt-3 text-sm leading-6 text-muted-foreground">

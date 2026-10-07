@@ -9,6 +9,7 @@ interface RouteErrorBoundaryProps {
 
 interface RouteErrorBoundaryState {
   hasError: boolean;
+  error?: Error | null;
 }
 
 export default class RouteErrorBoundary extends React.Component<
@@ -17,10 +18,11 @@ export default class RouteErrorBoundary extends React.Component<
 > {
   state: RouteErrorBoundaryState = {
     hasError: false,
+    error: null,
   };
 
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
@@ -29,7 +31,7 @@ export default class RouteErrorBoundary extends React.Component<
 
   componentDidUpdate(prevProps: RouteErrorBoundaryProps) {
     if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
-      this.setState({ hasError: false });
+      this.setState({ hasError: false, error: null });
     }
   }
 
@@ -42,8 +44,18 @@ export default class RouteErrorBoundary extends React.Component<
           <p className="mt-3 max-w-2xl text-sm leading-6 text-foreground/78">
             PlacePrep kept the shell alive. Reload the view or switch pages while we recover.
           </p>
+          {this.state.error && (
+            <details className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive-foreground">
+              <summary className="cursor-pointer font-semibold text-destructive">
+                Error details: {this.state.error.message}
+              </summary>
+              <pre className="mt-2 whitespace-pre-wrap font-mono text-[11px] text-muted-foreground">
+                {this.state.error.stack}
+              </pre>
+            </details>
+          )}
           <div className="mt-5 flex flex-wrap gap-3">
-            <Button type="button" onClick={() => this.setState({ hasError: false })}>
+            <Button type="button" onClick={() => this.setState({ hasError: false, error: null })}>
               Retry view
             </Button>
             <Button type="button" variant="outline" onClick={() => window.location.reload()}>

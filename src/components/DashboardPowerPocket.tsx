@@ -28,7 +28,7 @@ export default function DashboardPowerPocket({
   const [showBanner, setShowBanner] = useState(true);
   const [elapsed, setElapsed] = useState(0);
   const [dismissed, setDismissed] = useState(false);
-  const active = Boolean(activeSession);
+  const active = Boolean(activeSession && activeSession.id);
 
   const quickMission = {
     title:
@@ -52,23 +52,28 @@ export default function DashboardPowerPocket({
   }, [active, onFocusMode]);
 
   useEffect(() => {
-    if (!activeSession) {
+    if (!active || !activeSession) {
       setElapsed(0);
       return undefined;
     }
 
     const updateElapsed = () => {
-      const elapsedSeconds = Math.max(
-        0,
-        Math.floor((Date.now() - new Date(activeSession.startedAt).getTime()) / 1000)
-      );
+      const rawStart =
+        activeSession.startedAt ||
+        (activeSession as unknown as Record<string, unknown>).started_at ||
+        activeSession.createdAt ||
+        (activeSession as unknown as Record<string, unknown>).created_at;
+      const startTime = rawStart ? new Date(String(rawStart)).getTime() : NaN;
+      const elapsedSeconds = Number.isFinite(startTime)
+        ? Math.max(0, Math.floor((Date.now() - startTime) / 1000))
+        : 0;
       setElapsed(elapsedSeconds);
     };
 
     updateElapsed();
     const interval = setInterval(updateElapsed, 1000);
     return () => clearInterval(interval);
-  }, [activeSession]);
+  }, [active, activeSession]);
 
   useEffect(() => {
     if (active) {
@@ -81,8 +86,12 @@ export default function DashboardPowerPocket({
   }, [active]);
 
   const formatTime = useCallback((seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainder = seconds % 60;
+    if (!Number.isFinite(seconds) || isNaN(seconds) || seconds < 0) {
+      return "00:00";
+    }
+    const safeSec = Math.floor(seconds);
+    const minutes = Math.floor(safeSec / 60);
+    const remainder = safeSec % 60;
     return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
   }, []);
 

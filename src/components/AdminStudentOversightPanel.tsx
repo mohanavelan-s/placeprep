@@ -13,6 +13,7 @@ import {
   Search,
   ShieldCheck,
   Sigma,
+  Trash2,
   UserPlus,
   UserRoundSearch,
   Users,
@@ -43,6 +44,9 @@ import {
   clearCoachStudentProofHistory,
   createCoachGroup,
   createPracticeCapsule,
+  deleteCoachGroup,
+  deleteCoachStudent,
+  deleteCoachStudentsBulk,
   fetchCoachGroupCandidates,
   fetchCoachGroups,
   fetchCoachStudents,
@@ -327,7 +331,7 @@ function PracticeCapsuleCard({
               <div>
                 <p className="text-sm text-foreground">{item.title}</p>
                 <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                  {item.category} / {item.capsuleType.replace(/_/g, " ")}
+                  {item.category} / {String(item.capsuleType || "resource").replace(/_/g, " ")}
                 </p>
               </div>
 
@@ -340,7 +344,7 @@ function PracticeCapsuleCard({
                       : "border-border/80 bg-background/60 text-muted-foreground"
                 }`}
               >
-                {item.status.replace(/_/g, " ")}
+                {String(item.status || "pending").replace(/_/g, " ")}
               </span>
             </div>
 
@@ -468,6 +472,10 @@ export default function AdminStudentOversightPanel({
   const [selectedProgressEntryIds, setSelectedProgressEntryIds] = useState<string[]>([]);
   const [selectedAssignmentIds, setSelectedAssignmentIds] = useState<string[]>([]);
   const [clearScopeDialog, setClearScopeDialog] = useState<null | "progress" | "assignments">(null);
+  const [selectedRosterStudentIds, setSelectedRosterStudentIds] = useState<string[]>([]);
+  const [studentToDelete, setStudentToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState<{ id: string; name: string } | null>(null);
 
   const deferredRosterSearch = useDeferredValue(rosterSearch);
   const deferredGroupCandidateSearch = useDeferredValue(groupCandidateSearch);
@@ -609,10 +617,10 @@ export default function AdminStudentOversightPanel({
         .filter((member) => member.role === "user" && member.accessTier !== "observer")
         .map((member) => member.userId),
     );
-    return students.filter((entry) => memberIds.has(entry.student.id));
+    return students.filter((entry) => entry.student && memberIds.has(entry.student.id));
   }, [selectedGroup, students]);
   const selectedGroupProgressCount = useMemo(
-    () => selectedGroupStudentRecords.reduce((total, entry) => total + entry.progressHistory.length, 0),
+    () => selectedGroupStudentRecords.reduce((total, entry) => total + (entry.progressHistory?.length || 0), 0),
     [selectedGroupStudentRecords],
   );
   const selectedGroupAssignmentIds = useMemo(
@@ -620,7 +628,7 @@ export default function AdminStudentOversightPanel({
       Array.from(
         new Set(
           selectedGroupStudentRecords.flatMap((entry) =>
-            entry.practiceCapsules
+            (entry.practiceCapsules || [])
               .map((capsule) => capsule.assignmentId)
               .filter((assignmentId): assignmentId is string => Boolean(assignmentId)),
           ),
@@ -633,7 +641,7 @@ export default function AdminStudentOversightPanel({
     [groupCandidates, groupedStudentIds],
   );
   const totalAssignmentBundles = useMemo(
-    () => students.reduce((total, entry) => total + entry.practiceCapsules.length, 0),
+    () => students.reduce((total, entry) => total + (entry.practiceCapsules?.length || 0), 0),
     [students],
   );
   const visibleRosterLabel = deferredRosterSearch.trim()
@@ -786,6 +794,57 @@ export default function AdminStudentOversightPanel({
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to remove this member from the group.");
+    },
+  });
+
+  const removeStudentMutation = useMutation({
+    mutationFn: (studentUserId: string) => deleteCoachStudent(studentUserId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["coach", "students"] }),
+        queryClient.invalidateQueries({ queryKey: ["coach", "groups"] }),
+        queryClient.invalidateQueries({ queryKey: ["coach", "group-candidates"] }),
+      ]);
+      setStudentToDelete(null);
+      setSelectedRosterStudentIds((prev) => prev.filter((id) => id !== studentToDelete?.id));
+      toast.success("Student member removed successfully.");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to remove student.");
+    },
+  });
+
+  const removeStudentsBulkMutation = useMutation({
+    mutationFn: (studentUserIds: string[]) => deleteCoachStudentsBulk(studentUserIds),
+    onSuccess: async (res) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["coach", "students"] }),
+        queryClient.invalidateQueries({ queryKey: ["coach", "groups"] }),
+        queryClient.invalidateQueries({ queryKey: ["coach", "group-candidates"] }),
+      ]);
+      setConfirmBulkDeleteOpen(false);
+      setSelectedRosterStudentIds([]);
+      toast.success(`Removed ${res.deletedCount || "selected"} student members.`);
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to remove students.");
+    },
+  });
+
+  const deleteGroupMutation = useMutation({
+    mutationFn: (groupId: string) => deleteCoachGroup(groupId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["coach", "groups"] }),
+        queryClient.invalidateQueries({ queryKey: ["coach", "students"] }),
+        queryClient.invalidateQueries({ queryKey: ["coach", "group-candidates"] }),
+      ]);
+      setGroupToDelete(null);
+      setSelectedGroupId("");
+      toast.success("Coach group deleted successfully.");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to delete coach group.");
     },
   });
 
@@ -1045,41 +1104,108 @@ export default function AdminStudentOversightPanel({
                     className="h-10 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
                   />
                 </div>
-                <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                  Showing {visibleRosterLabel} student{students.length === 1 ? "" : "s"}
-                </p>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2 text-xs">
+                  <span className="uppercase tracking-[0.16em] text-muted-foreground">
+                    Showing {visibleRosterLabel} student{students.length === 1 ? "" : "s"}
+                  </span>
+                  {filteredStudents.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          if (selectedRosterStudentIds.length === filteredStudents.length) {
+                            setSelectedRosterStudentIds([]);
+                          } else {
+                            setSelectedRosterStudentIds(filteredStudents.map((s) => s.student.id));
+                          }
+                        }}
+                      >
+                        {selectedRosterStudentIds.length === filteredStudents.length
+                          ? "Deselect All"
+                          : "Select All"}
+                      </Button>
+                      {selectedRosterStudentIds.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => setConfirmBulkDeleteOpen(true)}
+                        >
+                          <Trash2 className="mr-1 h-3 w-3" />
+                          Remove Selected ({selectedRosterStudentIds.length})
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="mt-4 grid gap-3">
                 {filteredStudents.map((entry) => {
                   const isActive = entry.student.id === selectedStudentId;
+                  const isChecked = selectedRosterStudentIds.includes(entry.student.id);
 
                   return (
-                    <button
+                    <div
                       key={entry.student.id}
-                      type="button"
                       onClick={() => setSelectedStudentId(entry.student.id)}
-                      className={`rounded-[1.2rem] border px-4 py-4 text-left transition ${
+                      className={`cursor-pointer rounded-[1.2rem] border px-4 py-4 text-left transition ${
                         isActive
                           ? "border-primary/35 bg-primary/10 shadow-[0_0_26px_hsl(0_55%_33%_/_0.08)]"
                           : "border-border/80 bg-background/45 hover:border-border hover:bg-background/60"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-base text-foreground">{entry.student.name}</p>
-                          <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                            @{entry.student.username || "user"} / {entry.student.targetRole || "student"}
-                          </p>
+                        <div className="flex items-start gap-3">
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="mt-1"
+                          >
+                            <Checkbox
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                setSelectedRosterStudentIds((prev) =>
+                                  checked
+                                    ? [...prev, entry.student.id]
+                                    : prev.filter((id) => id !== entry.student.id)
+                                );
+                              }}
+                              aria-label={`Select ${entry.student.name}`}
+                            />
+                          </div>
+                          <div>
+                            <p className="text-base text-foreground">{entry.student.name}</p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                              @{entry.student.username || "user"} / {entry.student.targetRole || "student"}
+                            </p>
+                          </div>
                         </div>
-                        <span className="coach-chip border-primary/20 bg-background/50">
-                          {formatSignedProgress(entry.progress.readinessScore)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="coach-chip border-primary/20 bg-background/50">
+                            {formatSignedProgress(entry.progress.readinessScore)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setStudentToDelete({ id: entry.student.id, name: entry.student.name });
+                            }}
+                            className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+                            title="Remove student member"
+                            aria-label={`Remove ${entry.student.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
-                      <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                      <p className="mt-3 pl-7 text-sm leading-6 text-muted-foreground">
                         Invited by {entry.invitedBy.name || "system"} / {entry.taskSummary.completed} completed / {entry.taskSummary.pending} pending
                       </p>
-                    </button>
+                    </div>
                   );
                 })}
                 {!filteredStudents.length && (
@@ -1148,9 +1274,21 @@ export default function AdminStudentOversightPanel({
                         {selectedGroup.description || "No description for this group yet."}
                       </p>
                     </div>
-                    <span className="coach-chip border-primary/20 bg-card/60">
-                      {selectedGroup.memberCount} members
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="coach-chip border-primary/20 bg-card/60">
+                        {selectedGroup.memberCount} members
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setGroupToDelete({ id: selectedGroup.id, name: selectedGroup.name })}
+                        className="h-8 border-destructive/40 text-xs text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="mr-1 h-3 w-3" />
+                        Delete Group
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -1562,8 +1700,20 @@ export default function AdminStudentOversightPanel({
                   </p>
                 </div>
 
-                <div className="coach-chip border-primary/25 bg-primary/10 text-foreground">
-                  {selectedStudent.student.targetRole || "Placement prep"}
+                <div className="flex flex-col items-end gap-2">
+                  <div className="coach-chip border-primary/25 bg-primary/10 text-foreground">
+                    {selectedStudent.student.targetRole || "Placement prep"}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setStudentToDelete({ id: selectedStudent.student.id, name: selectedStudent.student.name })}
+                    className="h-8 border-destructive/40 text-xs text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    Remove Member
+                  </Button>
                 </div>
               </div>
 
@@ -1700,7 +1850,7 @@ export default function AdminStudentOversightPanel({
                     type="button"
                     variant="outline"
                     className="h-10 gap-2 border-border/80 bg-background/70"
-                    disabled={!selectedStudent.progressHistory.length}
+                    disabled={!selectedStudent.progressHistory?.length}
                     onClick={() => setClearScopeDialog("progress")}
                   >
                     Clear all
@@ -1709,7 +1859,7 @@ export default function AdminStudentOversightPanel({
               </div>
 
               <div className="mt-4 grid gap-3">
-                {selectedStudent.progressHistory.length ? (
+                {selectedStudent.progressHistory?.length ? (
                   selectedStudent.progressHistory.map((entry) => (
                     <ProgressHistoryCard
                       key={entry.id}
@@ -1767,7 +1917,7 @@ export default function AdminStudentOversightPanel({
                     type="button"
                     variant="outline"
                     className="h-10 gap-2 border-border/80 bg-background/70"
-                    disabled={!selectedStudent.practiceCapsules.length}
+                    disabled={!selectedStudent.practiceCapsules?.length}
                     onClick={() => setClearScopeDialog("assignments")}
                   >
                     Clear all
@@ -1776,7 +1926,7 @@ export default function AdminStudentOversightPanel({
               </div>
 
               <div className="mt-4 grid gap-3">
-                {selectedStudent.practiceCapsules.length ? (
+                {selectedStudent.practiceCapsules?.length ? (
                   selectedStudent.practiceCapsules.map((capsule) => (
                     <PracticeCapsuleCard
                       key={capsule.bundleId}
@@ -1933,6 +2083,117 @@ export default function AdminStudentOversightPanel({
           <DialogFooter>
             <Button type="button" variant="outline" className="border-border/80 bg-background/70" onClick={() => setClearScopeDialog(null)}>
               Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!studentToDelete} onOpenChange={(open) => !open && setStudentToDelete(null)}>
+        <DialogContent className="border-border/80 bg-card text-foreground">
+          <DialogHeader>
+            <DialogTitle>Remove Student Member</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to permanently remove <span className="font-semibold text-foreground">{studentToDelete?.name}</span>? This will erase their tasks, progress metrics, prep plans, coding submissions, and associated data.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-border/80 bg-background/70"
+              onClick={() => setStudentToDelete(null)}
+              disabled={removeStudentMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => studentToDelete && removeStudentMutation.mutate(studentToDelete.id)}
+              disabled={removeStudentMutation.isPending}
+            >
+              {removeStudentMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                "Remove Student"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmBulkDeleteOpen} onOpenChange={setConfirmBulkDeleteOpen}>
+        <DialogContent className="border-border/80 bg-card text-foreground">
+          <DialogHeader>
+            <DialogTitle>Remove Selected Students in Bulk</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to permanently remove <span className="font-semibold text-foreground">{selectedRosterStudentIds.length}</span> selected student members? All their tasks, submissions, prep plans, and records will be deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-border/80 bg-background/70"
+              onClick={() => setConfirmBulkDeleteOpen(false)}
+              disabled={removeStudentsBulkMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => removeStudentsBulkMutation.mutate(selectedRosterStudentIds)}
+              disabled={removeStudentsBulkMutation.isPending}
+            >
+              {removeStudentsBulkMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Removing ({selectedRosterStudentIds.length})...
+                </>
+              ) : (
+                `Remove ${selectedRosterStudentIds.length} Students`
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!groupToDelete} onOpenChange={(open) => !open && setGroupToDelete(null)}>
+        <DialogContent className="border-border/80 bg-card text-foreground">
+          <DialogHeader>
+            <DialogTitle>Delete Coach Group</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete group <span className="font-semibold text-foreground">{groupToDelete?.name}</span>? Group members will remain registered as individual students.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-border/80 bg-background/70"
+              onClick={() => setGroupToDelete(null)}
+              disabled={deleteGroupMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => groupToDelete && deleteGroupMutation.mutate(groupToDelete.id)}
+              disabled={deleteGroupMutation.isPending}
+            >
+              {deleteGroupMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Group"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

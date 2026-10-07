@@ -223,8 +223,10 @@ function supportsCodingLab(task: Task) {
   const metadata = task.metadata || {};
   const searchable = [
     task.title,
+    task.category,
     task.referenceLabel,
     task.referenceUrl,
+    task.description,
     metadata.problemPlatform,
     metadata.platform,
     metadata.problemNumber,
@@ -233,7 +235,8 @@ function supportsCodingLab(task: Task) {
   ].join(" ");
 
   return Boolean(metadata.codingLabEnabled)
-    || /leetcode\.com\/problems|hackerrank\.com|codechef\.com|codeforces\.com/i.test(searchable)
+    || task.category === "DSA"
+    || /leetcode|hackerrank|codechef|codeforces|algorithm|dsa|practice|sql|table|query|array|matrix|tree|graph|dp|stack|queue|sort|search|two sum|reverse/i.test(searchable)
     || /\b(?:leetcode|lc)\s*:?\s*#?\s*\d{1,5}\b/i.test(searchable)
     || /\b(?:leetcode|lc)\s*:?\s*[a-z0-9]+(?:-[a-z0-9]+)+\b/i.test(searchable);
 }
@@ -499,9 +502,9 @@ export default function TasksPage() {
                 {supportsCodingLab(task) && (
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    className="gap-2 text-muted-foreground"
+                    className="gap-1.5 border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 font-semibold"
                     onClick={() => navigate(`/coding-lab/${task.id}`)}
                   >
                     <Code2 className="h-4 w-4" />
@@ -546,16 +549,31 @@ export default function TasksPage() {
                     {task.description || String(task.metadata?.summary || "").trim() || localize("Use this task to build one concrete skill and explain the approach clearly before moving on.")}
                   </p>
 
-                  {task.referenceUrl && (
-                    <a
-                      href={task.referenceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-4 inline-flex items-center gap-2 text-sm text-primary transition hover:text-foreground"
-                    >
-                      {task.referenceLabel || task.title}
-                    </a>
-                  )}
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    {supportsCodingLab(task) && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
+                        onClick={() => navigate(`/coding-lab/${task.id}`)}
+                      >
+                        <Code2 className="h-4 w-4" />
+                        Practice Problem in Coding Lab
+                      </Button>
+                    )}
+
+                    {task.referenceUrl && (
+                      <a
+                        href={task.referenceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm text-primary transition hover:text-foreground"
+                      >
+                        {task.referenceLabel || task.title}
+                        <Code2 className="h-4 w-4" />
+                      </a>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

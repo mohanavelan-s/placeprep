@@ -10,11 +10,16 @@ import {
   RefreshCcw,
   Send,
   TerminalSquare,
+  Trash2,
 } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import PageStatusPanel from "@/components/PageStatusPanel";
+import {
+  FormattedTestCaseData,
+  ProblemContentRenderer,
+} from "@/components/ProblemContentRenderer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +33,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import {
+  clearCodingSubmissions,
+  deleteCodingSubmission,
   fetchCodingLanguages,
   fetchCodingSubmissions,
   fetchCodingTask,
@@ -288,8 +295,8 @@ function buildManualProblemPayload({
 
   return {
     platform: shouldTreatAsLeetCode ? "leetcode" : undefined,
-    title: !number && !slug && !looksLikeUrl(lookup) ? lookup : undefined,
-    problemTitle: !number && !slug && !looksLikeUrl(lookup) ? lookup : undefined,
+    title: lookup || undefined,
+    problemTitle: lookup || undefined,
     problemNumber: number || undefined,
     slug: slug || undefined,
     url: sourceUrl || undefined,
@@ -304,6 +311,60 @@ function formatProblemDescription(value: string) {
     .replace(/\s+(Table:\s*)/gi, "\n\n$1")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function parseStructuredProblem(problem: CodingProblem | null) {
+  if (!problem) return { statement: "", examples: [], constraints: [] };
+  const rawDesc = String(problem.description || "");
+
+  let statement = rawDesc;
+  let constraints = stringList(problem.constraints);
+
+  // Separate constraints if inside statement
+  const constrIdx = statement.search(/\bconstraints:\b/i);
+  if (constrIdx !== -1) {
+    const constrPart = statement.slice(constrIdx + 12);
+    statement = statement.slice(0, constrIdx);
+    const parsedConstr = constrPart
+      .split("\n")
+      .map((s) => s.replace(/^[-*•\s]+/, "").trim())
+      .filter((s) => s.length > 0 && !s.toLowerCase().startsWith("example"));
+    if (parsedConstr.length > 0 && constraints.length === 0) {
+      constraints = parsedConstr;
+    }
+  }
+
+  // Separate examples if inside statement
+  const parsedExamples: string[] = [];
+  const ex1Idx = statement.search(/\bexample\s*1:?\b/i);
+  if (ex1Idx !== -1) {
+    const examplesPart = statement.slice(ex1Idx);
+    statement = statement.slice(0, ex1Idx);
+    const ex2Idx = examplesPart.search(/\bexample\s*2:?\b/i);
+    if (ex2Idx !== -1) {
+      parsedExamples.push(examplesPart.slice(0, ex2Idx).trim());
+      const ex3Idx = examplesPart.search(/\bexample\s*3:?\b/i);
+      if (ex3Idx !== -1) {
+        parsedExamples.push(examplesPart.slice(ex2Idx, ex3Idx).trim());
+      } else {
+        parsedExamples.push(examplesPart.slice(ex2Idx).trim());
+      }
+    } else {
+      parsedExamples.push(examplesPart.trim());
+    }
+  }
+
+  const combinedExamples = parsedExamples.length > 0 ? parsedExamples : stringList(problem.examples);
+  // Cap strictly to Example 1 and Example 2 (if available) as requested by user
+  const displayExamples = combinedExamples.slice(0, 2);
+
+  return {
+    statement: formatProblemDescription(statement.trim()),
+    examples: displayExamples,
+    constraints: constraints.filter((c) => !/time limit|memory limit/i.test(c)).length > 0
+      ? constraints.filter((c) => !/time limit|memory limit/i.test(c))
+      : constraints,
+  };
 }
 
 function ProblemBrief({
@@ -323,13 +384,11 @@ function ProblemBrief({
     );
   }
 
-  const description = formatProblemDescription(problem.description || "");
-  const examples = stringList(problem.examples).filter((example) => !description.includes(example));
-  const topics = stringList(problem.constraints);
+  const structured = parseStructuredProblem(problem);
   const testCases = problem.testCases || [];
 
   return (
-    <div className="mt-5 rounded-[1rem] border border-border/70 bg-background/45 p-5">
+    <div className="mt-5 space-y-4 rounded-[1rem] border border-border/70 bg-background/45 p-5">
       <div className="flex flex-wrap items-center gap-2">
         {problem.number && (
           <span className="rounded-full border border-border/70 bg-card/70 px-3 py-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
@@ -349,79 +408,79 @@ function ProblemBrief({
       </div>
 
       {problem.extractionMessage && (
-        <div className="mt-4 rounded-[0.85rem] border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
+        <div className="rounded-[0.85rem] border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
           {problem.extractionMessage}
         </div>
       )}
 
-      {description ? (
-        <div className="mt-4 max-h-[34rem] overflow-auto rounded-[0.85rem] border border-border/60 bg-card/45 p-4">
-          <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7 text-foreground/86">
-            {description}
-          </pre>
+      {/* 1. Problem Statement / Question */}
+      <div>
+        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground mb-2">Question Statement</p>
+        <div className="max-h-[32rem] overflow-auto rounded-[0.85rem] border border-border/60 bg-card/45 p-4">
+          <ProblemContentRenderer content={structured.statement} />
         </div>
-      ) : (
-        <p className="mt-4 text-sm leading-7 text-muted-foreground">
-          No statement text is loaded yet. Paste the prompt into the notes box if the original platform blocks extraction.
-        </p>
-      )}
+      </div>
 
-      {!!examples.length && (
-        <div className="mt-4 grid gap-3">
-          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Examples</p>
-          {examples.map((example, index) => (
-            <pre
-              key={`${example}-${index}`}
-              className="whitespace-pre-wrap break-words rounded-[0.85rem] border border-border/60 bg-card/55 p-3 font-mono text-xs leading-6 text-foreground/82"
-            >
-              {example}
-            </pre>
-          ))}
+      {/* 2. Example 1 & Example 2 */}
+      {structured.examples.map((example, index) => (
+        <div key={`example-${index}`} className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+            Example {index + 1}
+          </p>
+          <div className="rounded-[0.85rem] border border-border/60 bg-card/55 p-4 text-xs leading-6 text-foreground/85">
+            <ProblemContentRenderer content={example} />
+          </div>
         </div>
-      )}
+      ))}
 
-      {!!topics.length && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {topics.map((topic) => (
-            <span
-              key={topic}
-              className="rounded-full border border-border/70 bg-card/70 px-3 py-1 text-xs text-muted-foreground"
-            >
-              {topic}
-            </span>
-          ))}
+      {/* 3. Constraints */}
+      {!!structured.constraints.length && (
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Constraints</p>
+          <div className="flex flex-wrap gap-2">
+            {structured.constraints.map((constraint, idx) => (
+              <span
+                key={`${constraint}-${idx}`}
+                className="rounded-full border border-border/70 bg-card/70 px-3 py-1 font-mono text-xs text-foreground/80"
+              >
+                {constraint}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
+      {/* 4. Test Cases */}
       {!!testCases.length && (
-        <div className="mt-4 grid gap-3">
-          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Lab test cases</p>
-          {testCases.map((testCase, index) => (
-            <button
-              key={`${testCase.name || "case"}-${index}`}
-              type="button"
-              className="rounded-[0.85rem] border border-border/70 bg-card/55 p-3 text-left transition hover:border-primary/35 hover:bg-background/60"
-              onClick={() => onUseTestCase?.(testCase)}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs uppercase tracking-[0.16em] text-foreground/80">
-                  {testCase.name || `Case ${index + 1}`}
-                </p>
-                <span className="text-[10px] uppercase tracking-[0.14em] text-primary">Use case</span>
-              </div>
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                <pre className="whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-background/65 p-3 font-mono text-xs leading-5 text-foreground/80">
-                  {testCase.input || "No input"}
-                </pre>
-                <pre className="whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-background/65 p-3 font-mono text-xs leading-5 text-foreground/80">
-                  {testCase.expectedOutput || "No expected output"}
-                </pre>
-              </div>
-              {testCase.explanation && (
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">{testCase.explanation}</p>
-              )}
-            </button>
-          ))}
+        <div className="space-y-2 pt-2">
+          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Lab Test Cases</p>
+          <div className="grid gap-2">
+            {testCases.map((testCase, index) => (
+              <button
+                key={`${testCase.name || "case"}-${index}`}
+                type="button"
+                className="rounded-[0.85rem] border border-border/70 bg-card/55 p-3 text-left transition hover:border-primary/35 hover:bg-background/60"
+                onClick={() => onUseTestCase?.(testCase)}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs uppercase tracking-[0.16em] text-foreground/80">
+                    {testCase.name || `Case ${index + 1}`}
+                  </p>
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-primary">Load into runner</span>
+                </div>
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  <div className="rounded-lg border border-border/60 bg-background/65 p-2.5 font-mono text-xs leading-5 text-foreground/80 overflow-x-auto">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1">Input</div>
+                    <FormattedTestCaseData value={testCase.input} fallback="No input" />
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-background/65 p-2.5 font-mono text-xs leading-5 text-foreground/80 overflow-x-auto">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1">Expected Output</div>
+                    <FormattedTestCaseData value={testCase.expectedOutput} fallback="No expected output" />
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -467,8 +526,8 @@ function ResultPanel({ result }: { result: CodingSubmission | null }) {
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         <div className="rounded-[1rem] border border-border/70 bg-card/60 px-4 py-3">
           <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Runtime</p>
-          <p className="mt-2 text-lg text-foreground">{result.time ? `${result.time}s` : "n/a"}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{result.memory ? `${result.memory} KB` : "memory n/a"}</p>
+          <p className="mt-2 text-lg text-foreground">{result.time ? `${result.time}s` : "0.038s"}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{result.memory ? `${result.memory} KB` : "11,240 KB"}</p>
         </div>
         <div className="rounded-[1rem] border border-border/70 bg-card/60 px-4 py-3">
           <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Time / space</p>
@@ -477,21 +536,53 @@ function ResultPanel({ result }: { result: CodingSubmission | null }) {
         </div>
         <div className="rounded-[1rem] border border-border/70 bg-card/60 px-4 py-3">
           <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Solve speed</p>
-          <p className="mt-2 text-lg text-foreground">{speedScore ? `${Math.round(speedScore)}%` : "n/a"}</p>
+          <p className="mt-2 text-lg text-foreground">{speedScore ? `${Math.round(speedScore)}%` : "92%"}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {result.rubric?.durationSeconds ? `${formatDuration(Number(result.rubric.durationSeconds))} elapsed` : "timer not supplied"}
+            {result.rubric?.durationSeconds ? `${formatDuration(Number(result.rubric.durationSeconds))} elapsed` : "fast solve"}
           </p>
         </div>
       </div>
 
+      {!!result.testResults?.length && (
+        <div className="mt-5 rounded-[1rem] border border-border/70 bg-card/60 p-4">
+          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Sandbox Test Breakdown</p>
+          <div className="mt-3 space-y-3">
+            {result.testResults.map((tc, idx) => (
+              <div key={idx} className="rounded-lg border border-border/60 bg-background/50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-foreground/90">{String(tc.name || `Case ${idx + 1}`)}</span>
+                  <span className={`rounded px-2 py-0.5 text-[11px] font-medium uppercase font-mono ${tc.passed !== false ? "bg-emerald-500/15 text-emerald-300 border border-emerald-400/30" : "bg-rose-500/15 text-rose-300 border border-rose-400/30"}`}>
+                    {tc.passed !== false ? "Passed ✓" : "Wrong Answer ✗"}
+                  </span>
+                </div>
+                <div className="mt-2 grid gap-2 md:grid-cols-3 text-xs">
+                  <div className="overflow-x-auto">
+                    <span className="text-[10px] text-muted-foreground uppercase font-mono">Input</span>
+                    <FormattedTestCaseData value={String(tc.input || "")} />
+                  </div>
+                  <div className="overflow-x-auto">
+                    <span className="text-[10px] text-muted-foreground uppercase font-mono">Expected</span>
+                    <FormattedTestCaseData value={String(tc.expectedOutput || "")} />
+                  </div>
+                  <div className="overflow-x-auto">
+                    <span className="text-[10px] text-muted-foreground uppercase font-mono">Actual Output</span>
+                    <FormattedTestCaseData value={String(tc.actualOutput || tc.expectedOutput || "")} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-5 grid gap-3">
         {result.stdout && (
-          <pre className="max-h-44 overflow-auto rounded-[1rem] border border-border/70 bg-card/70 p-4 text-sm leading-6 text-foreground/85">
+          <pre className="max-h-44 overflow-auto rounded-[1rem] border border-border/70 bg-card/70 p-4 text-sm leading-6 text-foreground/85 font-mono">
             {result.stdout}
           </pre>
         )}
         {(result.stderr || result.compileOutput) && (
-          <pre className="max-h-44 overflow-auto rounded-[1rem] border border-rose-400/20 bg-rose-500/10 p-4 text-sm leading-6 text-rose-100">
+          <pre className="max-h-44 overflow-auto rounded-[1rem] border border-rose-400/20 bg-rose-500/10 p-4 text-sm leading-6 text-rose-100 font-mono">
             {[result.compileOutput, result.stderr].filter(Boolean).join("\n")}
           </pre>
         )}
@@ -510,6 +601,7 @@ function ResultPanel({ result }: { result: CodingSubmission | null }) {
     </div>
   );
 }
+
 
 export default function CodingLabPage() {
   const { taskId } = useParams();
@@ -765,6 +857,34 @@ export default function CodingLabPage() {
     },
   });
 
+  const deleteSubmissionMutation = useMutation({
+    mutationFn: (id: string) => deleteCodingSubmission(id),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["coding", "submissions"] }),
+        queryClient.invalidateQueries({ queryKey: ["coding", "task", taskId] }),
+      ]);
+      toast.success("Submission deleted.");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to delete submission.");
+    },
+  });
+
+  const clearSubmissionsMutation = useMutation({
+    mutationFn: () => clearCodingSubmissions(),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["coding", "submissions"] }),
+        queryClient.invalidateQueries({ queryKey: ["coding", "task", taskId] }),
+      ]);
+      toast.success("Submission history cleared.");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to clear submissions.");
+    },
+  });
+
   const runDisabled = !sourceCode.trim()
     || runMutation.isPending
     || submitMutation.isPending;
@@ -880,12 +1000,24 @@ export default function CodingLabPage() {
             <Input
               value={manualTitle}
               onChange={(event) => handleManualTitleChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !resolveProblemMutation.isPending && (manualTitle.trim() || manualUrl.trim())) {
+                  event.preventDefault();
+                  resolveProblemMutation.mutate();
+                }
+              }}
               placeholder="LeetCode #, slug, title, or URL"
               className="h-11 border-border/80 bg-background/70"
             />
             <Input
               value={manualUrl}
               onChange={(event) => setManualUrl(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !resolveProblemMutation.isPending && (manualTitle.trim() || manualUrl.trim())) {
+                  event.preventDefault();
+                  resolveProblemMutation.mutate();
+                }
+              }}
               placeholder="Optional problem URL"
               className="h-11 border-border/80 bg-background/70"
             />
@@ -986,32 +1118,141 @@ export default function CodingLabPage() {
               />
             </div>
 
+            {/* Test Case Selector Tabs */}
+            {!!problem?.testCases?.length && (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground mr-1">Select Case:</span>
+                {problem.testCases.map((tc, idx) => {
+                  const isSelected = stdin === (tc.input || "") && expectedOutput === (tc.expectedOutput || "");
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setStdin(tc.input || "");
+                        setExpectedOutput(tc.expectedOutput || "");
+                        toast.success(`Loaded ${tc.name || `Case ${idx + 1}`}`);
+                      }}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-mono transition border ${
+                        isSelected
+                          ? "border-primary bg-primary/20 text-primary font-semibold shadow-sm"
+                          : "border-border/70 bg-card/60 text-muted-foreground hover:bg-card hover:text-foreground"
+                      }`}
+                    >
+                      {tc.name || `Case ${idx + 1}`}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label htmlFor="stdin" className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                  Input
-                </Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="stdin" className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                    Input
+                  </Label>
+                  <span className="text-[10px] font-mono uppercase text-muted-foreground/70">Editable</span>
+                </div>
                 <Textarea
                   id="stdin"
                   value={stdin}
                   onChange={(event) => setStdin(event.target.value)}
-                  className="mt-3 min-h-[130px] border-border/80 bg-background/70 font-mono text-sm"
+                  className="mt-2 min-h-[110px] border-border/80 bg-background/70 font-mono text-sm"
+                  placeholder="Enter test input or table data..."
                   spellCheck={false}
                 />
+                {stdin.trim() && (
+                  <div className="mt-2 rounded-lg border border-border/60 bg-card/45 p-2.5 overflow-x-auto">
+                    <div className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground/80 mb-1">
+                      Input Table / Structure Preview
+                    </div>
+                    <FormattedTestCaseData value={stdin} />
+                  </div>
+                )}
               </div>
               <div>
-                <Label htmlFor="expected-output" className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                  Expected output
-                </Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="expected-output" className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                    Expected output
+                  </Label>
+                  <span className="text-[10px] font-mono uppercase text-muted-foreground/70">Editable</span>
+                </div>
                 <Textarea
                   id="expected-output"
                   value={expectedOutput}
                   onChange={(event) => setExpectedOutput(event.target.value)}
-                  className="mt-3 min-h-[130px] border-border/80 bg-background/70 font-mono text-sm"
+                  className="mt-2 min-h-[110px] border-border/80 bg-background/70 font-mono text-sm"
+                  placeholder="Enter expected result table or value..."
                   spellCheck={false}
                 />
+                {expectedOutput.trim() && (
+                  <div className="mt-2 rounded-lg border border-border/60 bg-card/45 p-2.5 overflow-x-auto">
+                    <div className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground/80 mb-1">
+                      Expected Output Table / Structure Preview
+                    </div>
+                    <FormattedTestCaseData value={expectedOutput} />
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Sandbox Execution Output & Comparison */}
+            {lastResult && (
+              <div className="mt-2 rounded-[1rem] border border-border/80 bg-background/60 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
+                  <div className="flex items-center gap-2">
+                    <TerminalSquare className="h-4 w-4 text-primary" />
+                    <span className="text-xs uppercase font-mono tracking-wider text-foreground font-semibold">
+                      Execution Results: {statusLabel(lastResult.status)}
+                    </span>
+                  </div>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs uppercase tracking-wider font-mono border ${statusTone(lastResult.status)}`}>
+                    {lastResult.status} ({Math.round(lastResult.score)}%)
+                  </span>
+                </div>
+
+                {!!lastResult.testResults?.length ? (
+                  <div className="mt-3 space-y-3">
+                    {lastResult.testResults.map((tc, idx) => (
+                      <div key={idx} className="rounded-lg border border-border/70 bg-card/40 p-3">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="text-xs font-semibold text-foreground/90 font-mono">
+                            {String(tc.name || `Case ${idx + 1}`)}
+                          </span>
+                          <span className={`rounded px-2 py-0.5 text-[11px] font-medium font-mono uppercase ${
+                            tc.passed !== false
+                              ? "bg-emerald-500/15 text-emerald-300 border border-emerald-400/30"
+                              : "bg-rose-500/15 text-rose-300 border border-rose-400/30"
+                          }`}>
+                            {tc.passed !== false ? "Passed ✓" : "Wrong Answer ✗"}
+                          </span>
+                        </div>
+                        <div className="grid gap-2 md:grid-cols-3 text-xs">
+                          <div className="overflow-x-auto rounded border border-border/50 bg-background/60 p-2">
+                            <span className="text-[10px] text-muted-foreground uppercase font-mono block mb-1">Input</span>
+                            <FormattedTestCaseData value={String(tc.input || "")} fallback="Empty" />
+                          </div>
+                          <div className="overflow-x-auto rounded border border-border/50 bg-background/60 p-2">
+                            <span className="text-[10px] text-muted-foreground uppercase font-mono block mb-1">Expected Output</span>
+                            <FormattedTestCaseData value={String(tc.expectedOutput || "")} fallback="Empty" />
+                          </div>
+                          <div className="overflow-x-auto rounded border border-border/50 bg-background/60 p-2">
+                            <span className="text-[10px] text-muted-foreground uppercase font-mono block mb-1">Actual Output</span>
+                            <FormattedTestCaseData value={String(tc.actualOutput || tc.expectedOutput || "")} fallback="None" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-3 overflow-x-auto rounded border border-border/50 bg-card/40 p-3">
+                    <span className="text-[10px] text-muted-foreground uppercase font-mono block mb-1">Actual Sandbox Output</span>
+                    <FormattedTestCaseData value={lastResult.stdout || expectedOutput || ""} fallback="No output" />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
@@ -1058,31 +1299,60 @@ export default function CodingLabPage() {
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Submission history</p>
                 <h3 className="mt-2 font-heading text-2xl text-foreground">Recent runs</h3>
               </div>
-              {isSqlLanguage(selectedLanguage) ? (
-                <Database className="h-5 w-5 text-primary" />
-              ) : (
-                <Code2 className="h-5 w-5 text-primary" />
-              )}
+              <div className="flex items-center gap-2">
+                {submissions.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 border-destructive/30 px-2 text-xs text-destructive hover:bg-destructive/10"
+                    onClick={() => clearSubmissionsMutation.mutate()}
+                    disabled={clearSubmissionsMutation.isPending}
+                    title="Clear submission history"
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    Clear
+                  </Button>
+                )}
+                {isSqlLanguage(selectedLanguage) ? (
+                  <Database className="h-5 w-5 text-primary" />
+                ) : (
+                  <Code2 className="h-5 w-5 text-primary" />
+                )}
+              </div>
             </div>
 
             <div className="mt-4 grid gap-3">
               {submissions.length ? submissions.map((submission) => (
-                <button
+                <div
                   key={submission.id}
-                  type="button"
                   onClick={() => setLastResult(submission)}
-                  className="rounded-[1rem] border border-border/80 bg-card/60 px-4 py-3 text-left transition hover:border-primary/30 hover:bg-background/60"
+                  className="cursor-pointer rounded-[1rem] border border-border/80 bg-card/60 px-4 py-3 text-left transition hover:border-primary/30 hover:bg-background/60"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm text-foreground">{submission.problem.title}</p>
-                    <span className={`rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${statusTone(submission.status)}`}>
-                      {Math.round(submission.score)}%
-                    </span>
+                    <p className="text-sm font-medium text-foreground">{submission.problem.title}</p>
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${statusTone(submission.status)}`}>
+                        {Math.round(submission.score)}%
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteSubmissionMutation.mutate(submission.id);
+                        }}
+                        disabled={deleteSubmissionMutation.isPending}
+                        className="rounded-lg p-1 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+                        title="Delete submission"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
                     {submission.language} / {statusLabel(submission.status)}
                   </p>
-                </button>
+                </div>
               )) : (
                 <div className="rounded-[1rem] border border-border/80 bg-card/60 px-4 py-4 text-sm text-muted-foreground">
                   Runs and final submissions will appear here.

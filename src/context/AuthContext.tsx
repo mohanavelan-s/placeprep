@@ -14,6 +14,7 @@ import {
   getStoredToken,
   getStoredUser,
   login as loginRequest,
+  loginWithGoogle as loginWithGoogleRequest,
   persistSession,
   register as registerRequest,
   type AuthResult,
@@ -39,6 +40,7 @@ interface AuthContextValue {
   isInitializing: boolean;
   isDemoMode: boolean;
   login: (payload: { identifier: string; password: string }) => Promise<AuthResult>;
+  loginWithGoogle: (credential: string) => Promise<AuthResult>;
   register: (payload: RegisterInput) => Promise<AuthResult>;
   enterDemoMode: (role?: "admin" | "user") => AuthResult;
   logout: () => void;
@@ -108,6 +110,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isDemoMode,
     async login(payload) {
       const session = await loginRequest(payload);
+      clearStoredSession();
+      queryClient.clear();
+      applySession(session, setToken, setUser);
+      setIsDemoMode(false);
+      return session;
+    },
+    async loginWithGoogle(credential: string) {
+      const session = await loginWithGoogleRequest(credential);
       clearStoredSession();
       queryClient.clear();
       applySession(session, setToken, setUser);

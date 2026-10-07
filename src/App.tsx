@@ -102,7 +102,7 @@ function ProtectedWorkspaceLayout() {
 }
 
 function AppRoutes() {
-  const { isAuthenticated, isInitializing, login, register, enterDemoMode, user } = useAuth();
+  const { isAuthenticated, isInitializing, login, loginWithGoogle, register, enterDemoMode, user } = useAuth();
 
   if (isInitializing) {
     return <LoadingState />;
@@ -116,8 +116,8 @@ function AppRoutes() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/welcome" element={<LandingPage />} />
-            <Route path="/auth" element={<AuthPage onLogin={login} onRegister={register} onEnterDemo={enterDemoMode} />} />
-            <Route path="/invite" element={<AuthPage onLogin={login} onRegister={register} onEnterDemo={enterDemoMode} />} />
+            <Route path="/auth" element={<AuthPage onLogin={login} onLoginWithGoogle={loginWithGoogle} onRegister={register} onEnterDemo={enterDemoMode} />} />
+            <Route path="/invite" element={<AuthPage onLogin={login} onLoginWithGoogle={loginWithGoogle} onRegister={register} onEnterDemo={enterDemoMode} />} />
             <Route path="/dashboard" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/prep-architect" element={<Navigate to="/auth?mode=login" replace />} />
             <Route path="/tasks" element={<Navigate to="/auth?mode=login" replace />} />

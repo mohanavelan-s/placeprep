@@ -2350,12 +2350,49 @@ export async function handleDemoRequest<T>(path: string, options: { method?: str
   if (/^\/coach\/students\/[^/]+\/proofs$/.test(pathname) && method === "DELETE") {
     return { deleted: 1, clearedAt: new Date().toISOString() } as T;
   }
+  if (/^\/coach\/students\/[^/]+$/.test(pathname) && method === "DELETE") {
+    return { success: true, deletedCount: 1, studentUserId: pathname.split("/").pop() } as T;
+  }
+  if (pathname === "/coach/students" && method === "DELETE") {
+    const studentUserIds = Array.isArray(body.studentUserIds) ? body.studentUserIds : [];
+    return { success: true, deletedCount: studentUserIds.length, studentUserIds } as T;
+  }
+  if (/^\/coach\/groups\/[^/]+$/.test(pathname) && method === "DELETE") {
+    return { success: true, deletedCount: 1, groupId: pathname.split("/").pop() } as T;
+  }
   if (pathname === "/coach/progress/history" && method === "DELETE") {
     return { deleted: 3, clearedAt: new Date().toISOString(), affectedUsers: 1, scope: body.scope || "selected" } as T;
   }
   if (pathname === "/coach/practice-capsules/history" && method === "DELETE") {
     const requestedIds = Array.isArray(body.assignmentIds) ? body.assignmentIds.length : 0;
     return { deleted: requestedIds || 1, clearedAt: new Date().toISOString(), affectedUsers: 1, scope: body.groupId ? "group" : "student" } as T;
+  }
+  if (/^\/coding\/submissions\/[^/]+$/.test(pathname) && method === "DELETE") {
+    return { success: true, deletedCount: 1, id: pathname.split("/").pop() } as T;
+  }
+  if (pathname === "/coding/submissions" && method === "DELETE") {
+    return { success: true, deletedCount: 1 } as T;
+  }
+  if (/^\/assessments\/[^/]+$/.test(pathname) && method === "DELETE") {
+    return { success: true, deletedCount: 1, id: pathname.split("/").pop() } as T;
+  }
+  if (pathname === "/assessments/history" && method === "DELETE") {
+    return { success: true, deletedCount: 1 } as T;
+  }
+  if (/^\/uploads\/images\/[^/]+$/.test(pathname) && method === "DELETE") {
+    return { success: true, deletedCount: 1, id: pathname.split("/").pop() } as T;
+  }
+  if (/^\/resume\/[^/]+$/.test(pathname) && method === "DELETE") {
+    return { success: true, deletedCount: 1, id: pathname.split("/").pop() } as T;
+  }
+  if (/^\/notifications\/[^/]+$/.test(pathname) && method === "DELETE") {
+    return { success: true, deletedCount: 1, id: pathname.split("/").pop() } as T;
+  }
+  if (/^\/power-pocket\/[^/]+$/.test(pathname) && method === "DELETE") {
+    return { success: true, deletedCount: 1, id: pathname.split("/").pop() } as T;
+  }
+  if (pathname === "/power-pocket/history" && method === "DELETE") {
+    return { success: true, deletedCount: 1 } as T;
   }
 
   if (pathname.endsWith("/history") && method === "DELETE") return { deleted: 0, clearedAt: new Date().toISOString() } as T;

@@ -5,6 +5,7 @@ import PlacePrepLogo from "@/components/PlacePrepLogo";
 
 interface AuthPageProps {
   onLogin: (payload: { identifier: string; password: string }) => Promise<unknown>;
+  onLoginWithGoogle: (credential: string) => Promise<unknown>;
   onRegister: (payload: {
     name: string;
     username?: string;
@@ -18,7 +19,7 @@ interface AuthPageProps {
   onEnterDemo: (role: "admin" | "user") => void;
 }
 
-export default function AuthPage({ onLogin, onRegister, onEnterDemo }: AuthPageProps) {
+export default function AuthPage({ onLogin, onLoginWithGoogle, onRegister, onEnterDemo }: AuthPageProps) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const requestedMode = searchParams.get("mode");
@@ -42,6 +43,7 @@ export default function AuthPage({ onLogin, onRegister, onEnterDemo }: AuthPageP
 
       <AuthPanel
         onLogin={onLogin}
+        onLoginWithGoogle={onLoginWithGoogle}
         onRegister={onRegister}
         onEnterDemo={onEnterDemo}
         initialMode={initialMode}

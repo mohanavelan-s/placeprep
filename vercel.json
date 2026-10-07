@@ -1,10 +1,6 @@
 {
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://placeprep-api-production-851e.up.railway.app/api/$1"
-    },
-    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

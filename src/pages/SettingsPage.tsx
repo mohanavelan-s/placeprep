@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import AndroidAccessPanel from "@/components/AndroidAccessPanel";
 import ClearHistoryButton from "@/components/ClearHistoryButton";
+import McpGatewayPanel from "@/components/McpGatewayPanel";
 import PersonalProfilePanel from "@/components/PersonalProfilePanel";
 import ResumeAnalysisPanel from "@/components/ResumeAnalysisPanel";
 import SoftSyncNotice from "@/components/SoftSyncNotice";
@@ -1003,6 +1004,7 @@ export default function SettingsPage() {
       <ResumeAnalysisPanel defaultTargetRole={targetRole || user?.targetRole || ""} />
 
       <AndroidAccessPanel adminMode={isAndroidPublisherUser(user)} />
+      <McpGatewayPanel />
       <Dialog open={Boolean(emailDeliveryPopup)} onOpenChange={(open) => !open && setEmailDeliveryPopup(null)}>
         <DialogContent className="border-border/80 bg-background">
           <DialogHeader>

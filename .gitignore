@@ -12,6 +12,32 @@ dist
 dist-ssr
 *.local
 
+# Local credentials and deployment configuration
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+server-node/.env
+server-node/.env.*
+!server-node/.env.example
+server/secrets/
+server/*.secrets.json
+server/*-secrets.json
+server-node/secrets/
+server-node/*.secrets.json
+android/keystore.properties
+
+# Build artifacts
+target/
+server/target/
+server-node/node_modules/
+*.jar
+*.war
+uploads/
+server/uploads/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

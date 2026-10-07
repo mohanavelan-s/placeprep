@@ -1,0 +1,67 @@
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+  error:
+    include-message: always
+    include-binding-errors: always
+
+spring:
+  application:
+    name: placeprep-backend
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:}}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:5}
+      minimum-idle: ${DB_POOL_MIN:1}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT:30000}
+      idle-timeout: ${DB_IDLE_TIMEOUT:30000}
+      max-lifetime: ${DB_MAX_LIFETIME:1800000}
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
+
+placeprep:
+  jwt:
+    secret: ${JWT_SECRET:}
+    expires-in-ms: ${JWT_EXPIRES_IN_MS:604800000}
+  cors:
+    allowed-origins: ${CLIENT_URLS:http://localhost:4173,http://127.0.0.1:4173,http://localhost:5173,http://127.0.0.1:5173,https://placeprep-nine.vercel.app,https://placeprep.vercel.app}
+  app:
+    url: ${APP_URL:http://localhost:4173}
+    upload-dir: ${UPLOAD_DIR:./uploads}
+    allow-public-signup: ${ALLOW_PUBLIC_SIGNUP:false}
+    bootstrap-admin-invite: ${BOOTSTRAP_ADMIN_INVITE_CODE:}
+    bootstrap-user-invite: ${BOOTSTRAP_USER_INVITE_CODE:}
+    default-timezone: ${DEFAULT_TIMEZONE:Asia/Calcutta}
+  auth:
+    google-client-id: ${GOOGLE_CLIENT_ID:142236988060-7stjhr2uo0nj92h94b5bds92t2qlqakp.apps.googleusercontent.com}
+  ai:
+    provider: ${AI_PROVIDER:openrouter}
+    api-key: ${OPENROUTER_API_KEY:${OPENAI_API_KEY:}}
+    base-url: ${AI_BASE_URL:https://openrouter.ai/api/v1}
+    model: ${OPENAI_MODEL:openai/gpt-5.1}
+    gemini-api-key: ${GEMINI_API_KEY:}
+    gemini-model: ${GEMINI_MODEL:gemini-2.5-flash}
+    gemini-base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}
+  judge0:
+    base-url: ${JUDGE0_BASE_URL:https://ce.judge0.com}
+    api-key: ${JUDGE0_API_KEY:}
+  cloudinary:
+    cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+    api-key: ${CLOUDINARY_API_KEY:}
+    api-secret: ${CLOUDINARY_API_SECRET:}
+  razorpay:
+    key-id: ${RAZORPAY_KEY_ID:}
+    key-secret: ${RAZORPAY_KEY_SECRET:}
+    webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
+  mcp:
+    public-url: ${APP_PUBLIC_BASE_URL:${MCP_PUBLIC_URL:}}
+    oauth-issuer: ${APP_PUBLIC_BASE_URL:${OAUTH_ISSUER:}}
+    oauth-resource: ${OAUTH_RESOURCE:}
+    oauth-clients: ${OAUTH_CLIENTS:[{"clientId":"local-mcp-test","redirectUris":["http://127.0.0.1:3000/oauth/callback","http://localhost:3000/oauth/callback"]}]}
+  oauth:
+    private-key-pem: ${OAUTH_PRIVATE_KEY_PEM:}
+    key-id: ${OAUTH_KEY_ID:placeprep-oauth-key-1}
+

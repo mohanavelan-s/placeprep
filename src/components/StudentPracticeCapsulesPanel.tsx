@@ -218,7 +218,11 @@ function buildPracticeCapsules(tasks: Task[]) {
     .sort((left, right) => toComparableTime(right.createdAt) - toComparableTime(left.createdAt));
 }
 
-function formatCapsuleDate(value: string) {
+function formatCapsuleDate(value?: string | null) {
+  if (!value) {
+    return "soon";
+  }
+
   try {
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       return new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", {
@@ -228,7 +232,12 @@ function formatCapsuleDate(value: string) {
       });
     }
 
-    return new Date(value).toLocaleString("en-IN", {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+
+    return parsed.toLocaleString("en-IN", {
       day: "2-digit",
       month: "short",
       year: "numeric",
@@ -366,7 +375,7 @@ export default function StudentPracticeCapsulesPanel() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="inline-flex items-center gap-2 text-foreground">
-                          {item.capsuleType.startsWith("leetcode") ? (
+                          {String(item.capsuleType || "").startsWith("leetcode") ? (
                             <Sparkles className="h-4 w-4 text-primary" />
                           ) : item.capsuleType === "verbal" ? (
                             <BookCopy className="h-4 w-4 text-primary" />

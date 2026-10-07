@@ -179,7 +179,6 @@ export default function BillingConfirmPage() {
 
       await new Promise<void>((resolve, reject) => {
         let settled = false;
-        let stopSizing: (() => void) | undefined;
         const finish = () => stopSizing?.();
 
         const checkout = new window.Razorpay({
@@ -230,7 +229,7 @@ export default function BillingConfirmPage() {
           }
         });
         checkout.open();
-        stopSizing = applyRazorpayCheckoutSizing();
+        const stopSizing = applyRazorpayCheckoutSizing();
       });
     },
     onSuccess: async () => {

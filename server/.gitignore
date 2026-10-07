@@ -1,4 +1,12 @@
 node_modules/
+target/
+*.jar
+*.war
 .env
+.env.*
+!.env.example
+secrets/
+*.secrets.json
 uploads/
 *.log
+

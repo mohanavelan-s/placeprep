@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowUp,
   Brain,
+  Check,
   CheckCircle2,
   ClipboardList,
   Code2,
@@ -16,6 +17,7 @@ import {
   RefreshCcw,
   Sparkles,
   TimerReset,
+  Trash2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -37,6 +39,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import {
   applyAssessmentPlanUpdate,
+  clearAssessmentHistory,
+  deleteAssessmentSession,
   fetchAssessmentOverview,
   generateAssessment,
   submitAssessment,
@@ -429,6 +433,7 @@ export default function AssessmentsPage() {
   const [approachHints, setApproachHints] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => Date.now());
   const [missingPlanDialogOpen, setMissingPlanDialogOpen] = useState(false);
+  const [planChoiceState, setPlanChoiceState] = useState<"pending" | "accepted" | "declined">("pending");
 
   const overviewQuery = useQuery({
     queryKey: ["assessments", "overview"],
@@ -535,6 +540,28 @@ export default function AssessmentsPage() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to apply the assessment changes to the plan.");
+    },
+  });
+
+  const deleteAssessmentMutation = useMutation({
+    mutationFn: (id: string) => deleteAssessmentSession(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["assessments", "overview"] });
+      toast.success("Assessment deleted.");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to delete assessment.");
+    },
+  });
+
+  const clearAssessmentHistoryMutation = useMutation({
+    mutationFn: () => clearAssessmentHistory(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["assessments", "overview"] });
+      toast.success("Assessment history cleared.");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to clear assessment history.");
     },
   });
 
@@ -885,25 +912,175 @@ export default function AssessmentsPage() {
                   </div>
                 </div>
 
-                <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Plan adjustment</p>
-                  <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                    If the weak spots are real, push them back into Prep Architect so the roadmap, tasks, and flashcards adapt.
-                  </p>
-                  <Button
-                    type="button"
-                    className="mt-4 h-10 gap-2"
-                    onClick={() => applyPlanUpdateMutation.mutate()}
-                    disabled={applyPlanUpdateMutation.isPending || !currentSession.weakSpots.length}
-                  >
-                    {applyPlanUpdateMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <TimerReset className="h-4 w-4" />
-                    )}
-                    {applyPlanUpdateMutation.isPending ? "Updating plan..." : "Apply to plan"}
-                  </Button>
-                </div>
+                {/* Adaptive Assessment & Plan Revision Engine (Student Authority) */}
+                {(() => {
+                  const recPlan = (currentSession.metadata?.recommendedPlan as Record<string, unknown>) || null;
+                  const newReadiness = typeof currentSession.metadata?.newReadinessScore === "number"
+                    ? Number(currentSession.metadata.newReadinessScore)
+                    : null;
+                  const readinessDelta = typeof currentSession.metadata?.readinessDelta === "number"
+                    ? Number(currentSession.metadata.readinessDelta)
+                    : null;
+                  const isAccepted = planChoiceState === "accepted" || applyPlanUpdateMutation.isSuccess;
+                  const isDeclined = planChoiceState === "declined";
+
+                  return (
+                    <div className="rounded-[1.15rem] border border-primary/30 bg-primary/5 p-5">
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <span className="text-xs font-mono uppercase tracking-[0.18em] text-primary font-semibold">
+                            Adaptive Assessment & Plan Revision
+                          </span>
+                          <h4 className="mt-1 font-heading text-xl text-foreground">
+                            Readiness Score & Recommended Plan Update
+                          </h4>
+                        </div>
+                        {newReadiness !== null && (
+                          <div className="flex items-center gap-3">
+                            <div className="rounded-xl border border-primary/20 bg-background/80 px-3.5 py-1.5 text-right">
+                              <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block">
+                                Updated Readiness
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-heading text-xl font-bold text-foreground">
+                                  {Math.round(newReadiness * 10) / 10}%
+                                </span>
+                                {readinessDelta !== null && readinessDelta !== 0 && (
+                                  <span className={`text-xs font-mono font-medium ${readinessDelta > 0 ? "text-emerald-400" : "text-amber-400"}`}>
+                                    ({readinessDelta > 0 ? `+${readinessDelta.toFixed(1)}%` : `${readinessDelta.toFixed(1)}%`})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Multi-Aspect Scoring Breakdown */}
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3 text-xs">
+                        <div className="rounded-lg border border-border/60 bg-background/50 p-3">
+                          <span className="text-muted-foreground uppercase font-mono text-[10px]">Concept Mastery</span>
+                          <p className="mt-1 font-medium text-foreground text-sm">
+                            {Math.round(Number(currentSession.score || 0))}%
+                          </p>
+                          <span className="text-[11px] text-muted-foreground">Accuracy across topics</span>
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-background/50 p-3">
+                          <span className="text-muted-foreground uppercase font-mono text-[10px]">Time Efficiency</span>
+                          <p className="mt-1 font-medium text-foreground text-sm">
+                            {Math.round(Math.min(100, Math.max(50, 100 - (answerChangeCount * 5))))}%
+                          </p>
+                          <span className="text-[11px] text-muted-foreground">Pacing & answer stability</span>
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-background/50 p-3">
+                          <span className="text-muted-foreground uppercase font-mono text-[10px]">Role Alignment</span>
+                          <p className="mt-1 font-medium text-foreground text-sm">
+                            {currentSession.weakSpots.length === 0 ? "High (Clear)" : "Targeted Gaps"}
+                          </p>
+                          <span className="text-[11px] text-muted-foreground">
+                            {currentSession.weakSpots.length === 0 ? "Ready for advanced tracks" : `${currentSession.weakSpots.length} weak areas`}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Recommended Plan Details */}
+                      <div className="mt-4 rounded-xl border border-border/70 bg-background/70 p-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs uppercase font-mono tracking-wider text-muted-foreground">
+                            Proposed Focus: {String(recPlan?.focusShift || (currentSession.weakSpots.length ? "Weak Spot Remediation" : "Accelerated Track"))}
+                          </span>
+                          <span className="rounded bg-primary/10 px-2 py-0.5 text-[11px] font-mono text-primary border border-primary/20">
+                            Student Authority Protected
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-foreground/90">
+                          {String(
+                            recPlan?.rationale ||
+                              (currentSession.weakSpots.length
+                                ? `Based on this assessment, we recommend prioritizing ${currentSession.weakSpots.join(", ")} in your daily roadmap.`
+                                : "Great performance! We recommend advancing your plan to higher-difficulty interview questions.")
+                          )}
+                        </p>
+                        {!!(recPlan?.recommendedTopics || currentSession.weakSpots)?.length && (
+                          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs text-muted-foreground mr-1">Recommended Topics:</span>
+                            {((recPlan?.recommendedTopics as string[]) || currentSession.weakSpots).map((topic) => (
+                              <span key={topic} className="rounded-md border border-border bg-card px-2 py-0.5 text-xs font-mono text-foreground">
+                                {topic}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Student Authority Decision Area */}
+                      <div className="mt-4 pt-3 border-t border-border/60">
+                        {isAccepted ? (
+                          <div className="flex items-center gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-200">
+                            <Check className="h-5 w-5 shrink-0 text-emerald-400" />
+                            <div className="text-xs leading-5">
+                              <strong className="block font-medium text-emerald-300">Recommended Plan Applied</strong>
+                              Your active Prep Architect roadmap and daily tasks have been updated with these adapted topics.
+                            </div>
+                          </div>
+                        ) : isDeclined ? (
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/70 bg-card/60 p-3">
+                            <div className="text-xs leading-5 text-muted-foreground">
+                              <strong className="block font-medium text-foreground">Existing Plan Retained</strong>
+                              Your roadmap remains on its current course. You can switch to the recommended plan at any time.
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-xs shrink-0"
+                              onClick={() => setPlanChoiceState("pending")}
+                            >
+                              Review Recommendation
+                            </Button>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs text-amber-200/90 mb-3">
+                              Notice: Your current plan will <strong>not</strong> change unless you explicitly confirm below. You have the choice to adopt this recommendation or stick with your current plan.
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <Button
+                                type="button"
+                                className="h-10 gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                                onClick={() => {
+                                  applyPlanUpdateMutation.mutate(undefined, {
+                                    onSuccess: () => setPlanChoiceState("accepted"),
+                                  });
+                                }}
+                                disabled={applyPlanUpdateMutation.isPending}
+                              >
+                                {applyPlanUpdateMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Check className="h-4 w-4" />
+                                )}
+                                {applyPlanUpdateMutation.isPending ? "Applying Recommended Plan..." : "Switch to Recommended Plan"}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-10 gap-2 border-border/80 bg-background/80"
+                                onClick={() => {
+                                  setPlanChoiceState("declined");
+                                  toast.info("Existing plan kept. No changes were made to your roadmap.");
+                                }}
+                                disabled={applyPlanUpdateMutation.isPending}
+                              >
+                                Keep Existing Plan
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Session debrief</p>
@@ -1005,7 +1182,23 @@ export default function AssessmentsPage() {
       </div>
 
       <section className="surface-panel p-6 md:p-7">
-        <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Recent assessments</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Recent assessments</p>
+          {recentSessions.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 border-destructive/30 px-2 text-xs text-destructive hover:bg-destructive/10"
+              onClick={() => clearAssessmentHistoryMutation.mutate()}
+              disabled={clearAssessmentHistoryMutation.isPending}
+              title="Clear assessment history"
+            >
+              <Trash2 className="mr-1 h-3.5 w-3.5" />
+              Clear History
+            </Button>
+          )}
+        </div>
         <div className="mt-5 grid gap-3 xl:grid-cols-3">
           {recentSessions.length ? recentSessions.map((session: AssessmentSession) => (
             <article
@@ -1022,8 +1215,19 @@ export default function AssessmentsPage() {
                     {session.assessmentScope || "daily"} scope
                   </p>
                 </div>
-                <div className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.16em] ${scoreTone(session.score)}`}>
-                  {session.status === "completed" ? `${Math.round(session.score)}%` : session.status}
+                <div className="flex items-center gap-2">
+                  <div className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.16em] ${scoreTone(session.score)}`}>
+                    {session.status === "completed" ? `${Math.round(session.score)}%` : session.status}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => deleteAssessmentMutation.mutate(session.id)}
+                    disabled={deleteAssessmentMutation.isPending}
+                    className="rounded-lg p-1 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+                    title="Delete assessment attempt"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
 
