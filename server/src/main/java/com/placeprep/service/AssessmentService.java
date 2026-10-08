@@ -88,7 +88,24 @@ public class AssessmentService {
 
         Map<String, Object> activePlan = aiService.getLatestPrepPlan(user);
         if (activePlan == null) {
-            throw new AppException("Create a Prep Architect plan first: Assessments are built from the role and topics in your active plan.", HttpStatus.BAD_REQUEST);
+            try {
+                activePlan = aiService.createAndPersistPlan(user, Map.of(
+                        "targetRole", user.getTargetRole() != null ? user.getTargetRole() : "Software Development Engineer",
+                        "companyKey", "google",
+                        "durationMonths", 3,
+                        "timePerDay", 120
+                ));
+            } catch (Exception e) {
+                activePlan = Map.of(
+                        "id", UUID.randomUUID().toString(),
+                        "title", "Core Software Engineering Track",
+                        "targetRole", user.getTargetRole() != null ? user.getTargetRole() : "SDE",
+                        "targetTopics", List.of("Arrays", "Binary Search", "Trees", "SQL", "Dynamic Programming"),
+                        "knownTopics", List.of("Basics"),
+                        "timePerDay", 120,
+                        "durationMonths", 3
+                );
+            }
         }
 
         UUID planId = null;
@@ -194,7 +211,11 @@ public class AssessmentService {
             } else {
                 // Default MCQ
                 if (correctAnsObj != null && !userAnsStr.isBlank()) {
-                    isCorrect = correctAnsObj.toString().equalsIgnoreCase(userAnsStr);
+                    String ca = correctAnsObj.toString().trim();
+                    isCorrect = ca.equalsIgnoreCase(userAnsStr)
+                            || userAnsStr.toLowerCase().startsWith(ca.toLowerCase() + ".")
+                            || userAnsStr.toLowerCase().startsWith(ca.toLowerCase() + ":")
+                            || userAnsStr.toLowerCase().startsWith(ca.toLowerCase() + " ");
                 }
                 feedback = isCorrect
                         ? "Accurate selection demonstrating solid concept understanding."
@@ -473,6 +494,13 @@ public class AssessmentService {
                 "type", "mcq",
                 "topic", "Arrays & Two Pointers",
                 "prompt", "What is the optimal auxiliary space complexity of finding the two sum indices in a sorted array using two pointers?",
+                "question", "What is the optimal auxiliary space complexity of finding the two sum indices in a sorted array using two pointers?",
+                "options", List.of(
+                        "A. O(N) space using a hash table",
+                        "B. O(1) auxiliary space using two converging pointers",
+                        "C. O(N log N) space with recursion stack",
+                        "D. O(N^2) space with a distance matrix"
+                ),
                 "choices", List.of(
                         Map.of("id", "a", "label", "A", "text", "O(N) space using a hash table"),
                         Map.of("id", "b", "label", "B", "text", "O(1) auxiliary space using two converging pointers"),
@@ -489,6 +517,13 @@ public class AssessmentService {
                 "type", "mcq",
                 "topic", "Dynamic Programming",
                 "prompt", "Which core properties must a problem satisfy to be solvable with Dynamic Programming?",
+                "question", "Which core properties must a problem satisfy to be solvable with Dynamic Programming?",
+                "options", List.of(
+                        "A. Overlapping subproblems and optimal substructure",
+                        "B. Greedy choice property with strictly local decisions",
+                        "C. Independent subproblems with divide and conquer",
+                        "D. Non-deterministic state transitions"
+                ),
                 "choices", List.of(
                         Map.of("id", "a", "label", "A", "text", "Overlapping subproblems and optimal substructure"),
                         Map.of("id", "b", "label", "B", "text", "Greedy choice property with strictly local decisions"),
@@ -505,6 +540,13 @@ public class AssessmentService {
                 "type", "mcq",
                 "topic", "Binary Trees & Traversal",
                 "prompt", "Which tree traversal processes nodes level by level using a Queue data structure?",
+                "question", "Which tree traversal processes nodes level by level using a Queue data structure?",
+                "options", List.of(
+                        "A. Preorder Traversal (DFS)",
+                        "B. Inorder Traversal (DFS)",
+                        "C. Level-order Traversal (BFS)",
+                        "D. Postorder Traversal (DFS)"
+                ),
                 "choices", List.of(
                         Map.of("id", "a", "label", "A", "text", "Preorder Traversal (DFS)"),
                         Map.of("id", "b", "label", "B", "text", "Inorder Traversal (DFS)"),
@@ -521,6 +563,13 @@ public class AssessmentService {
                 "type", "mcq",
                 "topic", "Database SQL & ACID",
                 "prompt", "In ACID properties of a database transaction, what does 'Isolation' guarantee?",
+                "question", "In ACID properties of a database transaction, what does 'Isolation' guarantee?",
+                "options", List.of(
+                        "A. Transactions execute concurrently without interfering with each other",
+                        "B. Committed data is preserved across power outages and crashes",
+                        "C. Either all changes of a transaction take effect, or none do",
+                        "D. The database transitions from one valid state to another"
+                ),
                 "choices", List.of(
                         Map.of("id", "a", "label", "A", "text", "Transactions execute concurrently without interfering with each other"),
                         Map.of("id", "b", "label", "B", "text", "Committed data is preserved across power outages and crashes"),

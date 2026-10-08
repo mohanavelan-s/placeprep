@@ -92,7 +92,23 @@ class PlacePrepRepository(
 
     suspend fun loadLatestPrepPlan(): PrepPlan? = api.getLatestPrepPlan().data
 
-    suspend fun generatePrepPlan(): PrepPlan = api.generatePrepPlan().data
+    suspend fun generatePrepPlan(
+        targetRole: String = "Software Development Engineer",
+        companyKey: String = "google",
+        customCompanyName: String = "Google",
+        durationMonths: Int = 3,
+        timePerDay: Int = 120,
+    ): PrepPlan {
+        return api.generatePrepPlan(
+            mapOf(
+                "targetRole" to targetRole,
+                "companyKey" to companyKey,
+                "customCompanyName" to customCompanyName,
+                "durationMonths" to durationMonths,
+                "timePerDay" to timePerDay,
+            )
+        ).data
+    }
 
     suspend fun loadActivePowerPocket(): PowerPocketSession? = api.getActivePowerPocket().data
 

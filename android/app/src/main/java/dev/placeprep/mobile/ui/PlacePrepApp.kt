@@ -33,11 +33,13 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.placeprep.mobile.BuildConfig
 import dev.placeprep.mobile.data.*
 import dev.placeprep.mobile.notification.PlacePrepNotificationManager
+import dev.placeprep.mobile.util.OAuthLauncher
 
 // --- PlacePrep Obsidian Palette ---
 private val Background = Color(0xFF07080D)
@@ -277,6 +279,68 @@ fun GoogleLogoIcon(modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
+fun GoogleOAuthButton(
+    text: String = "Continue with Google",
+    subtext: String? = "1-tap sign in • Sync across devices",
+    modifier: Modifier = Modifier,
+    isDarkTheme: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(54.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = if (isDarkTheme) SurfaceRaised else Color.White,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isDarkTheme) Border else Color(0xFFE2E8F0)
+        ),
+        shadowElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .padding(5.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                GoogleLogoIcon(modifier = Modifier.size(18.dp))
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(
+                horizontalAlignment = Alignment.Start,
+            ) {
+                Text(
+                    text = text,
+                    color = if (isDarkTheme) TextPrimary else Color(0xFF0F172A),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    letterSpacing = 0.2.sp,
+                )
+                if (subtext != null) {
+                    Text(
+                        text = subtext,
+                        color = if (isDarkTheme) TextMuted else Color(0xFF64748B),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Normal,
+                    )
+                }
+            }
+        }
+    }
+}
+
 // ==============================================================================
 // MAIN APP COMPOSABLE
 // ==============================================================================
@@ -472,25 +536,23 @@ private fun LandingScreen(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // OAuth / Google Direct Button
-                OutlinedButton(
+                // Google 1-Tap OAuth Button
+                GoogleOAuthButton(
+                    text = "Continue with Google",
+                    subtext = "Fast & secure 1-tap sign in",
                     onClick = {
-                        val oauthUrl = "https://placeprep-api-production-2481.up.railway.app/oauth/authorize?response_type=code&client_id=placeprep-mobile-app&redirect_uri=placeprep://oauth/callback&scope=openid%20profile%20email%20placeprep:all&state=mobile_landing&code_challenge=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk&code_challenge_method=S256"
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(oauthUrl))
-                        context.startActivity(intent)
+                        OAuthLauncher.launch(context, "mobile_landing")
                     },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Border),
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = SurfaceRaised, contentColor = TextPrimary),
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        GoogleLogoIcon(modifier = Modifier.size(20.dp))
-                        Text("Continue with Google / OAuth", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    }
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = Border)
+                    Text("or continue with account", color = TextMuted, fontSize = 11.sp)
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = Border)
                 }
 
                 Button(
@@ -552,25 +614,13 @@ private fun LoginScreen(
                 Text(MobileStrings.get("sign_in", lang), color = TextPrimary, fontSize = 28.sp, fontWeight = FontWeight.Bold)
 
                 // Google / OAuth Button
-                OutlinedButton(
+                GoogleOAuthButton(
+                    text = "Continue with Google",
+                    subtext = "Fast 1-tap sign in • Sync across devices",
                     onClick = {
-                        val oauthUrl = "https://placeprep-api-production-2481.up.railway.app/oauth/authorize?response_type=code&client_id=placeprep-mobile-app&redirect_uri=placeprep://oauth/callback&scope=openid%20profile%20email%20placeprep:all&state=mobile_login&code_challenge=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk&code_challenge_method=S256"
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(oauthUrl))
-                        context.startActivity(intent)
+                        OAuthLauncher.launch(context, "mobile_login")
                     },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Border),
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = SurfaceRaised, contentColor = TextPrimary),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        GoogleLogoIcon(modifier = Modifier.size(18.dp))
-                        Text("Continue with Google / OAuth", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    }
-                }
+                )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -698,25 +748,13 @@ private fun SignupScreen(
                 Text(MobileStrings.get("create_account", lang), color = TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.Bold)
 
                 // Google / OAuth Button
-                OutlinedButton(
+                GoogleOAuthButton(
+                    text = "Sign up with Google",
+                    subtext = "Quick 1-tap account creation",
                     onClick = {
-                        val oauthUrl = "https://placeprep-api-production-2481.up.railway.app/oauth/authorize?response_type=code&client_id=placeprep-mobile-app&redirect_uri=placeprep://oauth/callback&scope=openid%20profile%20email%20placeprep:all&state=mobile_signup&code_challenge=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk&code_challenge_method=S256"
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(oauthUrl))
-                        context.startActivity(intent)
+                        OAuthLauncher.launch(context, "mobile_signup")
                     },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Border),
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = SurfaceRaised, contentColor = TextPrimary),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        GoogleLogoIcon(modifier = Modifier.size(18.dp))
-                        Text("Continue with Google / OAuth", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    }
-                }
+                )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -828,7 +866,7 @@ private fun WorkspaceScreen(
     onDeleteTask: (String) -> Unit,
     onRequestCoach: (String, String?, String?) -> Unit,
     onSubmitReview: (String?, Int) -> Unit,
-    onGeneratePlan: () -> Unit,
+    onGeneratePlan: (String, String, String, Int, Int) -> Unit,
     onEngagePowerPocket: () -> Unit,
     onEndPowerPocket: () -> Unit,
     onSendMentorMessage: (String) -> Unit,
@@ -1070,6 +1108,7 @@ private fun WorkspaceScreen(
                             ArchitectTab(
                                 plan = state.prepPlan,
                                 lang = lang,
+                                isLoading = state.isLoading,
                                 onGeneratePlan = onGeneratePlan,
                             )
                         }
@@ -2082,8 +2121,22 @@ private fun CreateTaskDialog(
 private fun ArchitectTab(
     plan: PrepPlan?,
     lang: String,
-    onGeneratePlan: () -> Unit,
+    isLoading: Boolean,
+    onGeneratePlan: (targetRole: String, companyKey: String, customCompanyName: String, durationMonths: Int, timePerDay: Int) -> Unit,
 ) {
+    var showCustomizeDialog by remember { mutableStateOf(false) }
+
+    if (showCustomizeDialog) {
+        CustomizePlanDialog(
+            lang = lang,
+            onDismiss = { showCustomizeDialog = false },
+            onGenerate = { role, compKey, customName, duration, time ->
+                showCustomizeDialog = false
+                onGeneratePlan(role, compKey, customName, duration, time)
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -2091,45 +2144,294 @@ private fun ArchitectTab(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        // Hero Header Card
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(22.dp),
+            shape = RoundedCornerShape(24.dp),
             color = SurfaceBase,
             border = androidx.compose.foundation.BorderStroke(1.dp, Border),
         ) {
-            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(MobileStrings.get("architect", lang), color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Crimson.copy(alpha = 0.15f))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Crimson))
+                    Text(
+                        "AI ARCHITECT • CURRICULUM ENGINE",
+                        color = CrimsonSoft,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                    )
+                }
+
                 Text(
-                    "Algorithmic preparation curriculum tailored to your target interview track.",
+                    text = MobileStrings.get("architect", lang),
+                    color = TextPrimary,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = "Nocturne-powered algorithmic curriculum calibrated to your target company, role track, and interview timeline.",
                     color = TextSecondary,
                     fontSize = 13.sp,
+                    lineHeight = 20.sp,
                 )
-                Button(
-                    onClick = onGeneratePlan,
-                    modifier = Modifier.fillMaxWidth().height(44.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Crimson),
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(MobileStrings.get("generate_plan", lang), fontWeight = FontWeight.Bold)
+                    Button(
+                        onClick = { showCustomizeDialog = true },
+                        enabled = !isLoading,
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Crimson),
+                    ) {
+                        if (isLoading) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = TextPrimary, strokeWidth = 2.dp)
+                        } else {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(Icons.Outlined.Tune, contentDescription = "Customize", modifier = Modifier.size(18.dp))
+                                Text("Customize & Build", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            onGeneratePlan("Software Development Engineer", "google", "Google", 3, 120)
+                        },
+                        enabled = !isLoading,
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = SurfaceRaised, contentColor = TextPrimary),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(Icons.Outlined.AutoAwesome, contentDescription = "Quick", tint = Amber, modifier = Modifier.size(16.dp))
+                            Text("Quick SDE Plan", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        }
+                    }
                 }
             }
         }
 
+        // Empty state or Active Plan
         if (plan == null) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = SurfaceRaised,
                 border = androidx.compose.foundation.BorderStroke(1.dp, Border),
             ) {
-                Text(
-                    "No curriculum generated yet. Tap 'Generate Plan' above to build your roadmap.",
-                    color = TextSecondary,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(20.dp),
-                )
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(Crimson.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Outlined.AccountTree, contentDescription = null, tint = Crimson, modifier = Modifier.size(28.dp))
+                    }
+                    Text(
+                        "No Curriculum Generated Yet",
+                        color = TextPrimary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        "Tap 'Customize & Build' above to select your target company (Google, Amazon, Meta...) and let Nocturne synthesize a week-by-week interview roadmap.",
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 20.sp,
+                    )
+                    Button(
+                        onClick = { showCustomizeDialog = true },
+                        modifier = Modifier.padding(top = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Crimson),
+                    ) {
+                        Text("Build My First Plan", fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         } else {
+            // Plan Overview Card
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                color = SurfaceBase,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Crimson.copy(alpha = 0.35f)),
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = plan.title ?: "${plan.targetRole ?: "Software Development Engineer"} Plan",
+                                color = TextPrimary,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                text = "Track: ${plan.companyName ?: "Target Company"} • Version ${plan.version ?: 1}",
+                                color = Lavender,
+                                fontSize = 13.sp,
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = Success.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Success.copy(alpha = 0.35f)),
+                        ) {
+                            Text(
+                                text = if (plan.isActive == true) "Active" else "Archived",
+                                color = Success,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
+
+                    // Chips row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = SurfaceRaised,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Outlined.CalendarToday, contentDescription = null, tint = Amber, modifier = Modifier.size(13.dp))
+                                Text("${plan.durationMonths ?: 3} Months", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = SurfaceRaised,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Outlined.Schedule, contentDescription = null, tint = Cyan, modifier = Modifier.size(13.dp))
+                                Text("${(plan.timePerDay ?: 120.0).toInt()} min/day", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = SurfaceRaised,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Outlined.Timeline, contentDescription = null, tint = CrimsonSoft, modifier = Modifier.size(13.dp))
+                                Text("${plan.roadmap.size} Weeks", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+
+                    // Coach advice callout
+                    if (!plan.coachLine.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Crimson.copy(alpha = 0.08f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Crimson.copy(alpha = 0.25f)),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                Icon(Icons.Outlined.TipsAndUpdates, contentDescription = null, tint = Amber, modifier = Modifier.size(18.dp))
+                                Text(
+                                    text = plan.coachLine,
+                                    color = TextPrimary,
+                                    fontSize = 12.sp,
+                                    lineHeight = 18.sp,
+                                )
+                            }
+                        }
+                    }
+
+                    // Target Topics
+                    if (plan.targetTopics.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Target Topics", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                plan.targetTopics.take(6).forEach { topic ->
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = SurfaceRaised,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+                                    ) {
+                                        Text(
+                                            text = topic,
+                                            color = Lavender,
+                                            fontSize = 11.sp,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Roadmap Weeks
+            Text(
+                "Curriculum Roadmap (${plan.roadmap.size} Weeks)",
+                color = TextPrimary,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+            )
+
             plan.roadmap.forEach { week ->
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -2137,17 +2439,397 @@ private fun ArchitectTab(
                     color = SurfaceBase,
                     border = androidx.compose.foundation.BorderStroke(1.dp, Border),
                 ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Week ${week.week}", color = CrimsonSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            Text(week.title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Crimson.copy(alpha = 0.15f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Crimson.copy(alpha = 0.3f)),
+                                ) {
+                                    Text(
+                                        "Week ${week.week}",
+                                        color = CrimsonSoft,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                    )
+                                }
+                                Text(
+                                    text = week.title,
+                                    color = TextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            Text(
+                                "${week.estimatedHours.toInt()}h",
+                                color = TextMuted,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
                         }
-                        Text(week.focusTopics.joinToString(", "), color = TextSecondary, fontSize = 12.sp)
+
+                        if (week.focusTopics.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                week.focusTopics.forEach { topic ->
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = SurfaceRaised,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+                                    ) {
+                                        Text(
+                                            text = topic,
+                                            color = TextSecondary,
+                                            fontSize = 11.sp,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (week.goals.isNotEmpty()) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                week.goals.forEach { goal ->
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = Success, modifier = Modifier.size(14.dp))
+                                        Text(goal, color = TextPrimary, fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Daily Task Schedule if present
+            if (plan.tasks.isNotEmpty()) {
+                Text(
+                    "Daily Milestones & Task Breakdown",
+                    color = TextPrimary,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+
+                plan.tasks.forEach { day ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        color = SurfaceBase,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = if (day.theme.isNotBlank()) "${day.day}: ${day.theme}" else day.day,
+                                    color = TextPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    text = "${day.totalEstimatedMinutes}m",
+                                    color = Amber,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+
+                            day.items.forEach { item ->
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = SurfaceRaised,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                            Text(item.title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                            if (!item.summary.isNullOrBlank()) {
+                                                Text(item.summary, color = TextSecondary, fontSize = 11.sp, maxLines = 2)
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = when (item.difficulty.lowercase()) {
+                                                "easy" -> Success.copy(alpha = 0.15f)
+                                                "hard" -> Crimson.copy(alpha = 0.15f)
+                                                else -> Amber.copy(alpha = 0.15f)
+                                            },
+                                        ) {
+                                            Text(
+                                                item.difficulty,
+                                                color = when (item.difficulty.lowercase()) {
+                                                    "easy" -> Success
+                                                    "hard" -> CrimsonSoft
+                                                    else -> Amber
+                                                },
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
+}
+
+@Composable
+private fun CustomizePlanDialog(
+    lang: String,
+    onDismiss: () -> Unit,
+    onGenerate: (role: String, companyKey: String, customName: String, durationMonths: Int, timePerDay: Int) -> Unit,
+) {
+    val roles = listOf(
+        "Software Development Engineer",
+        "Backend Engineer",
+        "Frontend Engineer",
+        "Full Stack Engineer",
+        "Machine Learning Engineer",
+        "DevOps & Cloud Engineer",
+    )
+    val companies = listOf(
+        "google" to "Google",
+        "amazon" to "Amazon",
+        "microsoft" to "Microsoft",
+        "meta" to "Meta",
+        "uber" to "Uber",
+        "apple" to "Apple",
+        "custom" to "Custom Target",
+    )
+    val durations = listOf(
+        1 to "1 Month (Sprint)",
+        2 to "2 Months (Targeted)",
+        3 to "3 Months (Standard)",
+        6 to "6 Months (Mastery)",
+    )
+    val times = listOf(
+        60 to "60m / day",
+        90 to "90m / day",
+        120 to "120m / day (Rec.)",
+        180 to "180m / day",
+    )
+
+    var selectedRole by remember { mutableStateOf(roles.first()) }
+    var selectedCompanyKey by remember { mutableStateOf("google") }
+    var customCompanyName by remember { mutableStateOf("Target Tech Corp") }
+    var selectedDuration by remember { mutableIntStateOf(3) }
+    var selectedTimePerDay by remember { mutableIntStateOf(120) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceBase,
+        titleContentColor = TextPrimary,
+        textContentColor = TextSecondary,
+        title = {
+            Text("Customize Prep Architect", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                // Target Role
+                Text("Target Role Track", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    roles.forEach { role ->
+                        val isSelected = selectedRole == role
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedRole = role },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) Crimson.copy(alpha = 0.15f) else SurfaceRaised,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) Crimson else Border),
+                        ) {
+                            Text(
+                                text = role,
+                                color = if (isSelected) CrimsonSoft else TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            )
+                        }
+                    }
+                }
+
+                // Target Company
+                Text("Target Company", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    companies.take(4).forEach { (key, name) ->
+                        val isSelected = selectedCompanyKey == key
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { selectedCompanyKey = key },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) Crimson.copy(alpha = 0.15f) else SurfaceRaised,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) Crimson else Border),
+                        ) {
+                            Text(
+                                text = name,
+                                color = if (isSelected) CrimsonSoft else TextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    companies.drop(4).forEach { (key, name) ->
+                        val isSelected = selectedCompanyKey == key
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { selectedCompanyKey = key },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) Crimson.copy(alpha = 0.15f) else SurfaceRaised,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) Crimson else Border),
+                        ) {
+                            Text(
+                                text = name,
+                                color = if (isSelected) CrimsonSoft else TextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                }
+
+                if (selectedCompanyKey == "custom") {
+                    OutlinedTextField(
+                        value = customCompanyName,
+                        onValueChange = { customCompanyName = it },
+                        label = { Text("Company Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true,
+                    )
+                }
+
+                // Duration
+                Text("Preparation Duration", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    durations.forEach { (dur, _) ->
+                        val isSelected = selectedDuration == dur
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { selectedDuration = dur },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) Crimson.copy(alpha = 0.15f) else SurfaceRaised,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) Crimson else Border),
+                        ) {
+                            Text(
+                                text = "${dur}M",
+                                color = if (isSelected) CrimsonSoft else TextPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                }
+
+                // Daily Time
+                Text("Daily Study Time", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    times.forEach { (time, _) ->
+                        val isSelected = selectedTimePerDay == time
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { selectedTimePerDay = time },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) Crimson.copy(alpha = 0.15f) else SurfaceRaised,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) Crimson else Border),
+                        ) {
+                            Text(
+                                text = "${time}m",
+                                color = if (isSelected) CrimsonSoft else TextPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val compName = if (selectedCompanyKey == "custom") customCompanyName.ifBlank { "Target Company" } else companies.find { it.first == selectedCompanyKey }?.second ?: "Google"
+                    onGenerate(selectedRole, selectedCompanyKey, compName, selectedDuration, selectedTimePerDay)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Crimson),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Text("Generate Plan", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(MobileStrings.get("cancel", lang), color = TextSecondary)
+            }
+        },
+    )
 }
 
 // ==============================================================================
@@ -2173,120 +2855,224 @@ private fun AssessmentsTab(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        // Hero Header Card
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(22.dp),
+            shape = RoundedCornerShape(24.dp),
             color = SurfaceBase,
             border = androidx.compose.foundation.BorderStroke(1.dp, Border),
         ) {
-            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(MobileStrings.get("assessments", lang), color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("Diagnostic benchmarks and adaptive assessments for targeted preparation.", color = TextSecondary, fontSize = 13.sp)
+            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Crimson.copy(alpha = 0.15f))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Crimson))
+                    Text(
+                        "DIAGNOSTIC ENGINE • ADAPTIVE BENCHMARKS",
+                        color = CrimsonSoft,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                    )
+                }
+
+                Text(
+                    text = MobileStrings.get("assessments", lang),
+                    color = TextPrimary,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = "Adaptive diagnostic benchmarks and comprehensive evaluations that detect weak spots and continuously calibrate your curriculum.",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                )
 
                 Button(
-                    onClick = { onGenerateAssessment("mcq") },
+                    onClick = {
+                        answers.clear()
+                        selectedQuestionIdx = 0
+                        onGenerateAssessment("mcq")
+                    },
                     enabled = !isAssessmentLoading,
-                    modifier = Modifier.fillMaxWidth().height(44.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Crimson),
                 ) {
                     if (isAssessmentLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = TextPrimary, strokeWidth = 2.dp)
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = TextPrimary, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Generating Adaptive Questions...", fontWeight = FontWeight.Bold)
                     } else {
-                        Text("Start Diagnostic Assessment", fontWeight = FontWeight.Bold)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(Icons.Outlined.Science, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text("Start Diagnostic Assessment", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
         }
 
-        // Active Assessment Quiz if session exists and is started
+        // Active Assessment Quiz Card (if session exists and not completed)
         if (activeAssessment != null && activeAssessment.questions.isNotEmpty() && !activeAssessment.status.equals("completed", true)) {
             val questions = activeAssessment.questions
             val currentQ = questions.getOrNull(selectedQuestionIdx) ?: questions.first()
+            val totalQuestions = questions.size
 
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(22.dp),
                 color = SurfaceBase,
-                border = androidx.compose.foundation.BorderStroke(1.dp, Crimson.copy(alpha = 0.5f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Crimson.copy(alpha = 0.45f)),
             ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    // Progress & Question Counter
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "Question ${selectedQuestionIdx + 1} of ${questions.size}",
+                            text = "Question ${selectedQuestionIdx + 1} of $totalQuestions",
                             color = CrimsonSoft,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
                         )
-                        currentQ.topic?.let {
-                            Text(it, color = TextMuted, fontSize = 11.sp)
+                        currentQ.topic?.let { topic ->
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = SurfaceRaised,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+                            ) {
+                                Text(
+                                    text = topic,
+                                    color = Lavender,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                )
+                            }
                         }
                     }
 
-                    Text(currentQ.question, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium, lineHeight = 22.sp)
+                    // Progress Bar
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(SurfaceRaised)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(fraction = ((selectedQuestionIdx + 1).toFloat() / totalQuestions.toFloat()).coerceIn(0f, 1f))
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(Crimson)
+                        )
+                    }
 
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        currentQ.options.forEach { optText ->
-                            val isSelected = answers[currentQ.id] == optText
+                    // Question prompt
+                    Text(
+                        text = currentQ.displayQuestion,
+                        color = TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 22.sp,
+                    )
+
+                    // Options list
+                    val options = currentQ.displayOptions
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        options.forEach { optText ->
+                            val answerKey = currentQ.resolveAnswerKey(optText)
+                            val isSelected = answers[currentQ.id] == answerKey || answers[currentQ.id] == optText
+
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { answers[currentQ.id] = optText },
-                                shape = RoundedCornerShape(12.dp),
+                                    .clickable {
+                                        answers[currentQ.id] = answerKey
+                                    },
+                                shape = RoundedCornerShape(14.dp),
                                 color = if (isSelected) Crimson.copy(alpha = 0.15f) else SurfaceRaised,
                                 border = androidx.compose.foundation.BorderStroke(
                                     1.dp,
-                                    if (isSelected) Crimson else Border
+                                    if (isSelected) Crimson else Border,
                                 ),
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 ) {
                                     RadioButton(
                                         selected = isSelected,
-                                        onClick = { answers[currentQ.id] = optText },
-                                        colors = RadioButtonDefaults.colors(selectedColor = Crimson)
+                                        onClick = { answers[currentQ.id] = answerKey },
+                                        colors = RadioButtonDefaults.colors(selectedColor = Crimson),
                                     )
-                                    Text(optText, color = TextPrimary, fontSize = 13.sp)
+                                    Text(
+                                        text = optText,
+                                        color = TextPrimary,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp,
+                                    )
                                 }
                             }
                         }
                     }
 
+                    // Navigation Controls
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Button(
                             onClick = { if (selectedQuestionIdx > 0) selectedQuestionIdx-- },
                             enabled = selectedQuestionIdx > 0,
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = SurfaceRaised, contentColor = TextPrimary),
                         ) {
                             Text("Previous")
                         }
 
-                        if (selectedQuestionIdx < questions.size - 1) {
+                        if (selectedQuestionIdx < totalQuestions - 1) {
                             Button(
                                 onClick = { selectedQuestionIdx++ },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Crimson)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Crimson),
                             ) {
-                                Text("Next")
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("Next")
+                                    Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
                             }
                         } else {
                             Button(
-                                onClick = { onSubmitAssessment(activeAssessment.id, answers.toMap()) },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Success)
+                                onClick = {
+                                    onSubmitAssessment(activeAssessment.id, answers.toMap())
+                                },
+                                enabled = !isAssessmentLoading,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Success),
                             ) {
-                                Text("Submit Quiz")
+                                if (isAssessmentLoading) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = TextPrimary, strokeWidth = 2.dp)
+                                } else {
+                                    Text("Submit Assessment", fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -2296,26 +3082,76 @@ private fun AssessmentsTab(
 
         // Completed Assessment Results Card
         if (activeAssessment != null && activeAssessment.status.equals("completed", true)) {
+            val scoreVal = (activeAssessment.score ?: 0.0).toInt()
+            val scoreColor = if (scoreVal >= 75) Success else if (scoreVal >= 50) Amber else Crimson
+
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(22.dp),
                 color = SurfaceBase,
-                border = androidx.compose.foundation.BorderStroke(1.dp, Success.copy(alpha = 0.5f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, scoreColor.copy(alpha = 0.5f)),
             ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Assessment Completed!", color = Success, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Text("Score: ${(activeAssessment.score ?: 0.0).toInt()}%", color = TextPrimary, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = scoreColor, modifier = Modifier.size(22.dp))
+                            Text("Assessment Evaluated!", color = scoreColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = scoreColor.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, scoreColor.copy(alpha = 0.35f)),
+                        ) {
+                            Text(
+                                if (scoreVal >= 75) "Interview Ready" else if (scoreVal >= 50) "Targeted Refinement" else "Foundations Needed",
+                                color = scoreColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = "$scoreVal",
+                            color = TextPrimary,
+                            fontSize = 44.sp,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 44.sp,
+                        )
+                        Text(
+                            text = "% Benchmark Score",
+                            color = TextSecondary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        )
+                    }
 
                     if (activeAssessment.weakSpots.isNotEmpty()) {
-                        Text("Identified Weak Spots:", color = TextSecondary, fontSize = 13.sp)
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Identified Growth Areas:", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             activeAssessment.weakSpots.forEach { spot ->
                                 Surface(
                                     shape = RoundedCornerShape(999.dp),
                                     color = Amber.copy(alpha = 0.15f),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Amber.copy(alpha = 0.3f)),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Amber.copy(alpha = 0.35f)),
                                 ) {
-                                    Text(spot, color = Amber, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                                    Text(spot, color = Amber, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
                                 }
                             }
                         }
@@ -2323,11 +3159,17 @@ private fun AssessmentsTab(
 
                     Button(
                         onClick = { onApplyPlanUpdate(activeAssessment.id) },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Crimson)
+                        colors = ButtonDefaults.buttonColors(containerColor = Crimson),
                     ) {
-                        Text("Apply Findings to Prep Architect Plan")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Text("Apply Findings to Prep Architect Plan", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -2357,7 +3199,7 @@ private fun AssessmentsTab(
 
         // Identified weak spots
         if (!overview?.identifiedWeakSpots.isNullOrEmpty()) {
-            Text("Focus Recommendations", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text("Focus Recommendations", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             overview?.identifiedWeakSpots?.forEach { spot ->
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -2365,15 +3207,91 @@ private fun AssessmentsTab(
                     color = SurfaceBase,
                     border = androidx.compose.foundation.BorderStroke(1.dp, Border),
                 ) {
-                    Row(modifier = Modifier.padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Text(spot, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Text("Needs Focus", color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = Amber.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Amber.copy(alpha = 0.35f)),
+                        ) {
+                            Text("Needs Focus", color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                        }
                     }
                 }
             }
         }
 
-        Text("Core Benchmark Domains", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        // Past Assessment History
+        val pastSessions = overview?.recentSessions?.ifEmpty { overview.recentAssessments } ?: emptyList()
+        Text("Recent Assessment History", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+
+        if (pastSessions.isEmpty()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = SurfaceRaised,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+            ) {
+                Text(
+                    "No diagnostic sessions recorded yet. Launch your first assessment above to baseline your readiness.",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+        } else {
+            pastSessions.forEach { session ->
+                val score = (session.score ?: 0.0).toInt()
+                val scoreColor = if (score >= 75) Success else if (score >= 50) Amber else Crimson
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = SurfaceBase,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "${session.assessmentType.uppercase()} Diagnostic",
+                                color = TextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                text = "Status: ${session.status.replaceFirstChar { it.uppercase() }}",
+                                color = TextSecondary,
+                                fontSize = 12.sp,
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = scoreColor.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, scoreColor.copy(alpha = 0.35f)),
+                        ) {
+                            Text(
+                                text = "$score%",
+                                color = scoreColor,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Core Benchmark Domains
+        Text("Core Benchmark Domains", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 
         listOf(
             "Data Structures & Algorithms" to "82% Readiness",
@@ -2397,6 +3315,8 @@ private fun AssessmentsTab(
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 

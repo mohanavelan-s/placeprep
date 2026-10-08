@@ -443,16 +443,30 @@ class PlacePrepViewModel(
         }
     }
 
-    fun generatePrepPlan() {
+    fun generatePrepPlan(
+        targetRole: String = "Software Development Engineer",
+        companyKey: String = "google",
+        customCompanyName: String = "Google",
+        durationMonths: Int = 3,
+        timePerDay: Int = 120,
+    ) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            runCatching { repository.generatePrepPlan() }
+            runCatching {
+                repository.generatePrepPlan(
+                    targetRole = targetRole,
+                    companyKey = companyKey,
+                    customCompanyName = customCompanyName,
+                    durationMonths = durationMonths,
+                    timePerDay = timePerDay,
+                )
+            }
                 .onSuccess { newPlan ->
                     _uiState.update {
                         it.copy(
                             prepPlan = newPlan,
                             isLoading = false,
-                            infoMessage = "Fresh prep plan generated.",
+                            infoMessage = "Fresh prep plan generated: ${newPlan.title ?: targetRole}",
                         )
                     }
                 }

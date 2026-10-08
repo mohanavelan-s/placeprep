@@ -901,7 +901,7 @@ public class AiService {
 
         if ("custom".equalsIgnoreCase(companyKey)) {
             if (customCompanyName == null || customCompanyName.trim().isEmpty()) {
-                throw new AppException("Company name is required when choosing a custom company.", HttpStatus.BAD_REQUEST);
+                customCompanyName = "Target Tech Company";
             }
         }
 

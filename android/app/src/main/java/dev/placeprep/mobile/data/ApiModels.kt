@@ -66,34 +66,44 @@ data class ProgressSummary(
 )
 
 data class PrepRoadmapWeek(
-    val week: Int,
-    val title: String,
-    val focusTopics: List<String>,
-    val estimatedHours: Double,
+    val week: Int = 1,
+    val title: String = "",
+    val focusTopics: List<String> = emptyList(),
+    val estimatedHours: Double = 12.0,
+    val goals: List<String> = emptyList(),
 )
 
 data class PrepPlanTaskItem(
-    val title: String,
-    val type: String,
-    val estimatedMinutes: Int,
-    val difficulty: String,
+    val title: String = "",
+    val type: String = "dsa",
+    val estimatedMinutes: Int = 30,
+    val difficulty: String = "Medium",
+    val summary: String? = null,
+    val referenceLabel: String? = null,
+    val referenceUrl: String? = null,
 )
 
 data class PrepPlanDay(
-    val day: String,
-    val theme: String,
-    val totalEstimatedMinutes: Int,
-    val items: List<PrepPlanTaskItem>,
+    val day: String = "",
+    val theme: String = "",
+    val totalEstimatedMinutes: Int = 60,
+    val items: List<PrepPlanTaskItem> = emptyList(),
 )
 
 data class PrepPlan(
-    val id: String,
+    val id: String = "",
+    val title: String? = null,
+    val coachLine: String? = null,
+    val companyName: String? = null,
     val knownTopics: List<String> = emptyList(),
     val targetTopics: List<String> = emptyList(),
     val roadmap: List<PrepRoadmapWeek> = emptyList(),
     val tasks: List<PrepPlanDay> = emptyList(),
     val timePerDay: Double? = null,
     val targetRole: String? = null,
+    val durationMonths: Int? = null,
+    val version: Int? = 1,
+    val isActive: Boolean? = true,
 )
 
 data class TaskItem(
@@ -211,13 +221,52 @@ data class AssessmentSessionData(
     val createdAt: String? = null,
 )
 
+data class AssessmentChoice(
+    val id: String = "",
+    val label: String = "",
+    val text: String = "",
+)
+
 data class AssessmentQuestion(
     val id: String = "",
-    val question: String = "",
-    val options: List<String> = emptyList(),
+    val prompt: String? = null,
+    val question: String? = null,
+    val choices: List<AssessmentChoice>? = null,
+    val options: List<String>? = null,
     val topic: String? = null,
     val type: String? = "mcq",
-)
+    val correctAnswer: String? = null,
+) {
+    val displayQuestion: String
+        get() = prompt?.takeIf { it.isNotBlank() } ?: question?.takeIf { it.isNotBlank() } ?: "Question"
+
+    val displayOptions: List<String>
+        get() {
+            if (!options.isNullOrEmpty()) {
+                return options
+            }
+            if (!choices.isNullOrEmpty()) {
+                return choices.map { choice ->
+                    if (choice.label.isNotBlank()) "${choice.label}. ${choice.text}" else choice.text
+                }
+            }
+            return emptyList()
+        }
+
+    fun resolveAnswerKey(selectedText: String): String {
+        choices?.forEach { choice ->
+            val formatted = if (choice.label.isNotBlank()) "${choice.label}. ${choice.text}" else choice.text
+            if (formatted == selectedText || choice.text == selectedText || choice.id == selectedText) {
+                return choice.id
+            }
+        }
+        val first = selectedText.trim().take(1).lowercase()
+        if (first in listOf("a", "b", "c", "d")) {
+            return first
+        }
+        return selectedText
+    }
+}
 
 data class GenerateAssessmentResponse(
     val session: AssessmentSessionData? = null,
