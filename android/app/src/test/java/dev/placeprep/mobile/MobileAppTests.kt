@@ -107,4 +107,54 @@ class MobileAppTests {
         assertEquals("placeprep_channel_signals", PlacePrepNotificationManager.CHANNEL_SIGNALS)
         assertEquals("placeprep_channel_motivation", PlacePrepNotificationManager.CHANNEL_MOTIVATION)
     }
+
+    @Test
+    fun testCodingProblemSummaryNullSafety() {
+        val json = """
+            {
+                "platform": "leetcode",
+                "number": "1",
+                "slug": "two-sum",
+                "title": "Two Sum",
+                "difficulty": "Easy",
+                "description": "Given an array of integers nums and an integer target, return indices..."
+            }
+        """.trimIndent()
+
+        val problem = gson.fromJson(json, dev.placeprep.mobile.data.CodingProblemSummary::class.java)
+        assertEquals("Two Sum", problem.title)
+        assertEquals("two-sum", problem.slug)
+        assertEquals("Easy", problem.difficulty)
+        // Null-safe access must not crash:
+        val categoryStr = (problem.category ?: "DSA").uppercase()
+        assertEquals("DSA", categoryStr)
+    }
+
+    @Test
+    fun testAssessmentOverviewDeserialization() {
+        val json = """
+            {
+                "averageScore": 78.5,
+                "completedCount": 4,
+                "totalAssessments": 6,
+                "identifiedWeakSpots": ["Dynamic Programming", "SQL"],
+                "recentSessions": [
+                    {
+                        "id": "session-1",
+                        "status": "completed",
+                        "score": 80.0,
+                        "assessmentType": "mcq"
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val overview = gson.fromJson(json, dev.placeprep.mobile.data.AssessmentOverview::class.java)
+        assertEquals(78.5, overview.averageScore, 0.01)
+        assertEquals(4, overview.completedCount)
+        assertEquals(6, overview.totalAssessments)
+        assertEquals(2, overview.identifiedWeakSpots.size)
+        assertEquals(1, overview.recentSessions.size)
+        assertEquals(80.0, overview.recentSessions[0].score ?: 0.0, 0.01)
+    }
 }

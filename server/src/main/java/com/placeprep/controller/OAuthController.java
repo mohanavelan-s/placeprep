@@ -1215,6 +1215,9 @@ public class OAuthController {
             if (state != null) {
                 targetUrl += "&state=" + URLEncoder.encode(state, StandardCharsets.UTF_8);
             }
+            if (tx.redirectUri.startsWith("placeprep://") && authRes.getToken() != null) {
+                targetUrl += "&token=" + URLEncoder.encode(authRes.getToken(), StandardCharsets.UTF_8);
+            }
 
             return new RedirectView(targetUrl);
         } catch (Exception e) {

@@ -143,8 +143,89 @@ class PlacePrepRepository(
 
     suspend fun loadAssessmentsOverview(): AssessmentOverview = api.getAssessmentsOverview().data
 
+    suspend fun generateAssessment(type: String = "mcq", durationMinutes: Int = 20): GenerateAssessmentResponse {
+        return api.generateAssessment(
+            mapOf(
+                "assessmentType" to type,
+                "durationMinutes" to durationMinutes,
+            )
+        ).data
+    }
+
+    suspend fun submitAssessment(assessmentId: String, answers: Map<String, String>): AssessmentSessionData {
+        return api.submitAssessment(assessmentId, mapOf("answers" to answers)).data
+    }
+
+    suspend fun applyPlanUpdate(assessmentId: String): Map<String, Any?> {
+        return api.applyPlanUpdate(assessmentId).data
+    }
+
     suspend fun resolveCodingProblem(slugOrTitle: String): CodingProblemSummary {
         return api.resolveCodingProblem(mapOf("query" to slugOrTitle, "slug" to slugOrTitle)).data
+    }
+
+    suspend fun runCodingSolution(
+        slugOrTitle: String,
+        language: String,
+        sourceCode: String,
+        stdin: String = "",
+        expectedOutput: String = "",
+    ): CodingRunResult {
+        return api.runCode(
+            mapOf(
+                "slug" to slugOrTitle,
+                "title" to slugOrTitle,
+                "language" to language,
+                "sourceCode" to sourceCode,
+                "stdin" to stdin,
+                "expectedOutput" to expectedOutput,
+            )
+        ).data
+    }
+
+    suspend fun submitCodingSolution(
+        slugOrTitle: String,
+        language: String,
+        sourceCode: String,
+        stdin: String = "",
+        expectedOutput: String = "",
+    ): CodingRunResult {
+        return api.submitCode(
+            mapOf(
+                "slug" to slugOrTitle,
+                "title" to slugOrTitle,
+                "language" to language,
+                "sourceCode" to sourceCode,
+                "stdin" to stdin,
+                "expectedOutput" to expectedOutput,
+            )
+        ).data
+    }
+
+    fun saveToken(token: String) {
+        sessionStore.saveToken(token)
+    }
+
+    suspend fun exchangeOAuthCode(
+        code: String,
+        clientId: String = "placeprep-mobile-app",
+        redirectUri: String = "placeprep://oauth/callback",
+        codeVerifier: String = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+    ): MobileUser {
+        val resp = api.exchangeOAuthToken(
+            mapOf(
+                "grant_type" to "authorization_code",
+                "code" to code,
+                "client_id" to clientId,
+                "redirect_uri" to redirectUri,
+                "code_verifier" to codeVerifier,
+            )
+        )
+        val token = resp.access_token
+        if (!token.isNullOrBlank()) {
+            sessionStore.saveToken(token)
+        }
+        return resp.user ?: api.getMe().data
     }
 
     suspend fun loadNotifications(): List<NotificationItem> = api.listNotifications().data

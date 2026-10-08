@@ -24,7 +24,7 @@ import dev.placeprep.mobile.ui.PlacePrepViewModel
 class MainActivity : ComponentActivity() {
 
     private val viewModel by viewModels<PlacePrepViewModel> {
-        PlacePrepViewModel.factory((application as PlacePrepApplication).repository)
+        PlacePrepViewModel.factory((application as PlacePrepApplication).repository, applicationContext)
     }
 
     private val requestNotificationPermissionLauncher =
@@ -128,19 +128,15 @@ class MainActivity : ComponentActivity() {
                     "dashboard" -> viewModel.switchTab(MobileTab.Dashboard)
                     "oauth" -> {
                         val token = data.getQueryParameter("token")
-                        if (!token.isNullOrBlank()) {
-                            (application as PlacePrepApplication).sessionStore.saveToken(token)
-                            viewModel.restoreSession()
-                        }
+                        val code = data.getQueryParameter("code")
+                        viewModel.handleOAuthCallback(code, token)
                     }
                 }
             } else if (scheme == "https" && (host == "mvdev.in" || host == "placeprep-nine.vercel.app")) {
                 if (path?.contains("oauth/callback") == true) {
                     val token = data.getQueryParameter("token")
-                    if (!token.isNullOrBlank()) {
-                        (application as PlacePrepApplication).sessionStore.saveToken(token)
-                        viewModel.restoreSession()
-                    }
+                    val code = data.getQueryParameter("code")
+                    viewModel.handleOAuthCallback(code, token)
                 }
             }
         }

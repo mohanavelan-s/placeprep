@@ -103,12 +103,38 @@ interface PlacePrepApi {
     @GET("assessments/overview")
     suspend fun getAssessmentsOverview(): ApiEnvelope<AssessmentOverview>
 
+    @POST("assessments/generate")
+    suspend fun generateAssessment(
+        @Body payload: Map<String, @JvmSuppressWildcards Any?> = emptyMap()
+    ): ApiEnvelope<GenerateAssessmentResponse>
+
+    @POST("assessments/{id}/submit")
+    suspend fun submitAssessment(
+        @Path("id") id: String,
+        @Body payload: Map<String, @JvmSuppressWildcards Any?>
+    ): ApiEnvelope<AssessmentSessionData>
+
+    @POST("assessments/{id}/apply-plan-update")
+    suspend fun applyPlanUpdate(
+        @Path("id") id: String
+    ): ApiEnvelope<Map<String, Any?>>
+
     // --- Coding Lab ---
     @GET("coding/languages")
     suspend fun getCodingLanguages(): ApiEnvelope<List<Map<String, Any?>>>
 
     @POST("coding/problem/resolve")
     suspend fun resolveCodingProblem(@Body payload: Map<String, @JvmSuppressWildcards Any?>): ApiEnvelope<CodingProblemSummary>
+
+    @POST("coding/runs")
+    suspend fun runCode(@Body payload: Map<String, @JvmSuppressWildcards Any?>): ApiEnvelope<CodingRunResult>
+
+    @POST("coding/submissions")
+    suspend fun submitCode(@Body payload: Map<String, @JvmSuppressWildcards Any?>): ApiEnvelope<CodingRunResult>
+
+    // --- OAuth 2.1 Token Exchange ---
+    @POST("../oauth/token")
+    suspend fun exchangeOAuthToken(@Body payload: Map<String, @JvmSuppressWildcards Any?>): OAuthTokenResponse
 
     // --- Notifications & Profile ---
     @GET("notifications")

@@ -184,8 +184,8 @@ public class OAuthService {
             throw new AppException("Localhost redirect URIs are not permitted for external OAuth clients in production.", HttpStatus.BAD_REQUEST);
         }
 
-        // Standard dynamic external clients (e.g. ChatGPT, Claude) must use valid HTTPS callback URIs
-        if (redirectUri.startsWith("https://")) {
+        // Standard dynamic external clients (e.g. ChatGPT, Claude) and native mobile app (placeprep://)
+        if (redirectUri.startsWith("https://") || redirectUri.startsWith("placeprep://")) {
             return;
         }
 

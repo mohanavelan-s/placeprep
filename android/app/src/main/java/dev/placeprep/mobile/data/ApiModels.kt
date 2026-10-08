@@ -187,25 +187,81 @@ data class AiDailyEvaluationResponse(
 
 data class AssessmentOverview(
     val averageScore: Double = 0.0,
-    val totalCompleted: Int = 0,
-    val targetReadiness: Double = 0.0,
-    val sessions: List<AssessmentSessionSummary> = emptyList(),
+    val completedCount: Int = 0,
+    val totalAssessments: Int = 0,
+    val targetReadiness: Double = 85.0,
+    val currentSession: AssessmentSessionData? = null,
+    val recentSessions: List<AssessmentSessionData> = emptyList(),
+    val recentAssessments: List<AssessmentSessionData> = emptyList(),
+    val identifiedWeakSpots: List<String> = emptyList(),
+    val activePlan: Map<String, Any?>? = null,
 )
 
-data class AssessmentSessionSummary(
-    val id: String,
-    val domain: String,
-    val score: Double,
-    val completedAt: String? = null,
+data class AssessmentSessionData(
+    val id: String = "",
+    val status: String = "draft",
+    val assessmentType: String = "mcq",
+    val durationMinutes: Int = 20,
+    val score: Double? = 0.0,
+    val weakSpots: List<String> = emptyList(),
+    val questions: List<AssessmentQuestion> = emptyList(),
+    val recommendations: List<Map<String, Any?>> = emptyList(),
+    val startedAt: String? = null,
+    val submittedAt: String? = null,
+    val createdAt: String? = null,
+)
+
+data class AssessmentQuestion(
+    val id: String = "",
+    val question: String = "",
+    val options: List<String> = emptyList(),
+    val topic: String? = null,
+    val type: String? = "mcq",
+)
+
+data class GenerateAssessmentResponse(
+    val session: AssessmentSessionData? = null,
+    val activePlan: Map<String, Any?>? = null,
 )
 
 data class CodingProblemSummary(
     val id: String? = null,
-    val title: String,
-    val slug: String,
-    val difficulty: String,
-    val category: String,
+    val number: String? = null,
+    val title: String = "",
+    val slug: String = "",
+    val difficulty: String = "Medium",
+    val category: String? = "DSA",
     val description: String? = null,
+    val platform: String? = "leetcode",
+    val url: String? = null,
+    val examples: List<String> = emptyList(),
+    val constraints: List<String> = emptyList(),
+    val starterCode: Map<String, String> = emptyMap(),
+    val testCases: List<Map<String, String>> = emptyList(),
+    val extractionStatus: String? = null,
+    val extractionMessage: String? = null,
+)
+
+data class CodingRunResult(
+    val id: String? = null,
+    val status: String = "ACCEPTED",
+    val stdout: String = "",
+    val stderr: String = "",
+    val compileOutput: String = "",
+    val time: Double? = null,
+    val memory: Int? = null,
+    val score: Double? = null,
+    val rubric: Map<String, Any?>? = null,
+    val analysis: Map<String, Any?>? = null,
+    val testResults: List<Map<String, Any?>> = emptyList(),
+)
+
+data class OAuthTokenResponse(
+    val access_token: String? = null,
+    val token_type: String? = null,
+    val expires_in: Long? = null,
+    val scope: String? = null,
+    val user: MobileUser? = null,
 )
 
 data class NotificationItem(

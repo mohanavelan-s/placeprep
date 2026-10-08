@@ -120,4 +120,16 @@ object PlacePrepNotificationManager {
 
         NotificationManagerCompat.from(context).notify(notificationId, notification)
     }
+
+    fun showLoginWelcomeNotification(context: Context, userName: String, streak: Int = 0) {
+        val streakText = if (streak > 0) "🔥 $streak-day streak active. " else ""
+        showNotification(
+            context = context,
+            title = "Welcome back, $userName!",
+            message = "${streakText}Command Chamber is ready for today's prep execution.",
+            route = "chamber",
+            type = "login_welcome",
+            notificationId = 1001,
+        )
+    }
 }
