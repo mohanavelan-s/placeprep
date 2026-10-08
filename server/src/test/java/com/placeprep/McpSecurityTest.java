@@ -93,4 +93,29 @@ public class McpSecurityTest {
                 .andExpect(header().string("WWW-Authenticate", containsString("error=\"invalid_token\"")))
                 .andExpect(jsonPath("$.error.code").value(-32001));
     }
+
+    @Test
+    void testRejectsUnauthenticatedMcpRequestOnApiMcpPath() throws Exception {
+        String mcpBody = """
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test-client", "version": "1.0.0"}
+                }
+            }
+        """;
+
+        mockMvc.perform(post("/api/mcp")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mcpBody))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", containsString("Bearer")))
+                .andExpect(header().string("WWW-Authenticate", containsString("resource_metadata=")))
+                .andExpect(jsonPath("$.jsonrpc").value("2.0"))
+                .andExpect(jsonPath("$.error.code").value(-32001));
+    }
 }

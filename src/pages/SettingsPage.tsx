@@ -49,6 +49,7 @@ import {
   updateAccount,
   uploadImage,
   verifyBillingPayment,
+  getBackendBaseUrl,
   type PrepNotification,
   type UserProfile,
 } from "@/lib/api";
@@ -1060,7 +1061,7 @@ export default function SettingsPage() {
       <ResumeAnalysisPanel defaultTargetRole={targetRole || user?.targetRole || ""} />
 
       <AndroidAccessPanel adminMode={isAndroidPublisherUser(user)} />
-      <McpGatewayPanel />
+      <McpGatewayPanel publicUrl={getBackendBaseUrl()} />
       <Dialog open={Boolean(emailDeliveryPopup)} onOpenChange={(open) => !open && setEmailDeliveryPopup(null)}>
         <DialogContent className="border-border/80 bg-background">
           <DialogHeader>

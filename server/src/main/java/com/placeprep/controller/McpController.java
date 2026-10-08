@@ -21,7 +21,7 @@ import java.time.ZoneId;
 import java.util.*;
 
 @RestController
-@RequestMapping("/mcp")
+@RequestMapping({"/mcp", "/api/mcp"})
 public class McpController {
 
     private final OAuthService oAuthService;

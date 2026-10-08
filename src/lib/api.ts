@@ -1088,6 +1088,19 @@ function resolveApiBaseUrls() {
 
 const API_BASE_URLS = resolveApiBaseUrls();
 const API_BASE_URL = API_BASE_URLS[0] || DEFAULT_API_BASE_URL;
+
+export function getBackendBaseUrl(): string {
+  const configured = (import.meta as any).env?.VITE_API_PUBLIC_URL || (import.meta as any).env?.VITE_MCP_PUBLIC_URL;
+  if (configured && /^https?:\/\//i.test(configured)) {
+    return configured.replace(/\/api\/?$/, "").replace(/\/+$/, "");
+  }
+  const explicitApi = API_BASE_URLS.find((url) => /^https?:\/\//i.test(url) && !isLocalApiBaseUrl(url));
+  if (explicitApi) {
+    return explicitApi.replace(/\/api\/?$/, "").replace(/\/+$/, "");
+  }
+  return "https://placeprep-api-production-2481.up.railway.app";
+}
+
 const TOKEN_STORAGE_KEY = "placeprep.token";
 const USER_STORAGE_KEY = "placeprep.user";
 

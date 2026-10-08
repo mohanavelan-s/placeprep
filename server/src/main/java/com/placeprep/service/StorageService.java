@@ -74,8 +74,8 @@ public class StorageService {
             try {
                 return uploadToCloudinary(file, folder);
             } catch (Exception e) {
-                logger.error("[StorageService] Cloudinary upload failed: {}", e.getMessage(), e);
-                throw new IOException("Failed to upload to Cloudinary: " + e.getMessage(), e);
+                logger.warn("[StorageService] Cloudinary upload failed ({}). Falling back to local storage.", e.getMessage());
+                return uploadToLocal(file, folder);
             }
         }
         return uploadToLocal(file, folder);
@@ -89,6 +89,10 @@ public class StorageService {
             ext = originalName.substring(dot + 1).toLowerCase();
         }
 
+        boolean isApk = "apk".equalsIgnoreCase(ext) || (folder != null && folder.toLowerCase().contains("apk"));
+        String resourceType = isApk ? "raw" : "auto";
+        final String uploadFilename = isApk ? (originalName.replaceAll("(?i)\\.apk$", "") + ".bin") : originalName;
+
         long timestamp = System.currentTimeMillis() / 1000;
         String cleanFolder = folder != null && !folder.isBlank() ? folder.trim() : "general";
 
@@ -100,7 +104,7 @@ public class StorageService {
         body.add("file", new ByteArrayResource(file.getBytes()) {
             @Override
             public String getFilename() {
-                return originalName;
+                return uploadFilename;
             }
         });
         body.add("api_key", cloudinaryApiKey.trim());
@@ -112,7 +116,7 @@ public class StorageService {
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
         HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 
-        String uploadUrl = "https://api.cloudinary.com/v1_1/" + cloudinaryCloudName.trim() + "/auto/upload";
+        String uploadUrl = "https://api.cloudinary.com/v1_1/" + cloudinaryCloudName.trim() + "/" + resourceType + "/upload";
         ResponseEntity<Map> response = restTemplate.postForEntity(uploadUrl, requestEntity, Map.class);
         Map<?, ?> respBody = response.getBody();
 
@@ -134,7 +138,7 @@ public class StorageService {
                 bytes,
                 format,
                 originalName,
-                file.getContentType()
+                isApk ? "application/vnd.android.package-archive" : file.getContentType()
         );
     }
 
@@ -146,14 +150,16 @@ public class StorageService {
             ext = originalName.substring(dot);
         }
 
-        Path targetDir = Paths.get(uploadDir, folder);
+        Path targetDir = Paths.get(uploadDir, folder).toAbsolutePath();
         if (!Files.exists(targetDir)) {
             Files.createDirectories(targetDir);
         }
 
         String fileName = System.currentTimeMillis() + "-" + UUID.randomUUID() + ext;
         Path targetPath = targetDir.resolve(fileName);
-        file.transferTo(targetPath);
+        try (var inputStream = file.getInputStream()) {
+            Files.copy(inputStream, targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
 
         String relativePath = folder + "/" + fileName;
         String secureUrl = "/uploads/" + relativePath;
@@ -168,6 +174,19 @@ public class StorageService {
                 originalName,
                 file.getContentType()
         );
+    }
+
+    public Path resolveLocalPath(String fileUrlOrPublicId) {
+        if (fileUrlOrPublicId == null || fileUrlOrPublicId.isBlank()) {
+            return null;
+        }
+        String clean = fileUrlOrPublicId.trim();
+        if (clean.startsWith("/uploads/")) {
+            clean = clean.substring("/uploads/".length());
+        } else if (clean.startsWith("local:")) {
+            clean = clean.substring("local:".length());
+        }
+        return Paths.get(uploadDir, clean).toAbsolutePath();
     }
 
     private static String sha1Hex(String input) {

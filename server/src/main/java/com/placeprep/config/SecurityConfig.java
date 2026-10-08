@@ -64,10 +64,15 @@ public class SecurityConfig {
                                 "/api/invites/validate/**",
                                 "/api/billing/status",
                                 "/api/billing/webhook",
+                                "/api/apk/latest",
+                                "/api/apk/latest/download",
+                                "/api/apk/*/download",
                                 "/.well-known/**",
                                 "/oauth/**",
                                 "/mcp",
                                 "/mcp/**",
+                                "/api/mcp",
+                                "/api/mcp/**",
                                 "/uploads/**",
                                 "/logo.svg",
                                 "/logo.png",
@@ -114,7 +119,7 @@ public class SecurityConfig {
         configuration.setAllowedOriginPatterns(patterns);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
-        configuration.setExposedHeaders(List.of("Authorization", "WWW-Authenticate"));
+        configuration.setExposedHeaders(List.of("Authorization", "WWW-Authenticate", "Content-Disposition"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 

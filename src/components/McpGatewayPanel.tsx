@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Bot, Check, Copy, Cpu, Globe, Key, ShieldCheck, Sparkles, Terminal } from "lucide-react";
 import PlacePrepLogo from "@/components/PlacePrepLogo";
 import { Button } from "@/components/ui/button";
+import { getBackendBaseUrl } from "@/lib/api";
 
 interface McpGatewayPanelProps {
   publicUrl?: string;
@@ -15,8 +16,8 @@ export default function McpGatewayPanel({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const configuredPublicUrl = (import.meta as any).env?.VITE_MCP_PUBLIC_URL || (import.meta as any).env?.VITE_API_PUBLIC_URL;
-  const currentOrigin = typeof window !== "undefined" ? window.location.origin : "";
-  const effectiveBaseUrl = (publicUrl || configuredPublicUrl || currentOrigin).replace(/\/+$/, "");
+  const backendBaseUrl = getBackendBaseUrl();
+  const effectiveBaseUrl = (publicUrl || configuredPublicUrl || backendBaseUrl).replace(/\/+$/, "");
 
   const mcpUrl = `${effectiveBaseUrl}/mcp`;
   const logoPngUrl = `${effectiveBaseUrl}/logo.png`;
