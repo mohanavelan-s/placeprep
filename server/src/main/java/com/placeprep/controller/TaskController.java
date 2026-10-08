@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -67,9 +68,7 @@ public class TaskController {
             @CurrentUser User user,
             @RequestBody Map<String, Object> body
     ) {
-        @SuppressWarnings("unchecked")
-        List<String> rawIds = (List<String>) body.get("taskIds");
-        List<UUID> ids = rawIds != null ? rawIds.stream().map(UUID::fromString).toList() : List.of();
+        List<UUID> ids = extractAndParseUuids(body, "taskIds", "task_ids");
         TaskRepository.BulkDeleteResult result = taskService.bulkDeleteTasks(user, ids);
         return ResponseEntity.ok(Map.of("success", true, "data", result));
     }
@@ -79,9 +78,7 @@ public class TaskController {
             @CurrentUser User user,
             @RequestBody Map<String, Object> body
     ) {
-        @SuppressWarnings("unchecked")
-        List<String> rawIds = (List<String>) body.get("taskIds");
-        List<UUID> ids = rawIds != null ? rawIds.stream().map(UUID::fromString).toList() : List.of();
+        List<UUID> ids = extractAndParseUuids(body, "taskIds", "task_ids");
         List<Task> completed = taskService.bulkCompleteTasks(user, ids);
         return ResponseEntity.ok(Map.of("success", true, "data", completed, "count", completed.size()));
     }
@@ -91,13 +88,33 @@ public class TaskController {
             @CurrentUser User user,
             @RequestBody Map<String, Object> body
     ) {
-        @SuppressWarnings("unchecked")
-        List<String> rawIds = (List<String>) body.get("taskIds");
+        List<UUID> ids = extractAndParseUuids(body, "taskIds", "task_ids");
         @SuppressWarnings("unchecked")
         Map<String, Object> updates = (Map<String, Object>) body.get("updates");
-        List<UUID> ids = rawIds != null ? rawIds.stream().map(UUID::fromString).toList() : List.of();
         List<Task> updated = taskService.bulkUpdateTasks(user, ids, updates);
         return ResponseEntity.ok(Map.of("success", true, "data", updated, "count", updated.size()));
+    }
+
+    private List<UUID> extractAndParseUuids(Map<String, Object> body, String... keys) {
+        if (body == null) return List.of();
+        List<?> rawList = null;
+        for (String k : keys) {
+            if (body.containsKey(k) && body.get(k) instanceof List<?> list) {
+                rawList = list;
+                break;
+            }
+        }
+        if (rawList == null) return List.of();
+        List<UUID> valid = new ArrayList<>();
+        for (Object item : rawList) {
+            if (item != null) {
+                String str = item.toString().trim();
+                try {
+                    valid.add(UUID.fromString(str));
+                } catch (IllegalArgumentException ignored) {}
+            }
+        }
+        return valid;
     }
 
     @GetMapping("/{id}")

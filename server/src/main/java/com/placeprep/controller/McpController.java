@@ -615,7 +615,7 @@ public class McpController {
                 }
 
                 case "delete_task" -> {
-                    String taskIdStr = (String) args.get("taskId");
+                    String taskIdStr = args.get("taskId") instanceof String s ? s : (args.get("task_id") instanceof String s2 ? s2 : null);
                     if (taskIdStr == null || taskIdStr.isBlank()) {
                         return ResponseEntity.ok(jsonRpcToolError(id, "taskId argument is required."));
                     }
@@ -627,7 +627,7 @@ public class McpController {
                 }
 
                 case "bulk_delete_tasks" -> {
-                    List<?> rawList = (List<?>) args.get("taskIds");
+                    List<?> rawList = args.get("taskIds") instanceof List<?> l ? l : (args.get("task_ids") instanceof List<?> l2 ? l2 : null);
                     if (rawList == null || rawList.isEmpty()) {
                         return ResponseEntity.ok(jsonRpcToolError(id, "taskIds array is required for bulk deletion."));
                     }
@@ -647,7 +647,7 @@ public class McpController {
                 }
 
                 case "bulk_complete_tasks" -> {
-                    List<?> rawList = (List<?>) args.get("taskIds");
+                    List<?> rawList = args.get("taskIds") instanceof List<?> l ? l : (args.get("task_ids") instanceof List<?> l2 ? l2 : null);
                     if (rawList == null || rawList.isEmpty()) {
                         return ResponseEntity.ok(jsonRpcToolError(id, "taskIds array is required."));
                     }
@@ -667,7 +667,7 @@ public class McpController {
                 }
 
                 case "bulk_update_tasks" -> {
-                    List<?> rawList = (List<?>) args.get("taskIds");
+                    List<?> rawList = args.get("taskIds") instanceof List<?> l ? l : (args.get("task_ids") instanceof List<?> l2 ? l2 : null);
                     if (rawList == null || rawList.isEmpty()) {
                         return ResponseEntity.ok(jsonRpcToolError(id, "taskIds array is required."));
                     }
