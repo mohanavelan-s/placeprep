@@ -218,6 +218,7 @@ class PlacePrepViewModel(
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             if (!token.isNullOrBlank()) {
                 repository.saveToken(token)
+                switchTab(MobileTab.Dashboard)
                 restoreSession()
             } else if (!code.isNullOrBlank()) {
                 runCatching { repository.exchangeOAuthCode(code) }

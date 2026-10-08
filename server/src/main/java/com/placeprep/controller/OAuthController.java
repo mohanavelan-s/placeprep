@@ -126,7 +126,9 @@ public class OAuthController {
             host = redirectUri != null ? redirectUri : "";
         }
 
-        if (cIdLower.contains("chatgpt") || uriLower.contains("chatgpt.com") || uriLower.contains("openai.com")) {
+        if (cIdLower.contains("placeprep-mobile-app") || uriLower.startsWith("placeprep://")) {
+            return new ClientInfo("PlacePrep Android App", "PlacePrep Mobile", "Verified Mobile App", "placeprep://mobile", SVG_DEV);
+        } else if (cIdLower.contains("chatgpt") || uriLower.contains("chatgpt.com") || uriLower.contains("openai.com")) {
             return new ClientInfo("ChatGPT", "OpenAI", "AI Assistant", host.isEmpty() ? "chatgpt.com" : host, SVG_CHATGPT);
         } else if (cIdLower.contains("claude") || uriLower.contains("claude.ai") || uriLower.contains("anthropic.com")) {
             return new ClientInfo("Claude", "Anthropic", "AI Assistant", host.isEmpty() ? "claude.ai" : host, SVG_CLAUDE);
@@ -154,6 +156,14 @@ public class OAuthController {
             return new ScopeItem(scope, "scope_progress_read_title", "Preparation Progress", "scope_progress_read_desc", "View readiness diagnostics, analytics, and consistency scores", "READ", "badge-read");
         } else if ("placeprep.profile.read".equals(scope)) {
             return new ScopeItem(scope, "scope_profile_read_title", "Account Profile", "scope_profile_read_desc", "View your profile information, target company tracks, and settings", "READ", "badge-read");
+        } else if ("openid".equalsIgnoreCase(scope)) {
+            return new ScopeItem(scope, "scope_openid_title", "OpenID Identity", "scope_openid_desc", "Authenticate your PlacePrep identity securely", "READ", "badge-read");
+        } else if ("profile".equalsIgnoreCase(scope)) {
+            return new ScopeItem(scope, "scope_profile_title", "User Profile", "scope_profile_desc", "Access your name, username, and profile details", "READ", "badge-read");
+        } else if ("email".equalsIgnoreCase(scope)) {
+            return new ScopeItem(scope, "scope_email_title", "Email Address", "scope_email_desc", "Access your registered email address", "READ", "badge-read");
+        } else if ("placeprep:all".equalsIgnoreCase(scope) || "placeprep.all".equalsIgnoreCase(scope)) {
+            return new ScopeItem(scope, "scope_all_title", "Full Workspace", "scope_all_desc", "Full access to PlacePrep preparation tools and progress", "WRITE", "badge-write");
         } else {
             boolean isWrite = scope.toLowerCase().contains("write");
             return new ScopeItem(scope, "scope_custom_title", scope, "scope_custom_desc", "Access PlacePrep resource for " + scope, isWrite ? "WRITE" : "READ", isWrite ? "badge-write" : "badge-read");
@@ -1211,7 +1221,7 @@ public class OAuthController {
 
             String code = approved.get("code");
             String state = approved.get("state");
-            String targetUrl = tx.redirectUri + "?code=" + URLEncoder.encode(code, StandardCharsets.UTF_8);
+            String targetUrl = tx.redirectUri + (tx.redirectUri.contains("?") ? "&" : "?") + "code=" + URLEncoder.encode(code, StandardCharsets.UTF_8);
             if (state != null) {
                 targetUrl += "&state=" + URLEncoder.encode(state, StandardCharsets.UTF_8);
             }

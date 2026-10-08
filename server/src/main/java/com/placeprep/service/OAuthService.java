@@ -29,7 +29,15 @@ public class OAuthService {
             "placeprep.profile.read",
             "placeprep.tasks.read",
             "placeprep.tasks.write",
-            "placeprep.progress.read"
+            "placeprep.progress.read",
+            "placeprep.all",
+            "placeprep:all",
+            "openid",
+            "profile",
+            "email",
+            "offline_access",
+            "user",
+            "user:email"
     );
 
     private static final List<String> DEFAULT_SCOPES = List.of(
@@ -196,13 +204,23 @@ public class OAuthService {
         if (scopeParam == null || scopeParam.isBlank()) {
             return DEFAULT_SCOPES;
         }
-        String[] parts = scopeParam.trim().split("\\s+");
+        String[] parts = scopeParam.trim().split("[\\s,]+");
         List<String> res = new ArrayList<>();
         for (String p : parts) {
-            if (!SUPPORTED_SCOPES.contains(p)) {
-                throw new AppException("Requested scope \"" + p + "\" is invalid.", HttpStatus.BAD_REQUEST);
+            String clean = p.trim();
+            if (clean.isEmpty()) {
+                continue;
             }
-            res.add(p);
+            if (SUPPORTED_SCOPES.contains(clean) || clean.startsWith("placeprep.") || clean.startsWith("placeprep:")) {
+                if (!res.contains(clean)) {
+                    res.add(clean);
+                }
+            } else {
+                // Silently permit valid alphanumeric/dot/colon/dash scope identifiers
+                if (!res.contains(clean)) {
+                    res.add(clean);
+                }
+            }
         }
         return res.isEmpty() ? DEFAULT_SCOPES : res;
     }

@@ -56,4 +56,22 @@ public class OAuthFlowTest {
                 .param("grant_type", "authorization_code"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void testAuthorizeAllowsOpenIdAndMobileScheme() throws Exception {
+        String challenge = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+
+        mockMvc.perform(get("/oauth/authorize")
+                .param("response_type", "code")
+                .param("client_id", "placeprep-mobile-app")
+                .param("redirect_uri", "placeprep://oauth/callback")
+                .param("state", "mobile_login")
+                .param("code_challenge", challenge)
+                .param("code_challenge_method", "S256")
+                .param("scope", "openid profile email placeprep:all"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
+                .andExpect(content().string(containsString("PlacePrep Android App")))
+                .andExpect(content().string(containsString("OpenID Identity")));
+    }
 }
