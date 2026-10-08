@@ -11,32 +11,82 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 interface PlacePrepApi {
+
+    // --- Authentication ---
     @POST("auth/register")
     suspend fun register(@Body payload: RegisterRequest): ApiEnvelope<AuthSession>
 
     @POST("auth/login")
     suspend fun login(@Body payload: LoginRequest): ApiEnvelope<AuthSession>
 
+    @POST("auth/google")
+    suspend fun googleAuth(@Body payload: GoogleAuthRequest): ApiEnvelope<AuthSession>
+
     @GET("auth/me")
     suspend fun getMe(): ApiEnvelope<MobileUser>
 
+    // --- Progress & Diagnostics ---
     @GET("progress/summary")
     suspend fun getProgressSummary(): ApiEnvelope<ProgressSummary>
+
+    // --- Tasks ---
+    @GET("tasks")
+    suspend fun getTasks(
+        @Query("status") status: String? = null,
+        @Query("category") category: String? = null,
+    ): ApiEnvelope<List<TaskItem>>
 
     @GET("tasks/today")
     suspend fun getTodayTasks(): ApiEnvelope<List<TaskItem>>
 
+    @POST("tasks")
+    suspend fun createTask(@Body task: CreateTaskRequest): ApiEnvelope<TaskItem>
+
+    @PATCH("tasks/{id}")
+    suspend fun updateTask(
+        @Path("id") id: String,
+        @Body updates: Map<String, @JvmSuppressWildcards Any?>,
+    ): ApiEnvelope<TaskItem>
+
+    @DELETE("tasks/{id}")
+    suspend fun deleteTask(@Path("id") id: String): ApiEnvelope<TaskItem>
+
+    // --- Prep Architect & AI Plans ---
     @GET("ai/prep-architect/latest")
     suspend fun getLatestPrepPlan(): ApiEnvelope<PrepPlan?>
+
+    @POST("ai/prep-architect")
+    suspend fun generatePrepPlan(@Body payload: Map<String, @JvmSuppressWildcards Any?> = emptyMap()): ApiEnvelope<PrepPlan>
 
     @POST("ai/quick-task")
     suspend fun generateQuickTask(@Body payload: QuickTaskRequest = QuickTaskRequest()): ApiEnvelope<AiQuickTaskResult>
 
+    // --- Coach Me Through It & Reflection ---
+    @POST("ai/help")
+    suspend fun getCoachHelp(@Body payload: AiStuckHelpRequest): ApiEnvelope<AiStuckHelpResponse>
+
+    @POST("ai/evaluate")
+    suspend fun evaluateDaily(@Body payload: AiDailyEvaluationRequest): ApiEnvelope<AiDailyEvaluationResponse>
+
+    // --- Nocturne Mentor ---
+    @GET("ai/chat")
+    suspend fun getMentorHistory(): ApiEnvelope<List<MentorMessage>>
+
+    @POST("ai/chat")
+    suspend fun sendMentorMessage(@Body payload: MentorMessageRequest): ApiEnvelope<MentorReply>
+
+    @DELETE("ai/chat/history")
+    suspend fun clearMentorHistory(): ApiEnvelope<Any?>
+
+    // --- Power Pocket ---
     @GET("power-pocket/active")
     suspend fun getActivePowerPocket(): ApiEnvelope<PowerPocketSession?>
 
@@ -49,11 +99,32 @@ interface PlacePrepApi {
         @Body payload: PowerPocketEndRequest = PowerPocketEndRequest(),
     ): ApiEnvelope<PowerPocketSession>
 
-    @GET("ai/chat")
-    suspend fun getMentorHistory(): ApiEnvelope<List<MentorMessage>>
+    // --- Assessments ---
+    @GET("assessments/overview")
+    suspend fun getAssessmentsOverview(): ApiEnvelope<AssessmentOverview>
 
-    @POST("ai/chat")
-    suspend fun sendMentorMessage(@Body payload: MentorMessageRequest): ApiEnvelope<MentorReply>
+    // --- Coding Lab ---
+    @GET("coding/languages")
+    suspend fun getCodingLanguages(): ApiEnvelope<List<Map<String, Any?>>>
+
+    @POST("coding/problem/resolve")
+    suspend fun resolveCodingProblem(@Body payload: Map<String, @JvmSuppressWildcards Any?>): ApiEnvelope<CodingProblemSummary>
+
+    // --- Notifications & Profile ---
+    @GET("notifications")
+    suspend fun listNotifications(@Query("limit") limit: Int = 20): ApiEnvelope<List<NotificationItem>>
+
+    @POST("notifications/sync")
+    suspend fun syncNotifications(): NotificationSyncResult
+
+    @POST("notifications/test-push")
+    suspend fun testPushNotification(): ApiEnvelope<Map<String, Any?>>
+
+    @GET("user-profile")
+    suspend fun getUserProfile(): ApiEnvelope<UserProfileData>
+
+    @PATCH("user-profile")
+    suspend fun updateUserProfile(@Body payload: Map<String, @JvmSuppressWildcards Any?>): ApiEnvelope<UserProfileData>
 
     companion object {
         fun create(sessionStore: SecureSessionStore): PlacePrepApi {
