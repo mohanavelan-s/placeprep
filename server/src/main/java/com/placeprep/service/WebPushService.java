@@ -56,7 +56,7 @@ public class WebPushService {
     @Value("${placeprep.webpush.subject:mailto:support@placeprep.app}")
     private String webPushSubject;
 
-    @Value("${placeprep.app.url:https://placeprep-nine.vercel.app}")
+    @Value("${placeprep.app.url:https://mvdev.in}")
     private String appUrl;
 
     private volatile KeyPair cachedVapidKeyPair = null;

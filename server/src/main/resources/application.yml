@@ -27,9 +27,9 @@ placeprep:
     secret: ${JWT_SECRET:}
     expires-in-ms: ${JWT_EXPIRES_IN_MS:604800000}
   cors:
-    allowed-origins: ${CLIENT_URLS:http://localhost:4173,http://127.0.0.1:4173,http://localhost:5173,http://127.0.0.1:5173,https://placeprep-nine.vercel.app,https://placeprep.vercel.app}
+    allowed-origins: ${CLIENT_URLS:http://localhost:4173,http://127.0.0.1:4173,http://localhost:5173,http://127.0.0.1:5173,https://mvdev.in,https://www.mvdev.in,https://placeprep-nine.vercel.app,https://placeprep.vercel.app}
   app:
-    url: ${APP_URL:http://localhost:4173}
+    url: ${APP_URL:https://mvdev.in}
     upload-dir: ${UPLOAD_DIR:./uploads}
     allow-public-signup: ${ALLOW_PUBLIC_SIGNUP:false}
     bootstrap-admin-invite: ${BOOTSTRAP_ADMIN_INVITE_CODE:}

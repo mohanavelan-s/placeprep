@@ -930,7 +930,9 @@ interface RegisterPayload {
 }
 
 const DEFAULT_API_BASE_URL = "/api";
-const PRODUCTION_API_FALLBACK_URLS = [] as const;
+const PRODUCTION_API_FALLBACK_URLS = [
+  "https://placeprep-api-production-2481.up.railway.app/api",
+] as const;
 const KNOWN_ENDPOINT_SUFFIXES = [
   "/api/health",
   "/health",
@@ -1042,14 +1044,19 @@ function isLocalApiBaseUrl(value: string) {
     || /^https?:\/\/(?:localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)(?::\d+)?(?:\/|$)/i.test(value);
 }
 
+function isRecognizedProductionHostname(hostname: string) {
+  return /(?:^|\.)vercel\.app$/i.test(hostname)
+    || /placeprep/i.test(hostname)
+    || /(?:^|\.)mvdev\.in$/i.test(hostname);
+}
+
 function shouldIncludeProductionApiFallback(primaryUrl: string) {
-  if (isLocalApiBaseUrl(primaryUrl)) {
+  if (isLocalApiBaseUrl(primaryUrl) && primaryUrl !== DEFAULT_API_BASE_URL) {
     return false;
   }
 
   if (typeof window !== "undefined") {
-    return /(?:^|\.)vercel\.app$/i.test(window.location.hostname)
-      || /placeprep/i.test(window.location.hostname);
+    return isRecognizedProductionHostname(window.location.hostname);
   }
 
   return true;
@@ -1060,8 +1067,7 @@ function shouldPreferSameOriginApi() {
     return false;
   }
 
-  return /(?:^|\.)vercel\.app$/i.test(window.location.hostname)
-    || /placeprep/i.test(window.location.hostname);
+  return isRecognizedProductionHostname(window.location.hostname);
 }
 
 function resolveApiBaseUrls() {
@@ -1226,6 +1232,11 @@ async function request<T>(path: string, options: RequestOptions = {}) {
         }
 
         if (!payload || !("data" in payload)) {
+          if (contentType.includes("text/html") && attempts.length < API_BASE_URLS.length) {
+            console.warn(`[API] Received HTML from ${requestUrl}. Retrying with next API base URL...`);
+            continue;
+          }
+
           const detail = [
             `Method: ${method} ${path}`,
             `URL: ${requestUrl}`,

@@ -2,13 +2,14 @@
 
 Live deployment:
 
-- Web app: [https://placeprep-nine.vercel.app/](https://placeprep-nine.vercel.app/)
-- Backend health: [https://placeprep-api-production-851e.up.railway.app/api/health](https://placeprep-api-production-851e.up.railway.app/api/health)
+- Primary web app: [https://mvdev.in/](https://mvdev.in/)
+- Alternate web app: [https://placeprep-nine.vercel.app/](https://placeprep-nine.vercel.app/)
+- Backend health: [https://placeprep-api-production-2481.up.railway.app/api/health](https://placeprep-api-production-2481.up.railway.app/api/health)
 
 Access:
 
 - Public signup is enabled for free accounts.
-- Use the invite page on the live app to create a free account or enter a college invite: [https://placeprep-nine.vercel.app/invite](https://placeprep-nine.vercel.app/invite)
+- Use the invite page on the live app to create a free account or enter a college invite: [https://mvdev.in/invite](https://mvdev.in/invite) (or [https://placeprep-nine.vercel.app/invite](https://placeprep-nine.vercel.app/invite))
 - Invite generation guidance is stored in [docs/invite-code.txt](docs/invite-code.txt).
 
 PlacePrep now includes a modular Express + PostgreSQL backend inside [server/package.json](server/package.json) with JWT auth, task/log tracking, Power Pocket sessions, AI utilities, uploads, resume analysis, and progress analytics.

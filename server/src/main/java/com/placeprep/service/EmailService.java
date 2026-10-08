@@ -74,7 +74,7 @@ public class EmailService {
     @Value("${placeprep.email.smtp-secure:false}")
     private boolean smtpSecure;
 
-    @Value("${placeprep.app.url:https://placeprep-nine.vercel.app}")
+    @Value("${placeprep.app.url:https://mvdev.in}")
     private String appUrl;
 
     public EmailService(

@@ -101,7 +101,10 @@ public class SecurityConfig {
         List<String> patterns = new java.util.ArrayList<>(List.of(
                 "http://localhost:*",
                 "http://127.0.0.1:*",
-                "https://*.vercel.app"
+                "https://*.vercel.app",
+                "https://mvdev.in",
+                "https://www.mvdev.in",
+                "https://*.mvdev.in"
         ));
         for (String origin : allowedOrigins) {
             if (origin != null && !origin.isBlank() && !patterns.contains(origin)) {

@@ -4,7 +4,7 @@
 
 PlacePrep is a full-stack, cloud-deployed AI-powered placement preparation platform.
 
-- **Frontend**: React 18, TypeScript, Vite 5, Tailwind CSS, Radix UI primitives, React Router DOM v6, TanStack React Query v5. Deployed on **Vercel** (`placeprep.vercel.app`), configured with rewrites in `vercel.json` routing `/api/(.*)` to the production Railway backend (`https://placeprep-api-production-851e.up.railway.app/api/$1`).
+- **Frontend**: React 18, TypeScript, Vite 5, Tailwind CSS, Radix UI primitives, React Router DOM v6, TanStack React Query v5. Deployed on **Vercel** (`mvdev.in` / `placeprep-nine.vercel.app`), configured with rewrites in `vercel.json` routing `/api/(.*)` to the production Railway backend (`https://placeprep-api-production-2481.up.railway.app/api/$1`).
 - **Backend**: Node.js and Express 4 deployed on **Railway** (`server/`). Entrypoint `src/index.js` bootstraps the Express app `src/app.js`, mounts API routes, runs database connection testing, and starts notification schedulers.
 - **Database**: PostgreSQL hosted on **Supabase** (`nwjstaqudwpinfvmkcpp`). Connection pooling via `pg.Pool` (`server/src/config/database.js`). Database schema is managed via `server/src/db/schema.sql` and synchronized on startup if `AUTO_INIT_DB=true`. Supabase Row-Level Security (RLS) policies are active on public tables (`docs/supabase-rls-policies.sql`).
 - **Media & File Storage**: Cloudinary is integrated for avatars, work-proof images, and resumes (`server/src/config/cloudinary.js`), with local disk fallback in `uploads/`.
@@ -164,9 +164,9 @@ To support asymmetric signing (RS256) and refresh tokens:
 ## I. Required Environment Variables
 
 Add to `server/.env.example` and production Railway config:
-- `MCP_PUBLIC_URL`: Base public URL for the MCP server (e.g. `https://placeprep-api-production-851e.up.railway.app`).
-- `OAUTH_ISSUER`: Base issuer URL for OAuth discovery (e.g. `https://placeprep-api-production-851e.up.railway.app`).
-- `OAUTH_RESOURCE`: Canonical protected resource URL (e.g. `https://placeprep-api-production-851e.up.railway.app/mcp`).
+- `MCP_PUBLIC_URL`: Base public URL for the MCP server (e.g. `https://placeprep-api-production-2481.up.railway.app`).
+- `OAUTH_ISSUER`: Base issuer URL for OAuth discovery (e.g. `https://placeprep-api-production-2481.up.railway.app`).
+- `OAUTH_RESOURCE`: Canonical protected resource URL (e.g. `https://placeprep-api-production-2481.up.railway.app/mcp`).
 - `OAUTH_CLIENTS`: JSON string of registered client configurations with exact redirect URIs.
 - `OAUTH_KEY_ID`: Identifier for the active JWKS key (default `placeprep-oauth-key-1`).
 - `OAUTH_PRIVATE_KEY_PEM`: RSA private key (PEM format) for production asymmetric token signing. (Development falls back to an automatically generated RSA keypair if unset).

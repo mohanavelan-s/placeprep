@@ -23,7 +23,7 @@ public class HealthController {
     @Value("${placeprep.ai.model:openai/gpt-5.1}")
     private String aiModel;
 
-    @Value("${placeprep.app.url:https://placeprep-nine.vercel.app}")
+    @Value("${placeprep.app.url:https://mvdev.in}")
     private String appUrl;
 
     @Value("${placeprep.judge0.base-url:https://ce.judge0.com}")
