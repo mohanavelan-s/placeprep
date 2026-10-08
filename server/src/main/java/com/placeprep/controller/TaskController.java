@@ -43,6 +43,12 @@ public class TaskController {
         return ResponseEntity.ok(Map.of("success", true, "data", tasks));
     }
 
+    @GetMapping("/today")
+    public ResponseEntity<Map<String, Object>> getTodayTasks(@CurrentUser User user) {
+        List<Task> tasks = taskService.listTasks(user, "today", null, null, null);
+        return ResponseEntity.ok(Map.of("success", true, "data", tasks));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getTask(
             @CurrentUser User user,

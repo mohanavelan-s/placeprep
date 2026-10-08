@@ -50,19 +50,21 @@ export default function PrepPlanView({ plan }: PrepPlanViewProps) {
               className="rounded-2xl border border-border/80 bg-card/70 p-5"
             >
               <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">Week {week.week}</p>
-              <h4 className="mt-2 font-heading text-2xl text-foreground">{week.title}</h4>
+              <h4 className="mt-2 font-heading text-2xl text-foreground">
+                {week.title || (week as any).theme || `Week ${week.week} Focus`}
+              </h4>
               <div className="mt-3 flex flex-wrap gap-2">
-                {week.focusTopics.map((topic) => (
+                {(week.focusTopics || (week as any).topics || []).map((topic: string) => (
                   <span key={topic} className="coach-chip border-primary/25">
                     {topic}
                   </span>
                 ))}
               </div>
               <p className="mt-4 text-sm uppercase tracking-[0.16em] text-muted-foreground">
-                {week.estimatedHours} hours / week
+                {week.estimatedHours || 12} hours / week
               </p>
               <div className="mt-4 space-y-2">
-                {week.goals.map((goal) => (
+                {(week.goals || ((week as any).goal ? [(week as any).goal, (week as any).milestone].filter(Boolean) : [])).map((goal: string) => (
                   <p key={goal} className="text-sm leading-6 text-foreground/80">
                     {goal}
                   </p>

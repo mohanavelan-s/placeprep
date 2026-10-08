@@ -790,10 +790,10 @@ public class AiService {
                     + "Return a JSON object with this EXACT structure:\n"
                     + "{\n"
                     + "  \"roadmap\": [\n"
-                    + "    {\"week\": 1, \"theme\": \"...\", \"goal\": \"...\", \"topics\": [\"...\"], \"milestone\": \"...\"},\n"
-                    + "    {\"week\": 2, \"theme\": \"...\", \"goal\": \"...\", \"topics\": [\"...\"], \"milestone\": \"...\"},\n"
-                    + "    {\"week\": 3, \"theme\": \"...\", \"goal\": \"...\", \"topics\": [\"...\"], \"milestone\": \"...\"},\n"
-                    + "    {\"week\": 4, \"theme\": \"...\", \"goal\": \"...\", \"topics\": [\"...\"], \"milestone\": \"...\"}\n"
+                    + "    {\"week\": 1, \"title\": \"...\", \"focusTopics\": [\"...\"], \"estimatedHours\": 12, \"goals\": [\"...\"]},\n"
+                    + "    {\"week\": 2, \"title\": \"...\", \"focusTopics\": [\"...\"], \"estimatedHours\": 12, \"goals\": [\"...\"]},\n"
+                    + "    {\"week\": 3, \"title\": \"...\", \"focusTopics\": [\"...\"], \"estimatedHours\": 12, \"goals\": [\"...\"]},\n"
+                    + "    {\"week\": 4, \"title\": \"...\", \"focusTopics\": [\"...\"], \"estimatedHours\": 12, \"goals\": [\"...\"]}\n"
                     + "  ],\n"
                     + "  \"tasks\": [\n"
                     + "    {\"day\": \"Day 1\", \"theme\": \"...\", \"totalEstimatedMinutes\": " + timePerDay + ", \"items\": [\n"
@@ -838,24 +838,24 @@ public class AiService {
         if (roadmap == null || roadmap.isEmpty()) {
             if (isDataRole) {
                 roadmap = List.of(
-                        Map.of("week", 1, "theme", "SQL Schema & Relational Query Foundations", "goal", "Master SELECT, WHERE, GROUP BY, HAVING, and basic joins", "topics", List.of("SQL", "Relational Models", "Aggregations"), "milestone", "Solve 15 LeetCode Database problems"),
-                        Map.of("week", 2, "theme", "Complex Joins, Window Functions & CTEs", "goal", "Master RANK, DENSE_RANK, ROW_NUMBER, and Recursive CTEs", "topics", List.of("Window Functions", "CTEs", "Subqueries"), "milestone", "Write multi-table financial transaction analytics"),
-                        Map.of("week", 3, "theme", "Database Internals, Indexing & Query Tuning", "goal", "Understand B-Trees, explain query execution plans, and transactions", "topics", List.of("Indexes", "Transactions", "ACID", "Sharding"), "milestone", "Diagnose and optimize slow SQL queries"),
-                        Map.of("week", 4, "theme", "End-to-End Analytics Loop & Business Insights", "goal", "Product metrics, retention loops, and mock analytical interviews", "topics", List.of("Product Analytics", "A/B Testing", "Mock Interviews"), "milestone", "Readiness score > 85%")
+                        Map.of("week", 1, "title", "SQL Schema & Relational Query Foundations", "theme", "SQL Schema & Relational Query Foundations", "focusTopics", List.of("SQL", "Relational Models", "Aggregations"), "topics", List.of("SQL", "Relational Models", "Aggregations"), "estimatedHours", 12, "goals", List.of("Master SELECT, WHERE, GROUP BY, HAVING, and basic joins", "Solve 15 LeetCode Database problems"), "goal", "Master SELECT, WHERE, GROUP BY, HAVING, and basic joins", "milestone", "Solve 15 LeetCode Database problems"),
+                        Map.of("week", 2, "title", "Complex Joins, Window Functions & CTEs", "theme", "Complex Joins, Window Functions & CTEs", "focusTopics", List.of("Window Functions", "CTEs", "Subqueries"), "topics", List.of("Window Functions", "CTEs", "Subqueries"), "estimatedHours", 12, "goals", List.of("Master RANK, DENSE_RANK, ROW_NUMBER, and Recursive CTEs", "Write multi-table financial transaction analytics"), "goal", "Master RANK, DENSE_RANK, ROW_NUMBER, and Recursive CTEs", "milestone", "Write multi-table financial transaction analytics"),
+                        Map.of("week", 3, "title", "Database Internals, Indexing & Query Tuning", "theme", "Database Internals, Indexing & Query Tuning", "focusTopics", List.of("Indexes", "Transactions", "ACID", "Sharding"), "topics", List.of("Indexes", "Transactions", "ACID", "Sharding"), "estimatedHours", 12, "goals", List.of("Understand B-Trees, explain query execution plans, and transactions", "Diagnose and optimize slow SQL queries"), "goal", "Understand B-Trees, explain query execution plans, and transactions", "milestone", "Diagnose and optimize slow SQL queries"),
+                        Map.of("week", 4, "title", "End-to-End Analytics Loop & Business Insights", "theme", "End-to-End Analytics Loop & Business Insights", "focusTopics", List.of("Product Analytics", "A/B Testing", "Mock Interviews"), "topics", List.of("Product Analytics", "A/B Testing", "Mock Interviews"), "estimatedHours", 12, "goals", List.of("Product metrics, retention loops, and mock analytical interviews", "Readiness score > 85%"), "goal", "Product metrics, retention loops, and mock analytical interviews", "milestone", "Readiness score > 85%")
                 );
             } else if (isFrontendRole) {
                 roadmap = List.of(
-                        Map.of("week", 1, "theme", "DOM, CSS Architecture & JavaScript Core", "goal", "Master closures, event loop, promises, and prototypal inheritance", "topics", List.of("JavaScript", "Event Loop", "DOM Manipulation"), "milestone", "Implement vanilla JS components from scratch"),
-                        Map.of("week", 2, "theme", "React Internals & State Management", "goal", "Deep dive into reconciliation, hooks lifecycle, memoization, and contexts", "topics", List.of("React", "Hooks", "State Patterns"), "milestone", "Build a high-performance interactive dashboard"),
-                        Map.of("week", 3, "theme", "Web Performance, Network & Core Web Vitals", "goal", "Optimize LCP, CLS, INP, code splitting, bundle sizes, and caching", "topics", List.of("Web Vitals", "Performance", "Security"), "milestone", "Pass Lighthouse audit with 95+ score"),
-                        Map.of("week", 4, "theme", "Frontend System Design & Mock Interviews", "goal", "Architect large-scale web apps, offline sync, and real-time feeds", "topics", List.of("Frontend System Design", "Mock Loops"), "milestone", "Readiness score > 85%")
+                        Map.of("week", 1, "title", "DOM, CSS Architecture & JavaScript Core", "theme", "DOM, CSS Architecture & JavaScript Core", "focusTopics", List.of("JavaScript", "Event Loop", "DOM Manipulation"), "topics", List.of("JavaScript", "Event Loop", "DOM Manipulation"), "estimatedHours", 12, "goals", List.of("Master closures, event loop, promises, and prototypal inheritance", "Implement vanilla JS components from scratch"), "goal", "Master closures, event loop, promises, and prototypal inheritance", "milestone", "Implement vanilla JS components from scratch"),
+                        Map.of("week", 2, "title", "React Internals & State Management", "theme", "React Internals & State Management", "focusTopics", List.of("React", "Hooks", "State Patterns"), "topics", List.of("React", "Hooks", "State Patterns"), "estimatedHours", 12, "goals", List.of("Deep dive into reconciliation, hooks lifecycle, memoization, and contexts", "Build a high-performance interactive dashboard"), "goal", "Deep dive into reconciliation, hooks lifecycle, memoization, and contexts", "milestone", "Build a high-performance interactive dashboard"),
+                        Map.of("week", 3, "title", "Web Performance, Network & Core Web Vitals", "theme", "Web Performance, Network & Core Web Vitals", "focusTopics", List.of("Web Vitals", "Performance", "Security"), "topics", List.of("Web Vitals", "Performance", "Security"), "estimatedHours", 12, "goals", List.of("Optimize LCP, CLS, INP, code splitting, bundle sizes, and caching", "Pass Lighthouse audit with 95+ score"), "goal", "Optimize LCP, CLS, INP, code splitting, bundle sizes, and caching", "milestone", "Pass Lighthouse audit with 95+ score"),
+                        Map.of("week", 4, "title", "Frontend System Design & Mock Interviews", "theme", "Frontend System Design & Mock Interviews", "focusTopics", List.of("Frontend System Design", "Mock Loops"), "topics", List.of("Frontend System Design", "Mock Loops"), "estimatedHours", 12, "goals", List.of("Architect large-scale web apps, offline sync, and real-time feeds", "Readiness score > 85%"), "goal", "Architect large-scale web apps, offline sync, and real-time feeds", "milestone", "Readiness score > 85%")
                 );
             } else {
                 roadmap = List.of(
-                        Map.of("week", 1, "theme", "Foundations & Linear Structures", "goal", "Master Arrays, Two Pointers, Sliding Window, and Stacks/Queues", "topics", List.of("Arrays", "Two Pointers", "Stacks", "Queues"), "milestone", "Solve 15 Easy/Medium questions"),
-                        Map.of("week", 2, "theme", "Trees, Graphs & Recursion", "goal", "Build tree traversal intuition and graph search techniques", "topics", List.of("Binary Trees", "BST", "BFS/DFS", "Graphs"), "milestone", "Implement BFS/DFS from scratch"),
-                        Map.of("week", 3, "theme", "Core Computer Science & Dynamic Programming", "goal", "Strengthen DBMS transactions, OS concurrency, and DP memoization", "topics", List.of("DBMS", "OS", "DP Patterns"), "milestone", "Complete full Core CS mock quiz"),
-                        Map.of("week", 4, "theme", "System Design & Final Polish for " + companyLabel, "goal", "High-frequency interview simulations and mock loops", "topics", List.of("System Design", "Mock Interviews"), "milestone", "Readiness score > 85%")
+                        Map.of("week", 1, "title", "Foundations & Linear Structures", "theme", "Foundations & Linear Structures", "focusTopics", List.of("Arrays", "Two Pointers", "Stacks", "Queues"), "topics", List.of("Arrays", "Two Pointers", "Stacks", "Queues"), "estimatedHours", 12, "goals", List.of("Master Arrays, Two Pointers, Sliding Window, and Stacks/Queues", "Solve 15 Easy/Medium questions"), "goal", "Master Arrays, Two Pointers, Sliding Window, and Stacks/Queues", "milestone", "Solve 15 Easy/Medium questions"),
+                        Map.of("week", 2, "title", "Trees, Graphs & Recursion", "theme", "Trees, Graphs & Recursion", "focusTopics", List.of("Binary Trees", "BST", "BFS/DFS", "Graphs"), "topics", List.of("Binary Trees", "BST", "BFS/DFS", "Graphs"), "estimatedHours", 12, "goals", List.of("Build tree traversal intuition and graph search techniques", "Implement BFS/DFS from scratch"), "goal", "Build tree traversal intuition and graph search techniques", "milestone", "Implement BFS/DFS from scratch"),
+                        Map.of("week", 3, "title", "Core Computer Science & Dynamic Programming", "theme", "Core Computer Science & Dynamic Programming", "focusTopics", List.of("DBMS", "OS", "DP Patterns"), "topics", List.of("DBMS", "OS", "DP Patterns"), "estimatedHours", 12, "goals", List.of("Strengthen DBMS transactions, OS concurrency, and DP memoization", "Complete full Core CS mock quiz"), "goal", "Strengthen DBMS transactions, OS concurrency, and DP memoization", "milestone", "Complete full Core CS mock quiz"),
+                        Map.of("week", 4, "title", "System Design & Final Polish for " + companyLabel, "theme", "System Design & Final Polish for " + companyLabel, "focusTopics", List.of("System Design", "Mock Interviews"), "topics", List.of("System Design", "Mock Interviews"), "estimatedHours", 12, "goals", List.of("High-frequency interview simulations and mock loops", "Readiness score > 85%"), "goal", "High-frequency interview simulations and mock loops", "milestone", "Readiness score > 85%")
                 );
             }
         }
@@ -1033,7 +1033,36 @@ public class AiService {
         plan.put("userId", rs.getObject("user_id").toString());
         plan.put("knownTopics", JsonUtil.toList(rs.getString("known_topics"), String.class));
         plan.put("targetTopics", JsonUtil.toList(rs.getString("target_topics"), String.class));
-        plan.put("roadmap", JsonUtil.toListOfMaps(rs.getString("roadmap")));
+        List<Map<String, Object>> rawRoadmap = JsonUtil.toListOfMaps(rs.getString("roadmap"));
+        List<Map<String, Object>> normalizedRoadmap = new ArrayList<>();
+        int wIdx = 1;
+        for (Map<String, Object> w : rawRoadmap) {
+            Map<String, Object> copy = new LinkedHashMap<>(w);
+            String title = (String) w.getOrDefault("title", w.getOrDefault("theme", "Week " + w.getOrDefault("week", wIdx)));
+            copy.put("title", title);
+            copy.put("theme", title);
+            Object ft = w.getOrDefault("focusTopics", w.get("topics"));
+            List<?> focusList = ft instanceof List ? (List<?>) ft : List.of();
+            copy.put("focusTopics", focusList);
+            copy.put("topics", focusList);
+            int estHours = w.get("estimatedHours") instanceof Number ? ((Number) w.get("estimatedHours")).intValue() : (w.get("hours") instanceof Number ? ((Number) w.get("hours")).intValue() : 12);
+            copy.put("estimatedHours", estHours);
+            Object g = w.get("goals");
+            List<?> goalList;
+            if (g instanceof List && !((List<?>) g).isEmpty()) {
+                goalList = (List<?>) g;
+            } else {
+                List<String> constructed = new ArrayList<>();
+                if (w.get("goal") != null) constructed.add(w.get("goal").toString());
+                if (w.get("milestone") != null) constructed.add(w.get("milestone").toString());
+                if (constructed.isEmpty()) constructed.add("Lock core patterns and complete timed practice.");
+                goalList = constructed;
+            }
+            copy.put("goals", goalList);
+            normalizedRoadmap.add(copy);
+            wIdx++;
+        }
+        plan.put("roadmap", normalizedRoadmap);
         plan.put("tasks", JsonUtil.toListOfMaps(rs.getString("tasks")));
         plan.put("resources", JsonUtil.toListOfMaps(rs.getString("resources")));
         plan.put("flashcards", JsonUtil.toListOfMaps(rs.getString("flashcards")));

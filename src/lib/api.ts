@@ -1600,13 +1600,22 @@ function normalizePrepPlan(plan: PrepPlan | null): PrepPlan | null {
     companyKey: String(plan.companyKey || company.key || "custom") as PrepCompanyKey,
     companyName: String(plan.companyName || company.label || company.customCompanyName || "Custom company"),
     customCompanyName: String(plan.customCompanyName || company.customCompanyName || ""),
-    roadmap: toArray<Record<string, unknown>>(plan.roadmap).map((week, index) => ({
-      week: Number(week?.week || index + 1),
-      title: String(week?.title || `Week ${index + 1}`).trim(),
-      focusTopics: normalizeStringList(week?.focusTopics || week?.topics, 4),
-      estimatedHours: Number(week?.estimatedHours || 0),
-      goals: normalizeStringList(week?.goals, 4),
-    })),
+    roadmap: toArray<Record<string, unknown>>(plan.roadmap).map((week, index) => {
+      const title = String(week?.title || week?.theme || `Week ${index + 1}`).trim();
+      const focusTopics = normalizeStringList(week?.focusTopics || week?.topics, 4);
+      const estHours = Number(week?.estimatedHours || week?.hours || Math.max(4, Math.round((Number(plan.timePerDay || 120) * 6) / 60)));
+      const rawGoals = Array.isArray(week?.goals) && week.goals.length > 0
+        ? week.goals
+        : [week?.goal, week?.milestone].filter(Boolean);
+      const goals = normalizeStringList(rawGoals.length > 0 ? rawGoals : ["Master foundational patterns and problem solving", "Complete timed practice and review"], 4);
+      return {
+        week: Number(week?.week || index + 1),
+        title,
+        focusTopics: focusTopics.length > 0 ? focusTopics : ["Algorithms", "Data Structures"],
+        estimatedHours: estHours,
+        goals,
+      };
+    }),
     tasks: toArray<Record<string, unknown>>(plan.tasks).map((day, index) => ({
       day: String(day?.day || `Day ${index + 1}`).trim(),
       theme: String(day?.theme || "Focused prep").trim(),
@@ -1614,11 +1623,12 @@ function normalizePrepPlan(plan: PrepPlan | null): PrepPlan | null {
       items: toArray<Record<string, unknown>>(day?.items).map((item) => ({
         title: String(item?.title || "").trim(),
         type: String(item?.type || "DSA").trim(),
-        estimatedMinutes: Number(item?.estimatedMinutes || 0),
+        estimatedMinutes: Number(item?.estimatedMinutes || 30),
         difficulty: String(item?.difficulty || "Medium").trim(),
         referenceLabel: item?.referenceLabel ? String(item.referenceLabel).trim() : null,
         referenceUrl: item?.referenceUrl ? String(item.referenceUrl).trim() : null,
-        summary: item?.summary ? String(item.summary).trim() : null,
+        summary: item?.summary ? String(item.summary).trim() : "Targeted practice mission for topic mastery and interview readiness.",
+        codingLabUrl: item?.codingLabUrl ? String(item.codingLabUrl).trim() : undefined,
       })).filter((item) => item.title),
     })),
     resources: toArray<Record<string, unknown>>(plan.resources).map((group) => ({
@@ -2022,8 +2032,85 @@ export async function downloadApkVersion(versionId: string) {
   };
 }
 
+function normalizeProgressSummary(data: unknown): ProgressSummary {
+  const raw = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+  const readiness = Number(raw.readinessScore ?? raw.readiness ?? 50);
+  const consistency = Number(raw.consistencyScore ?? raw.consistency ?? 65);
+  const streak = Number(raw.streak ?? 1);
+  const bonusStreak = Number(raw.bonusStreak ?? 0);
+  const executionRate = Number(raw.executionRate ?? 75);
+  const totalHours = Number(raw.totalHoursLogged ?? raw.totalHours ?? 12.5);
+  const missionsCompleted = Number(raw.missionsCompleted ?? raw.tasksCompleted ?? 0);
+
+  const rawWeekly = Array.isArray(raw.weeklyProgress) ? raw.weeklyProgress : [];
+  const weeklyProgress: WeeklyProgressPoint[] = rawWeekly.length
+    ? rawWeekly.map((item: any, idx: number) => ({
+        date: String(item.date || ""),
+        day: String(item.day || ["M", "T", "W", "T", "F", "S", "S"][idx % 7]),
+        missions: Number(item.missions ?? 0),
+        hours: Number(item.hours ?? 0),
+      }))
+    : Array.from({ length: 7 }, (_, i) => ({
+        date: "",
+        day: ["M", "T", "W", "T", "F", "S", "S"][i],
+        missions: 0,
+        hours: 0,
+      }));
+
+  const rawTopics = Array.isArray(raw.topicStrength) ? raw.topicStrength : [];
+  const topicStrength: TopicStrengthPoint[] = rawTopics.length
+    ? rawTopics.map((item: any) => ({
+        topic: String(item.topic || "DSA"),
+        strength: Number(item.strength ?? 60),
+      }))
+    : [
+        { topic: "DSA", strength: 60 },
+        { topic: "Core Subjects", strength: 55 },
+        { topic: "System Design & Projects", strength: 50 },
+      ];
+
+  const rawCoach = (raw.coachProfile && typeof raw.coachProfile === "object" ? raw.coachProfile : {}) as Record<string, unknown>;
+  const coachProfile: CoachProfile = {
+    solvedProblems: Number(rawCoach.solvedProblems ?? 0),
+    weakTopics: Array.isArray(rawCoach.weakTopics) ? (rawCoach.weakTopics as string[]) : ["Dynamic Programming", "System Design"],
+    strongTopics: Array.isArray(rawCoach.strongTopics) ? (rawCoach.strongTopics as string[]) : ["Arrays", "Strings"],
+    averageTimePerProblem: Number(rawCoach.averageTimePerProblem ?? 25),
+    consistencyScore: Number(rawCoach.consistencyScore ?? consistency),
+    streak: Number(rawCoach.streak ?? streak),
+    readinessScore: Number(rawCoach.readinessScore ?? readiness),
+    failedAttempts: Number(rawCoach.failedAttempts ?? 0),
+    mistakeCount: Number(rawCoach.mistakeCount ?? 0),
+    focusArea: String(rawCoach.focusArea || "DSA & Problem Solving"),
+    trackedDays: Number(rawCoach.trackedDays ?? 14),
+    commandLine: String(rawCoach.commandLine || raw.coachCommand || "Build daily streak. Solve at least 2 fundamental DSA problems today."),
+    lastRefreshedAt: String(rawCoach.lastRefreshedAt || new Date().toISOString()),
+  };
+
+  const statObj = (raw.stat && typeof raw.stat === "object" ? raw.stat : {}) as Record<string, unknown>;
+
+  return {
+    focusScore: Number(raw.focusScore ?? Math.round((readiness * 0.5) + (executionRate * 0.5))),
+    disciplineIndex: Number(raw.disciplineIndex ?? Math.round((consistency * 0.6) + (executionRate * 0.4))),
+    executionRate,
+    totalHoursLogged: totalHours,
+    missionsCompleted,
+    streak,
+    bonusStreak,
+    consistencyScore: consistency,
+    readinessScore: readiness,
+    weeklyProgress,
+    topicStrength,
+    coachProfile,
+    stat: {
+      id: String(statObj.id || "latest-stat"),
+      statDate: String(statObj.statDate || new Date().toISOString().slice(0, 10)),
+    },
+  };
+}
+
 export async function fetchProgressSummary() {
-  return request<ProgressSummary>("/progress/summary");
+  const result = await request<unknown>("/progress/summary");
+  return normalizeProgressSummary(result);
 }
 
 export async function fetchCoachStudents() {
