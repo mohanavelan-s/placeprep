@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -53,13 +54,17 @@ public class LogService {
         return dailyLogRepository.listLogs(user.getId(), date, from, to, limit);
     }
 
-    public DailyLog getLogByDate(User user, LocalDate logDate) {
+    public Optional<DailyLog> findLogByDate(User user, LocalDate logDate) {
         if (logDate == null) {
             String tz = user.getTimezone() != null && !user.getTimezone().isBlank() ? user.getTimezone() : "Asia/Calcutta";
             logDate = LocalDate.now(ZoneId.of(tz));
         }
 
-        return dailyLogRepository.findByDate(user.getId(), logDate)
+        return dailyLogRepository.findByDate(user.getId(), logDate);
+    }
+
+    public DailyLog getLogByDate(User user, LocalDate logDate) {
+        return findLogByDate(user, logDate)
                 .orElseThrow(() -> new AppException("Daily log not found.", HttpStatus.NOT_FOUND));
     }
 

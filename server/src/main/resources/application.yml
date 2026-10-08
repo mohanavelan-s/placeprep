@@ -67,7 +67,7 @@ placeprep:
   email:
     provider: ${EMAIL_PROVIDER:resend}
     resend-api-key: ${RESEND_API_KEY:}
-    resend-from: ${RESEND_FROM:${EMAIL_FROM:PlacePrep <notifications@placeprep.app>}}
+    resend-from: ${RESEND_FROM:${EMAIL_FROM:PlacePrep <onboarding@resend.dev>}}
     smtp-host: ${SMTP_HOST:${SMPT_HOST:}}
     smtp-port: ${SMTP_PORT:${SMPT_PORT:587}}
     smtp-user: ${SMTP_USER:${SMPT_USER:}}
@@ -75,7 +75,7 @@ placeprep:
     smtp-from: ${SMTP_FROM:${SMPT_FROM:}}
     smtp-secure: ${SMTP_SECURE:${SMPT_SECURE:false}}
     smtp-force-ipv4: ${SMTP_FORCE_IPV4:${SMPT_FORCE_IPV4:true}}
-    allow-smtp-fallback: ${ALLOW_SMTP_FALLBACK:true}
+    allow-smtp-fallback: ${ALLOW_SMTP_FALLBACK:false}
   webpush:
     public-key: ${WEB_PUSH_PUBLIC_KEY:${VAPID_PUBLIC_KEY:}}
     private-key: ${WEB_PUSH_PRIVATE_KEY:${VAPID_PRIVATE_KEY:}}

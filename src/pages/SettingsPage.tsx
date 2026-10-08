@@ -225,51 +225,76 @@ export default function SettingsPage() {
     () => (notificationsQuery.data || []).filter((item) => !item.read).length,
     [notificationsQuery.data],
   );
-  const emailDeliveryStatus = useMemo(() => {
-    if (lastEmailTest?.status === "failed") {
-      return "Test failed";
-    }
-
+  const emailDeliveryStatus = useMemo<"sent" | "failed" | "configured" | "not configured">(() => {
     if (lastEmailTest?.status === "sent") {
-      return "Test sent";
+      return "sent";
     }
 
-    if (lastEmailTest?.status === "queued") {
-      return "Queued";
-    }
-
-    if (!notificationPrefs.notificationsEnabled) {
-      return "Off";
-    }
-
-    if (!notificationPrefs.notificationEmailEnabled) {
-      return "Disabled";
+    if (lastEmailTest?.status === "failed") {
+      return "failed";
     }
 
     if (healthQuery.data?.emailEnabled) {
-      return healthQuery.data.emailProvider === "resend" ? "Resend configured" : "SMTP configured";
+      return "configured";
     }
 
-    if (healthQuery.isPending) {
-      return "Checking";
-    }
-
-    if (healthQuery.data?.emailProvider === "resend") {
-      return "Needs Resend";
-    }
-
-    return "Needs provider";
+    return "not configured";
   }, [
     healthQuery.data?.emailEnabled,
-    healthQuery.data?.emailProvider,
-    healthQuery.isPending,
     lastEmailTest?.status,
-    notificationPrefs.notificationEmailEnabled,
-    notificationPrefs.notificationsEnabled,
   ]);
-  const emailDeliveryDetail = lastEmailTest?.status === "failed"
-    ? formatDeliveryReason(lastEmailTest.reason)
-    : user?.email || "";
+
+  const emailDeliveryDetail = useMemo(() => {
+    if (lastEmailTest?.status === "failed") {
+      return formatDeliveryReason(lastEmailTest.reason);
+    }
+    if (lastEmailTest?.status === "sent") {
+      return user?.email || "Delivered";
+    }
+    if (healthQuery.data?.emailEnabled) {
+      return healthQuery.data.emailProvider === "resend" ? "Resend configured" : "SMTP configured";
+    }
+    return "Provider not configured";
+  }, [healthQuery.data?.emailEnabled, healthQuery.data?.emailProvider, lastEmailTest, user?.email]);
+
+  const browserPushStatus = useMemo<"supported" | "permission denied" | "enabled" | "disabled" | "unsupported">(() => {
+    if (runningInsideAndroidApp || typeof window === "undefined" || !("Notification" in window)) {
+      return "unsupported";
+    }
+
+    if (
+      notificationPrefs.notificationBrowserPermission === "denied" ||
+      (typeof Notification !== "undefined" && Notification.permission === "denied")
+    ) {
+      return "permission denied";
+    }
+
+    if (
+      notificationPrefs.notificationsEnabled &&
+      notificationPrefs.notificationBrowserEnabled &&
+      notificationPrefs.notificationBrowserPermission === "granted"
+    ) {
+      return "enabled";
+    }
+
+    if (
+      notificationPrefs.notificationBrowserPermission === "granted" &&
+      (!notificationPrefs.notificationsEnabled || !notificationPrefs.notificationBrowserEnabled)
+    ) {
+      return "disabled";
+    }
+
+    if (!notificationPrefs.notificationsEnabled || !notificationPrefs.notificationBrowserEnabled) {
+      return "disabled";
+    }
+
+    return "supported";
+  }, [
+    notificationPrefs.notificationBrowserEnabled,
+    notificationPrefs.notificationBrowserPermission,
+    notificationPrefs.notificationsEnabled,
+    runningInsideAndroidApp,
+  ]);
 
   const accountMutation = useMutation({
     mutationFn: () =>
@@ -793,16 +818,47 @@ export default function SettingsPage() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[24rem]">
             <div className="rounded-2xl border border-border/80 bg-background/60 px-4 py-3 text-sm text-foreground/80">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Email delivery</p>
-              <p className="mt-2 font-medium">{emailDeliveryStatus}</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Email status</p>
+              <div className="mt-2 flex items-center gap-2">
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
+                  emailDeliveryStatus === "sent"
+                    ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"
+                    : emailDeliveryStatus === "configured"
+                      ? "bg-sky-500/15 text-sky-400 border border-sky-500/20"
+                      : emailDeliveryStatus === "failed"
+                        ? "bg-rose-500/15 text-rose-400 border border-rose-500/20"
+                        : "bg-amber-500/15 text-amber-400 border border-amber-500/20"
+                }`}>
+                  {emailDeliveryStatus}
+                </span>
+              </div>
               {emailDeliveryDetail && (
-                <p className="mt-1 max-w-[12rem] truncate text-xs text-muted-foreground">{emailDeliveryDetail}</p>
+                <p className="mt-1.5 max-w-[14rem] truncate text-xs text-muted-foreground">{emailDeliveryDetail}</p>
               )}
             </div>
             <div className="rounded-2xl border border-border/80 bg-background/60 px-4 py-3 text-sm text-foreground/80">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Browser permission</p>
-              <p className="mt-2 font-medium capitalize">
-                {notificationPrefs.notificationBrowserPermission}
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Browser push status</p>
+              <div className="mt-2 flex items-center gap-2">
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
+                  browserPushStatus === "enabled"
+                    ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"
+                    : browserPushStatus === "supported"
+                      ? "bg-sky-500/15 text-sky-400 border border-sky-500/20"
+                      : browserPushStatus === "permission denied"
+                        ? "bg-rose-500/15 text-rose-400 border border-rose-500/20"
+                        : "bg-muted text-muted-foreground border border-border"
+                }`}>
+                  {browserPushStatus}
+                </span>
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {browserPushStatus === "permission denied"
+                  ? "Unblock in browser settings"
+                  : browserPushStatus === "enabled"
+                    ? "Active on this browser"
+                    : browserPushStatus === "disabled"
+                      ? "Notifications turned off"
+                      : "Ready to enable"}
               </p>
             </div>
           </div>

@@ -2,8 +2,10 @@ package com.placeprep;
 
 import com.placeprep.model.Task;
 import com.placeprep.model.User;
+import com.placeprep.model.UserProfile;
 import com.placeprep.repository.OAuthRepository;
 import com.placeprep.repository.TaskRepository;
+import com.placeprep.repository.UserProfileRepository;
 import com.placeprep.repository.UserRepository;
 import com.placeprep.security.OAuthKeyProvider;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +36,9 @@ public class McpToolsExecutionTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private UserProfileRepository userProfileRepository;
 
     @Autowired
     private OAuthRepository oAuthRepository;
@@ -404,5 +409,245 @@ public class McpToolsExecutionTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.isError").value(false))
                 .andExpect(jsonPath("$.result.content[0].text").value(containsString("Daily reflection saved successfully")));
+    }
+
+    @Test
+    void testGetDailyLogEmptyStateAndPopulated() throws Exception {
+        // 1. Missing log (empty state) for historical date
+        String missingDate = "2020-01-01";
+        String missingLogCall = String.format("""
+            {
+                "jsonrpc": "2.0",
+                "id": 11,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_daily_log",
+                    "arguments": {
+                        "date": "%s"
+                    }
+                }
+            }
+        """, missingDate);
+
+        mockMvc.perform(post("/mcp")
+                .header("Authorization", "Bearer " + validToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(missingLogCall))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.isError").value(false))
+                .andExpect(jsonPath("$.result.content[0].text").value(containsString("\"found\" : false")))
+                .andExpect(jsonPath("$.result.content[0].text").value(containsString("\"log\" : null")))
+                .andExpect(jsonPath("$.result.content[0].text").value(containsString("\"date\" : \"2020-01-01\"")));
+
+        // 2. Existing log: create reflection log first
+        String testDate = "2026-10-07";
+        String logBody = String.format("""
+            {
+                "jsonrpc": "2.0",
+                "id": 12,
+                "method": "tools/call",
+                "params": {
+                    "name": "log_daily_reflection",
+                    "arguments": {
+                        "date": "%s",
+                        "hoursStudied": 4.0,
+                        "focusMinutes": 240,
+                        "wins": "Dynamic Programming Mastered",
+                        "energy": 5,
+                        "mood": 5
+                    }
+                }
+            }
+        """, testDate);
+
+        mockMvc.perform(post("/mcp")
+                .header("Authorization", "Bearer " + validToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(logBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.isError").value(false))
+                .andExpect(jsonPath("$.result.content[0].text").value(containsString("Daily reflection saved successfully")));
+
+        // Query test date log - must return found: true with log payload
+        String existingLogCall = String.format("""
+            {
+                "jsonrpc": "2.0",
+                "id": 13,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_daily_log",
+                    "arguments": {
+                        "date": "%s"
+                    }
+                }
+            }
+        """, testDate);
+
+        mockMvc.perform(post("/mcp")
+                .header("Authorization", "Bearer " + validToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(existingLogCall))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.isError").value(false))
+                .andExpect(jsonPath("$.result.content[0].text").value(containsString("\"found\" : true")))
+                .andExpect(jsonPath("$.result.content[0].text").value(containsString("Dynamic Programming Mastered")));
+
+        // 3. Invalid date format
+        String invalidDateCall = """
+            {
+                "jsonrpc": "2.0",
+                "id": 14,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_daily_log",
+                    "arguments": {
+                        "date": "invalid-date-format"
+                    }
+                }
+            }
+        """;
+
+        mockMvc.perform(post("/mcp")
+                .header("Authorization", "Bearer " + validToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(invalidDateCall))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.isError").value(true))
+                .andExpect(jsonPath("$.result.content[0].text").value(containsString("Invalid date format")));
+
+        // 4. Unauthorized access
+        mockMvc.perform(post("/mcp")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(missingLogCall))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void testUpdateNotificationPreferencesSafelyAndRollback() throws Exception {
+        // Step 1: Read and capture original preferences
+        UserProfile initialProfile = userProfileRepository.findByUserId(testUser.getId())
+                .orElseGet(() -> userProfileRepository.createProfile(testUser.getId()));
+        boolean origNotificationsEnabled = initialProfile.isNotificationsEnabled();
+        boolean origEmailEnabled = initialProfile.isNotificationEmailEnabled();
+        boolean origBrowserEnabled = initialProfile.isNotificationBrowserEnabled();
+
+        try {
+            // Step 2: Mutate with opposite/target test values
+            boolean testNotificationsEnabled = !origNotificationsEnabled;
+            boolean testEmailEnabled = !origEmailEnabled;
+            boolean testBrowserEnabled = !origBrowserEnabled;
+
+            String updateCall = String.format("""
+                {
+                    "jsonrpc": "2.0",
+                    "id": 20,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "update_notification_preferences",
+                        "arguments": {
+                            "notificationsEnabled": %b,
+                            "notificationEmailEnabled": %b,
+                            "notificationBrowserEnabled": %b
+                        }
+                    }
+                }
+            """, testNotificationsEnabled, testEmailEnabled, testBrowserEnabled);
+
+            mockMvc.perform(post("/mcp")
+                    .header("Authorization", "Bearer " + validToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(updateCall))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.result.isError").value(false))
+                    .andExpect(jsonPath("$.result.content[0].text").value(containsString("\"notificationsEnabled\" : " + testNotificationsEnabled)))
+                    .andExpect(jsonPath("$.result.content[0].text").value(containsString("\"notificationEmailEnabled\" : " + testEmailEnabled)))
+                    .andExpect(jsonPath("$.result.content[0].text").value(containsString("\"notificationBrowserEnabled\" : " + testBrowserEnabled)));
+
+            // Verify in DB that test mutation took effect
+            UserProfile updatedProfile = userProfileRepository.findByUserId(testUser.getId()).orElseThrow();
+            org.junit.jupiter.api.Assertions.assertEquals(testNotificationsEnabled, updatedProfile.isNotificationsEnabled());
+            org.junit.jupiter.api.Assertions.assertEquals(testEmailEnabled, updatedProfile.isNotificationEmailEnabled());
+            org.junit.jupiter.api.Assertions.assertEquals(testBrowserEnabled, updatedProfile.isNotificationBrowserEnabled());
+
+            // Step 3: Test error cases
+            // A. Empty arguments (no valid preference keys)
+            String emptyArgsCall = """
+                {
+                    "jsonrpc": "2.0",
+                    "id": 21,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "update_notification_preferences",
+                        "arguments": {}
+                    }
+                }
+            """;
+            mockMvc.perform(post("/mcp")
+                    .header("Authorization", "Bearer " + validToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(emptyArgsCall))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.result.isError").value(true))
+                    .andExpect(jsonPath("$.result.content[0].text").value(containsString("At least one valid preference key")));
+
+            // B. Invalid argument type
+            String invalidTypeCall = """
+                {
+                    "jsonrpc": "2.0",
+                    "id": 22,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "update_notification_preferences",
+                        "arguments": {
+                            "notificationsEnabled": "notABoolean"
+                        }
+                    }
+                }
+            """;
+            mockMvc.perform(post("/mcp")
+                    .header("Authorization", "Bearer " + validToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(invalidTypeCall))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.result.isError").value(true))
+                    .andExpect(jsonPath("$.result.content[0].text").value(containsString("Invalid value for 'notificationsEnabled'")));
+
+            // C. Unauthorized access (no Bearer token)
+            mockMvc.perform(post("/mcp")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(updateCall))
+                    .andExpect(status().isUnauthorized());
+
+        } finally {
+            // Step 4: Full restoration of original preferences
+            String restoreCall = String.format("""
+                {
+                    "jsonrpc": "2.0",
+                    "id": 23,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "update_notification_preferences",
+                        "arguments": {
+                            "notificationsEnabled": %b,
+                            "notificationEmailEnabled": %b,
+                            "notificationBrowserEnabled": %b
+                        }
+                    }
+                }
+            """, origNotificationsEnabled, origEmailEnabled, origBrowserEnabled);
+
+            mockMvc.perform(post("/mcp")
+                    .header("Authorization", "Bearer " + validToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(restoreCall))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.result.isError").value(false));
+
+            // Step 5: Assert restoration in DB
+            UserProfile restoredProfile = userProfileRepository.findByUserId(testUser.getId()).orElseThrow();
+            org.junit.jupiter.api.Assertions.assertEquals(origNotificationsEnabled, restoredProfile.isNotificationsEnabled());
+            org.junit.jupiter.api.Assertions.assertEquals(origEmailEnabled, restoredProfile.isNotificationEmailEnabled());
+            org.junit.jupiter.api.Assertions.assertEquals(origBrowserEnabled, restoredProfile.isNotificationBrowserEnabled());
+        }
     }
 }

@@ -53,8 +53,11 @@ public class EmailService {
     @Value("${placeprep.email.resend-api-key:}")
     private String resendApiKey;
 
-    @Value("${placeprep.email.resend-from:PlacePrep <notifications@placeprep.app>}")
+    @Value("${placeprep.email.resend-from:PlacePrep <onboarding@resend.dev>}")
     private String resendFrom;
+
+    @Value("${placeprep.email.allow-smtp-fallback:false}")
+    private boolean allowSmtpFallback;
 
     @Value("${placeprep.email.smtp-host:}")
     private String smtpHost;
@@ -139,15 +142,17 @@ public class EmailService {
             return EmailSendResult.skipped("recipient_missing_email");
         }
 
-        // Check user preferences
-        Optional<UserProfile> profileOpt = userProfileRepository.findByUserId(user.getId());
-        if (profileOpt.isPresent()) {
-            UserProfile profile = profileOpt.get();
-            if (!profile.isNotificationsEnabled()) {
-                return EmailSendResult.skipped("notifications_disabled");
-            }
-            if (!profile.isNotificationEmailEnabled()) {
-                return EmailSendResult.skipped("email_notifications_disabled");
+        // Check user preferences (bypass for test_notification)
+        if (!"test_notification".equals(notification.getType())) {
+            Optional<UserProfile> profileOpt = userProfileRepository.findByUserId(user.getId());
+            if (profileOpt.isPresent()) {
+                UserProfile profile = profileOpt.get();
+                if (!profile.isNotificationsEnabled()) {
+                    return EmailSendResult.skipped("notifications_disabled");
+                }
+                if (!profile.isNotificationEmailEnabled()) {
+                    return EmailSendResult.skipped("email_notifications_disabled");
+                }
             }
         }
 
@@ -168,8 +173,8 @@ public class EmailService {
             if (resendResult.success()) {
                 return resendResult;
             }
-            // Fallback to SMTP if available
-            if (isSmtpConfigured()) {
+            // Fallback to SMTP only if configured and explicitly allowed
+            if (isSmtpConfigured() && allowSmtpFallback) {
                 log.warn("[email] Resend failed ({}); falling back to SMTP.", resendResult.error());
                 return sendViaSmtp(user.getEmail(), subject, htmlBody, textBody);
             }
@@ -191,8 +196,23 @@ public class EmailService {
     }
 
     private EmailSendResult sendViaResend(String recipientEmail, String subject, String htmlBody, String textBody) {
+        String primaryFrom = (resendFrom != null && !resendFrom.isBlank()) ? resendFrom : "PlacePrep <onboarding@resend.dev>";
+        EmailSendResult result = executeResendRequest(primaryFrom, recipientEmail, subject, htmlBody, textBody);
+
+        // If Resend failed due to unverified custom domain (HTTP 403 / domain validation error),
+        // and we were not already using onboarding@resend.dev, immediately retry with onboarding@resend.dev
+        if (!result.success() && !primaryFrom.contains("onboarding@resend.dev") &&
+                result.error() != null && (result.error().contains("403") || result.error().toLowerCase().contains("domain"))) {
+            log.warn("[email] Resend sender '{}' failed with domain validation error ({}). Retrying with onboarding@resend.dev",
+                    primaryFrom, result.error());
+            return executeResendRequest("PlacePrep <onboarding@resend.dev>", recipientEmail, subject, htmlBody, textBody);
+        }
+
+        return result;
+    }
+
+    private EmailSendResult executeResendRequest(String from, String recipientEmail, String subject, String htmlBody, String textBody) {
         try {
-            String from = (resendFrom != null && !resendFrom.isBlank()) ? resendFrom : "PlacePrep <onboarding@resend.dev>";
             Map<String, Object> payload = Map.of(
                     "from", from,
                     "to", List.of(recipientEmail),
@@ -212,7 +232,7 @@ public class EmailService {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                log.info("[email] Successfully sent email via Resend to {}", recipientEmail);
+                log.info("[email] Successfully sent email via Resend to {} from {}", recipientEmail, from);
                 return EmailSendResult.sent();
             } else {
                 log.error("[email] Resend API error {}: {}", response.statusCode(), response.body());

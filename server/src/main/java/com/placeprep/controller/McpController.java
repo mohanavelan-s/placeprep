@@ -17,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 
 @RestController
@@ -706,12 +707,30 @@ public class McpController {
                 }
 
                 case "get_daily_log" -> {
-                    LocalDate date = args.get("date") != null ? LocalDate.parse((String) args.get("date")) : LocalDate.now();
-                    DailyLog log = logService.getLogByDate(user, date);
-                    if (log == null) {
-                        return ResponseEntity.ok(jsonRpcToolSuccess(id, "No reflection log recorded for " + date + "."));
+                    LocalDate date;
+                    if (args.get("date") != null) {
+                        try {
+                            date = LocalDate.parse((String) args.get("date"));
+                        } catch (Exception ex) {
+                            return ResponseEntity.ok(jsonRpcToolError(id, "Invalid date format: '" + args.get("date") + "'. Expected format YYYY-MM-DD (e.g. 2026-10-08)."));
+                        }
+                    } else {
+                        String tz = user.getTimezone() != null && !user.getTimezone().isBlank() ? user.getTimezone() : "Asia/Calcutta";
+                        date = LocalDate.now(ZoneId.of(tz));
                     }
-                    String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(log);
+
+                    Optional<DailyLog> logOpt = logService.findLogByDate(user, date);
+                    Map<String, Object> responseMap = new LinkedHashMap<>();
+                    responseMap.put("date", date.toString());
+                    if (logOpt.isPresent()) {
+                        responseMap.put("found", true);
+                        responseMap.put("log", logOpt.get());
+                    } else {
+                        responseMap.put("found", false);
+                        responseMap.put("log", null);
+                        responseMap.put("message", "No reflection log recorded for " + date + ".");
+                    }
+                    String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(responseMap);
                     return ResponseEntity.ok(jsonRpcToolSuccess(id, json));
                 }
 
@@ -768,6 +787,18 @@ public class McpController {
                 }
 
                 case "update_notification_preferences" -> {
+                    if (!args.containsKey("notificationsEnabled")
+                            && !args.containsKey("notificationEmailEnabled")
+                            && !args.containsKey("notificationBrowserEnabled")) {
+                        return ResponseEntity.ok(jsonRpcToolError(id, "At least one valid preference key ('notificationsEnabled', 'notificationEmailEnabled', 'notificationBrowserEnabled') must be provided."));
+                    }
+
+                    for (String key : List.of("notificationsEnabled", "notificationEmailEnabled", "notificationBrowserEnabled")) {
+                        if (args.containsKey(key) && !(args.get(key) instanceof Boolean)) {
+                            return ResponseEntity.ok(jsonRpcToolError(id, "Invalid value for '" + key + "': expected boolean true/false."));
+                        }
+                    }
+
                     UserProfile profile = userProfileRepository.findByUserId(user.getId())
                             .orElseGet(() -> userProfileRepository.createProfile(user.getId()));
 
