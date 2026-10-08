@@ -47,33 +47,104 @@ public class TaskService {
     public Task updateTask(User user, UUID taskId, Map<String, Object> updates) {
         Task existing = getTask(user, taskId);
 
-        if (updates.containsKey("title")) {
-            existing.setTitle((String) updates.get("title"));
+        if (updates.containsKey("title") && updates.get("title") != null) {
+            existing.setTitle(updates.get("title").toString());
         }
         if (updates.containsKey("description")) {
-            existing.setDescription((String) updates.get("description"));
+            existing.setDescription(updates.get("description") != null ? updates.get("description").toString() : null);
         }
-        if (updates.containsKey("category")) {
-            existing.setCategory((String) updates.get("category"));
+        if (updates.containsKey("category") && updates.get("category") != null) {
+            existing.setCategory(updates.get("category").toString());
         }
-        if (updates.containsKey("priority")) {
-            existing.setPriority((String) updates.get("priority"));
+        if (updates.containsKey("subcategory")) {
+            existing.setSubcategory(updates.get("subcategory") != null ? updates.get("subcategory").toString() : null);
         }
-        if (updates.containsKey("scheduledFor") && updates.get("scheduledFor") != null) {
-            existing.setScheduledFor(LocalDate.parse(updates.get("scheduledFor").toString()));
+        if (updates.containsKey("priority") && updates.get("priority") != null) {
+            existing.setPriority(updates.get("priority").toString());
         }
-        if (updates.containsKey("status")) {
-            String newStatus = ((String) updates.get("status")).toLowerCase();
+        if (updates.containsKey("intensity") && updates.get("intensity") != null) {
+            existing.setIntensity(updates.get("intensity").toString());
+        }
+        if (updates.containsKey("referenceLabel") || updates.containsKey("reference_label")) {
+            Object ref = updates.get("referenceLabel");
+            if (ref == null) ref = updates.get("reference_label");
+            existing.setReferenceLabel(ref != null ? ref.toString() : null);
+        }
+        if (updates.containsKey("referenceUrl") || updates.containsKey("reference_url")) {
+            Object ref = updates.get("referenceUrl");
+            if (ref == null) ref = updates.get("reference_url");
+            existing.setReferenceUrl(ref != null ? ref.toString() : null);
+        }
+        if (updates.containsKey("dueDate") || updates.containsKey("due_date")) {
+            Object dd = updates.get("dueDate");
+            if (dd == null) dd = updates.get("due_date");
+            if (dd != null && !dd.toString().isBlank()) {
+                existing.setDueDate(LocalDate.parse(dd.toString().trim()));
+            }
+        }
+        if (updates.containsKey("scheduledFor") || updates.containsKey("scheduled_for")) {
+            Object sf = updates.get("scheduledFor");
+            if (sf == null) sf = updates.get("scheduled_for");
+            if (sf != null && !sf.toString().isBlank()) {
+                existing.setScheduledFor(LocalDate.parse(sf.toString().trim()));
+            }
+        }
+        if (updates.containsKey("status") && updates.get("status") != null) {
+            String newStatus = updates.get("status").toString().toLowerCase().trim();
             existing.setStatus(newStatus);
             if ("completed".equals(newStatus)) {
                 existing.setCompletedAt(OffsetDateTime.now());
             }
         }
-        if (updates.containsKey("actualMinutes") && updates.get("actualMinutes") != null) {
-            existing.setActualMinutes(((Number) updates.get("actualMinutes")).intValue());
+        if (updates.containsKey("estimatedMinutes") || updates.containsKey("estimated_minutes")) {
+            Object est = updates.get("estimatedMinutes");
+            if (est == null) est = updates.get("estimated_minutes");
+            if (est != null) {
+                int val;
+                if (est instanceof Number num) {
+                    val = num.intValue();
+                } else {
+                    try {
+                        val = Integer.parseInt(est.toString().trim());
+                    } catch (NumberFormatException e) {
+                        throw new AppException("Invalid integer for estimatedMinutes.", HttpStatus.BAD_REQUEST);
+                    }
+                }
+                if (val < 0) {
+                    throw new AppException("estimatedMinutes cannot be negative.", HttpStatus.BAD_REQUEST);
+                }
+                existing.setEstimatedMinutes(val);
+            }
+        }
+        if (updates.containsKey("actualMinutes") || updates.containsKey("actual_minutes")) {
+            Object act = updates.get("actualMinutes");
+            if (act == null) act = updates.get("actual_minutes");
+            if (act != null) {
+                int val;
+                if (act instanceof Number num) {
+                    val = num.intValue();
+                } else {
+                    try {
+                        val = Integer.parseInt(act.toString().trim());
+                    } catch (NumberFormatException e) {
+                        throw new AppException("Invalid integer for actualMinutes.", HttpStatus.BAD_REQUEST);
+                    }
+                }
+                if (val < 0) {
+                    throw new AppException("actualMinutes cannot be negative.", HttpStatus.BAD_REQUEST);
+                }
+                existing.setActualMinutes(val);
+            }
         }
         if (updates.containsKey("difficulty") && updates.get("difficulty") != null) {
-            existing.setDifficulty(((Number) updates.get("difficulty")).intValue());
+            Object diff = updates.get("difficulty");
+            int val = diff instanceof Number num ? num.intValue() : Integer.parseInt(diff.toString().trim());
+            existing.setDifficulty(val);
+        }
+        if (updates.containsKey("weakArea") || updates.containsKey("weak_area")) {
+            Object wa = updates.get("weakArea");
+            if (wa == null) wa = updates.get("weak_area");
+            existing.setWeakArea(wa != null ? wa.toString() : null);
         }
 
         return taskRepository.updateTask(existing);

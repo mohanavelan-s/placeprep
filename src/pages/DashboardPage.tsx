@@ -1,22 +1,30 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, BrainCircuit, RefreshCw } from "lucide-react";
+import {
+  ArrowRight,
+  Flame,
+  Gauge,
+  Milestone,
+  RefreshCw,
+  Sparkles,
+  Target,
+  Zap,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import CoachProfilePanel from "@/components/CoachProfilePanel";
-import CountdownTimer from "@/components/CountdownTimer";
 import DashboardCoachPanel from "@/components/DashboardCoachPanel";
 import DashboardDailyTasks from "@/components/DashboardDailyTasks";
 import DashboardPowerPocket from "@/components/DashboardPowerPocket";
 import DashboardProgressCharts from "@/components/DashboardProgressCharts";
 import SoftSyncNotice from "@/components/SoftSyncNotice";
-import StatsGrid from "@/components/StatsGrid";
 import { DashboardSkeleton } from "@/components/WorkspaceSkeletons";
 import XPBar from "@/components/XPBar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { useQueryErrorLogger } from "@/hooks/use-query-error-logger";
 import {
   endPowerPocket,
@@ -38,7 +46,15 @@ import {
   type TaskStatus,
 } from "@/lib/api";
 
+function calculateDaysLeft(placementDate?: string | null): number {
+  if (!placementDate) return 30;
+  const target = new Date(placementDate).getTime();
+  if (isNaN(target)) return 30;
+  return Math.max(0, Math.ceil((target - Date.now()) / (1000 * 60 * 60 * 24)));
+}
+
 export default function DashboardPage() {
+  const { t } = useLanguage();
   const [focusMode, setFocusMode] = useState(false);
   const [latestPlan, setLatestPlan] = useState<AiTaskPlan | null>(null);
   const [latestHelp, setLatestHelp] = useState<AiHelpResult | null>(null);
@@ -175,16 +191,21 @@ export default function DashboardPage() {
   const prepPlan = prepPlanQuery.data ?? null;
   const suggestedTask =
     tasks.find((task) => task.status !== "completed" && task.status !== "skipped") || null;
-  const commandLine = latestPlan?.motivationLine || prepPlan?.coachLine || progress?.coachProfile?.commandLine || null;
+  const commandLine =
+    latestPlan?.motivationLine ||
+    prepPlan?.coachLine ||
+    progress?.coachProfile?.commandLine ||
+    null;
+
   const isInitialSync =
-    (progressQuery.isPending && !progress)
-    || (tasksQuery.isPending && !tasks.length);
-  const hasSyncError =
-    progressQuery.isError
-    || tasksQuery.isError;
-  const hasSecondarySyncIssue =
-    activeSessionQuery.isError
-    || prepPlanQuery.isError;
+    (progressQuery.isPending && !progress) ||
+    (tasksQuery.isPending && !tasks.length);
+  const hasSyncError = progressQuery.isError || tasksQuery.isError;
+  const hasSecondarySyncIssue = activeSessionQuery.isError || prepPlanQuery.isError;
+
+  const daysLeft = calculateDaysLeft(user?.placementDate);
+  const completedCount = tasks.filter((t) => t.status === "completed").length;
+  const executionRate = tasks.length ? Math.round((completedCount / tasks.length) * 100) : 0;
 
   async function refreshDashboard() {
     await Promise.all([
@@ -248,34 +269,74 @@ export default function DashboardPage() {
         )}
       </AnimatePresence>
 
-      <div className="grid gap-6">
-        <div className="surface-panel flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between md:p-6">
-          <div>
-            <p className="section-label">Architect sync</p>
-            <p className="mt-2 text-base leading-7 text-foreground/90">
-              {prepPlan
-                ? `${prepPlan.title || "Your Prep Architect plan"} is active${prepPlan?.targetTopics?.[0] ? ` for ${prepPlan.targetTopics[0]}` : ""}.`
-                : "No architect plan yet. Build one to turn weak areas into a structured roadmap."}
-            </p>
-            {hasSecondarySyncIssue && (
-              <p className="mt-3 text-sm leading-6 text-foreground/68">
-                Some non-critical live signals are temporarily unavailable. Your core dashboard is still usable, and refresh will retry the missing syncs.
-              </p>
-            )}
+      <div className="space-y-6">
+        {/* 1. TODAY / CONTEXT HEADER */}
+        <div className="surface-panel overflow-hidden p-5 md:p-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="font-semibold uppercase tracking-wider text-primary">
+                  {t("Command Chamber")}
+                </span>
+                <span>•</span>
+                <span>{new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}</span>
+                <span>•</span>
+                <span className="text-foreground/80">{user?.name || "Operator"}</span>
+              </div>
+
+              <h1 className="mt-1.5 font-heading text-2xl font-medium tracking-tight text-foreground md:text-3xl">
+                {t("Hold the line until placement day.")}
+              </h1>
+
+              {commandLine && (
+                <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground md:text-sm">
+                  {commandLine}
+                </p>
+              )}
+            </div>
+
+            {/* Quick Context Actions & Status Pills */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Target Lane Pill */}
+              <div className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card/60 px-3 py-1.5 text-xs text-foreground/85">
+                <Target className="h-3.5 w-3.5 text-primary" />
+                <span>{prepPlan?.targetRole || user?.targetRole || "Placement Preparation"}</span>
+              </div>
+
+              {/* Countdown Pill */}
+              <div className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card/60 px-3 py-1.5 text-xs text-foreground/85">
+                <Milestone className="h-3.5 w-3.5 text-accent" />
+                <span className="font-semibold text-foreground">{daysLeft}</span>
+                <span className="text-muted-foreground">{t("Days Remaining")}</span>
+              </div>
+
+              {/* Refresh Action */}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 px-3 text-xs"
+                onClick={() => void refreshDashboard()}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                {t("Refresh")}
+              </Button>
+
+              {/* Prep Architect Quick Link */}
+              <Button asChild size="sm" className="h-8 gap-1.5 px-3 text-xs">
+                <Link to="/prep-architect">
+                  <span>{t("Prep Architect")}</span>
+                  <ArrowRight className="h-3 w-3" />
+                </Link>
+              </Button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Button type="button" variant="outline" className="gap-2" onClick={() => void refreshDashboard()}>
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
-            <Button asChild className="gap-2">
-              <Link to="/prep-architect">
-                Open Prep Architect
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
+          {hasSecondarySyncIssue && (
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground/80 border-t border-border/50 pt-2.5">
+              Some non-critical live telemetry signals are temporarily calibrating. Core execution workspace is fully functional.
+            </p>
+          )}
         </div>
 
         {hasSyncError && (
@@ -287,94 +348,126 @@ export default function DashboardPage() {
           />
         )}
 
-        <CountdownTimer
-          placementDate={user?.placementDate}
-          focusArea={progress?.coachProfile?.focusArea}
-          commandLine={commandLine}
-        />
+        {/* 2. EXECUTION SUMMARY (COMPACT 4-METRIC RIBBON) */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-2xl border border-border/70 bg-card/60 p-4 transition-colors hover:border-border">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="font-medium uppercase tracking-wider">{t("Readiness")}</span>
+              <Gauge className="h-3.5 w-3.5 text-primary/80" />
+            </div>
+            <p className="mt-2 font-heading text-3xl font-medium text-foreground">
+              {Math.round(progress?.readinessScore ?? 0)}%
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground/80">Diagnostic benchmark</p>
+          </div>
 
-        <DashboardPowerPocket
-          activeSession={activeSession}
-          suggestedTask={suggestedTask}
-          quickTask={latestQuickTask?.task ?? null}
-          quickTaskLine={latestQuickTask?.suggestionLine ?? null}
-          onStart={() => void handleStartPowerPocket()}
-          onEnd={() => activeSession && endSessionMutation.mutate(activeSession.id)}
-          isPending={
-            quickTaskMutation.isPending
-            || startSessionMutation.isPending
-            || endSessionMutation.isPending
-          }
-          onFocusMode={setFocusMode}
-        />
+          <div className="rounded-2xl border border-border/70 bg-card/60 p-4 transition-colors hover:border-border">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="font-medium uppercase tracking-wider">{t("Consistency")}</span>
+              <Zap className="h-3.5 w-3.5 text-accent/80" />
+            </div>
+            <p className="mt-2 font-heading text-3xl font-medium text-foreground">
+              {Math.round(progress?.consistencyScore ?? 0)}%
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground/80">14-day study rhythm</p>
+          </div>
 
-        <CoachProfilePanel
-          profile={progress?.coachProfile ?? null}
-          userName={user?.name || "Operator"}
-          targetRole={prepPlan?.targetRole || user?.targetRole || undefined}
-        />
+          <div className="rounded-2xl border border-border/70 bg-card/60 p-4 transition-colors hover:border-border">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="font-medium uppercase tracking-wider">{t("Execution")}</span>
+              <Sparkles className="h-3.5 w-3.5 text-emerald-500/80" />
+            </div>
+            <p className="mt-2 font-heading text-3xl font-medium text-foreground">
+              {executionRate}%
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground/80">
+              {completedCount} / {tasks.length} {t("Today's tasks")}
+            </p>
+          </div>
 
-        <StatsGrid
-          metrics={[
-            {
-              label: "Readiness",
-              value: `${Math.round(progress?.readinessScore ?? 0)}%`,
-              helper: "How prepared you look from real delivery.",
-            },
-            {
-              label: "Consistency",
-              value: `${Math.round(progress?.consistencyScore ?? 0)}%`,
-              helper: "Daily rhythm across the last two weeks.",
-            },
-            {
-              label: "Execution",
-              value: `${Math.round(progress?.executionRate ?? 0)}%`,
-              helper: "Scheduled work finished on time.",
-            },
-            {
-              label: "Prep Architect",
-              value: prepPlan ? "Active" : "Idle",
-              helper: prepPlan
-                ? `${prepPlan.title || `Version ${prepPlan.version}`} is synced into the system.`
-                : "Generate your first personalized plan.",
-            },
-          ]}
-        />
+          <div className="rounded-2xl border border-border/70 bg-card/60 p-4 transition-colors hover:border-border">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="font-medium uppercase tracking-wider">{t("Streak")}</span>
+              <Flame className="h-3.5 w-3.5 text-primary/80" />
+            </div>
+            <p className="mt-2 font-heading text-3xl font-medium text-foreground">
+              {progress?.streak ?? 0}
+              <span className="ml-1 text-sm font-normal text-muted-foreground">days</span>
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground/80">
+              {progress?.missionsCompleted ?? 0} total solved
+            </p>
+          </div>
+        </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
+        {/* 3 & 4. PRIMARY AREA: NEXT BEST ACTION (POWER POCKET) & TODAY'S TASKS */}
+        <div className="space-y-4">
+          {/* Next Best Action / Power Pocket Sprint */}
+          <DashboardPowerPocket
+            activeSession={activeSession}
+            suggestedTask={suggestedTask}
+            quickTask={latestQuickTask?.task ?? null}
+            quickTaskLine={latestQuickTask?.suggestionLine ?? null}
+            onStart={() => void handleStartPowerPocket()}
+            onEnd={() => activeSession && endSessionMutation.mutate(activeSession.id)}
+            isPending={
+              quickTaskMutation.isPending ||
+              startSessionMutation.isPending ||
+              endSessionMutation.isPending
+            }
+            onFocusMode={setFocusMode}
+          />
+
+          {/* Today's Tasks (Content-Adaptive) */}
           <DashboardDailyTasks
             missions={tasks}
             updatingTaskId={updateTaskMutation.variables?.taskId ?? null}
             onUpdateMissionStatus={handleUpdateMissionStatus}
             activeTaskId={suggestedTask?.id ?? null}
+            onGeneratePlanClick={() => {
+              void generatePlanMutation.mutateAsync({
+                availableMinutes: 150,
+                persist: true,
+                replaceExisting: true,
+              });
+            }}
           />
+        </div>
 
-          <DashboardCoachPanel
+        {/* 5. SECONDARY AREA: COACH CONSOLE (RESCUE, PLAN, REVIEW) */}
+        <DashboardCoachPanel
+          profile={progress?.coachProfile ?? null}
+          todayTasks={tasks}
+          latestPlan={latestPlan}
+          latestHelp={latestHelp}
+          latestEvaluation={latestEvaluation}
+          onGeneratePlan={generatePlanMutation.mutateAsync}
+          onRequestHelp={helpMutation.mutateAsync}
+          onEvaluateDay={evaluateMutation.mutateAsync}
+          isGenerating={generatePlanMutation.isPending}
+          isHelping={helpMutation.isPending}
+          isEvaluating={evaluateMutation.isPending}
+        />
+
+        {/* 6. SECONDARY SIGNALS: COACH PROFILE & METRICS */}
+        <div className="space-y-6">
+          <CoachProfilePanel
             profile={progress?.coachProfile ?? null}
-            todayTasks={tasks}
-            latestPlan={latestPlan}
-            latestHelp={latestHelp}
-            latestEvaluation={latestEvaluation}
-            onGeneratePlan={generatePlanMutation.mutateAsync}
-            onRequestHelp={helpMutation.mutateAsync}
-            onEvaluateDay={evaluateMutation.mutateAsync}
-            isGenerating={generatePlanMutation.isPending}
-            isHelping={helpMutation.isPending}
-            isEvaluating={evaluateMutation.isPending}
+            userName={user?.name || "Operator"}
+            targetRole={prepPlan?.targetRole || user?.targetRole || undefined}
           />
-        </div>
 
-        <div className="grid gap-6 xl:grid-cols-[0.78fr_1.22fr]">
-          <XPBar
-            streak={progress?.streak ?? 0}
-            missionsCompleted={progress?.missionsCompleted ?? 0}
-          />
-          <DashboardProgressCharts
-            weeklyProgress={progress?.weeklyProgress ?? []}
-            topicStrength={progress?.topicStrength ?? []}
-          />
+          <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
+            <XPBar
+              streak={progress?.streak ?? 0}
+              missionsCompleted={progress?.missionsCompleted ?? 0}
+            />
+            <DashboardProgressCharts
+              weeklyProgress={progress?.weeklyProgress ?? []}
+              topicStrength={progress?.topicStrength ?? []}
+            />
+          </div>
         </div>
-
       </div>
     </div>
   );

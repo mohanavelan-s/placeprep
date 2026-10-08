@@ -602,27 +602,176 @@ public class AiService {
         return generated;
     }
 
+    public Map<String, Object> generateTaskPlan(User user, Map<String, Object> req) {
+        List<Task> tasks = generateTasks(user, req);
+        int totalMinutes = tasks.stream().mapToInt(Task::getEstimatedMinutes).sum();
+        Map<String, Object> plan = new LinkedHashMap<>();
+        plan.put("planTitle", "Targeted Weak Area Sprint");
+        plan.put("motivationLine", "Focus on core pattern recognition and optimal space-time trade-offs today.");
+        plan.put("tasks", tasks);
+        plan.put("totalEstimatedMinutes", totalMinutes > 0 ? totalMinutes : 90);
+        plan.put("persisted", Boolean.TRUE.equals(req.get("persist")));
+        plan.put("replacedCount", 0);
+        plan.put("usedFallback", true);
+        return plan;
+    }
+
+    private String defaultHint(String problem, String topic, String attempt) {
+        String lowerProb = problem != null ? problem.toLowerCase() : "";
+        String lowerTopic = topic != null ? topic.toLowerCase() : "";
+        String lowerAtt = attempt != null ? attempt.toLowerCase() : "";
+
+        if (lowerProb.contains("dp") || lowerTopic.contains("dynamic") || lowerAtt.contains("recur") || lowerAtt.contains("subproblem")) {
+            return "Formulate the optimal subproblem recurrence first. What state parameters (e.g. index, remaining capacity) uniquely define the answer? Avoid recomputing identical states by caching or tabulating.";
+        }
+        if (lowerProb.contains("tree") || lowerProb.contains("graph") || lowerTopic.contains("tree") || lowerTopic.contains("graph")) {
+            return "Determine whether you need BFS for level-order/shortest paths or DFS for component/backtracking exploration. Keep track of visited nodes to avoid cycles.";
+        }
+        if (lowerProb.contains("array") || lowerProb.contains("string") || lowerTopic.contains("array") || lowerTopic.contains("string")) {
+            return "Check if a two-pointer technique (left & right) or sliding window can avoid nested loops. Does sorting the input or using a frequency map reveal symmetries?";
+        }
+        return "Analyze the input constraints and start with the simplest working brute force. Identify repeated work and consider what data structure (Hash Map, Heap, Monotonic Stack) can optimize lookups to O(1) or O(log N).";
+    }
+
+    private List<String> defaultApproachSteps(String problem, String topic) {
+        return List.of(
+                "Step 1: Clarify constraints, invariants, and edge cases (empty input, negatives, overflow bounds).",
+                "Step 2: Identify overlapping subproblems or monotonic properties to select the optimal algorithm pattern.",
+                "Step 3: Dry-run state transitions on a minimal hand-crafted test case before writing code.",
+                "Step 4: Verify time and space complexities meet interviewer target benchmarks."
+        );
+    }
+
+    private List<String> defaultSimilarProblems(String problem, String topic) {
+        String cleanProb = problem.replaceAll("(?i)\\b(problem|practice)\\b", "").trim();
+        if (cleanProb.isBlank()) cleanProb = topic + " Core Challenge";
+        return List.of(
+                cleanProb + " (Pattern Variation)",
+                "Subarray Target / Two-Pointer Invariant",
+                "Longest Contiguous Subsequence Formulation"
+        );
+    }
+
+    private List<String> defaultYoutubeKeywords(String problem, String topic) {
+        return List.of(
+                topic + " interview patterns",
+                problem + " NeetCode visual breakdown",
+                topic + " optimal space complexity"
+        );
+    }
+
     public Map<String, Object> getStuckHelp(User user, Map<String, Object> req) {
-        String problem = (String) req.getOrDefault("problem", "algorithmic problem");
-        String topic = (String) req.getOrDefault("topic", "DSA");
+        String problem = req.get("problemName") instanceof String s && !s.isBlank() ? s.trim() :
+                (req.get("problem") instanceof String s2 && !s2.isBlank() ? s2.trim() : "Algorithmic Problem");
+        String attempt = req.get("attempt") instanceof String a && !a.isBlank() ? a.trim() : "";
+        String topic = req.get("topic") instanceof String t && !t.isBlank() ? t.trim() : "DSA";
 
-        String prompt = String.format("The student is stuck on '%s' in topic '%s'. Provide 3 progressive hints without revealing the full solution immediately.", problem, topic);
-        String hints = completePrompt("You are an expert DSA coding mentor at PlacePrep.", prompt);
+        String systemPrompt = """
+            You are an elite technical interview coach at PlacePrep.
+            The student is stuck on a coding/system design problem and needs progressive hints without revealing full code.
+            Respond strictly in valid JSON matching this schema:
+            {
+              "hint": "a concise, tactical progressive hint to get past the current blocker",
+              "approachSteps": ["Step 1: ...", "Step 2: ...", "Step 3: ..."],
+              "similarProblems": ["Similar Problem 1", "Similar Problem 2"],
+              "youtubeSearchKeywords": ["Search keyword 1", "Search keyword 2"]
+            }
+            """;
 
-        if (hints == null) {
-            hints = "1. Think about the brute-force approach first.\n2. Can you use a hash map or two-pointer technique to optimize?\n3. Consider the base cases and constraints.";
+        String userPrompt = String.format("""
+            Problem: %s
+            Topic: %s
+            Where the student is blocked / their current attempt:
+            %s
+            """, problem, topic, attempt.isBlank() ? "No prior attempt details given." : attempt);
+
+        String rawAi = completePrompt(systemPrompt, userPrompt);
+        Map<String, Object> result = new LinkedHashMap<>();
+        boolean usedFallback = true;
+
+        if (rawAi != null) {
+            try {
+                int firstBrace = rawAi.indexOf("{");
+                int lastBrace = rawAi.lastIndexOf("}");
+                if (firstBrace >= 0 && lastBrace > firstBrace) {
+                    Map<String, Object> parsed = JsonUtil.toMap(rawAi.substring(firstBrace, lastBrace + 1));
+                    String hint = (String) parsed.get("hint");
+                    List<String> approach = JsonUtil.toList(JsonUtil.toJson(parsed.get("approachSteps")), String.class);
+                    List<String> similar = JsonUtil.toList(JsonUtil.toJson(parsed.get("similarProblems")), String.class);
+                    List<String> yt = JsonUtil.toList(JsonUtil.toJson(parsed.get("youtubeSearchKeywords")), String.class);
+
+                    if (hint != null && !hint.isBlank()) {
+                        result.put("hint", hint);
+                        result.put("approachSteps", approach != null && !approach.isEmpty() ? approach : defaultApproachSteps(problem, topic));
+                        result.put("similarProblems", similar != null && !similar.isEmpty() ? similar : defaultSimilarProblems(problem, topic));
+                        result.put("youtubeSearchKeywords", yt != null && !yt.isEmpty() ? yt : defaultYoutubeKeywords(problem, topic));
+                        usedFallback = false;
+                    }
+                }
+            } catch (Exception ignored) {
+                // fall back to default structured guidance below
+            }
         }
 
-        return Map.of("hints", hints, "topic", topic);
+        if (usedFallback) {
+            result.put("hint", defaultHint(problem, topic, attempt));
+            result.put("approachSteps", defaultApproachSteps(problem, topic));
+            result.put("similarProblems", defaultSimilarProblems(problem, topic));
+            result.put("youtubeSearchKeywords", defaultYoutubeKeywords(problem, topic));
+        }
+
+        result.put("hints", result.get("hint"));
+        result.put("topic", topic);
+        result.put("usedFallback", usedFallback);
+        return result;
     }
 
     public Map<String, Object> evaluateDailyPerformance(User user, Map<String, Object> req) {
-        return Map.of(
-                "evaluation", "Great effort today! Keep maintaining your streak.",
-                "score", 85,
-                "readinessIncrement", 1.5,
-                "recommendation", "Review binary search and tree traversals tomorrow."
+        int totalTasks = req.get("totalTasks") instanceof Number n ? n.intValue() : 0;
+        int tasksCompleted = req.get("tasksCompleted") instanceof Number n ? n.intValue() : 0;
+        int timeSpent = req.get("timeSpentMinutes") instanceof Number n ? n.intValue() : 0;
+        String struggles = req.get("struggles") instanceof String s ? s : "";
+
+        int productivityScore = totalTasks > 0 ? (int) Math.round(((double) tasksCompleted / totalTasks) * 100.0) : (tasksCompleted > 0 ? 85 : 50);
+        if (productivityScore > 100) productivityScore = 100;
+        if (productivityScore < 20 && tasksCompleted > 0) productivityScore = 40;
+
+        List<String> weakAreas = new ArrayList<>();
+        if (!struggles.isBlank()) {
+            weakAreas.add(struggles.length() > 40 ? struggles.substring(0, 40) + "..." : struggles);
+        }
+        if (user.getWeakAreas() != null && !user.getWeakAreas().isEmpty()) {
+            weakAreas.addAll(user.getWeakAreas());
+        }
+        if (weakAreas.isEmpty()) {
+            weakAreas.addAll(List.of("Dynamic Programming", "Tree Traversals"));
+        }
+        weakAreas = weakAreas.stream().distinct().limit(3).toList();
+
+        List<String> tomorrowImprovements = List.of(
+                "Review state transitions and memoization edge cases for today's weak topics.",
+                "Solve 2 medium interview problems in a timed 45-minute Power Pocket block.",
+                "Log daily reflection promptly to keep consistency scores elevated."
         );
+
+        String verdict = productivityScore >= 80
+                ? "Excellent execution pace today. Maintain this intensity tomorrow."
+                : (productivityScore >= 50
+                    ? "Solid progress made. Tighten tomorrow's schedule to clear all planned items."
+                    : "Low completion volume today. Reset tomorrow with an early morning focus session.");
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("productivityScore", productivityScore);
+        result.put("score", productivityScore);
+        result.put("evaluation", verdict);
+        result.put("verdict", verdict);
+        result.put("weakAreas", weakAreas);
+        result.put("tomorrowImprovements", tomorrowImprovements);
+        result.put("recommendation", tomorrowImprovements.get(0));
+        result.put("readinessIncrement", tasksCompleted > 0 ? 1.5 : 0.5);
+        result.put("usedFallback", true);
+
+        return result;
     }
 
     public Map<String, Object> getLatestPrepPlan(User user) {

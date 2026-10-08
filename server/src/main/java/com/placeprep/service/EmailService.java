@@ -235,8 +235,12 @@ public class EmailService {
                 log.info("[email] Successfully sent email via Resend to {} from {}", recipientEmail, from);
                 return EmailSendResult.sent();
             } else {
-                log.error("[email] Resend API error {}: {}", response.statusCode(), response.body());
-                return EmailSendResult.failed("resend_delivery_failed", "HTTP " + response.statusCode() + ": " + response.body());
+                String body = response.body() != null ? response.body() : "";
+                log.error("[email] Resend API error {}: {}", response.statusCode(), body);
+                if (response.statusCode() == 403 && (body.contains("only send testing emails") || body.contains("validation_error") || body.contains("verify a domain"))) {
+                    return EmailSendResult.failed("provider_restricted", "HTTP 403: Resend account in sandbox mode restricted to verified owner. Verify a custom domain in Resend to send to arbitrary recipients.");
+                }
+                return EmailSendResult.failed("resend_delivery_failed", "HTTP " + response.statusCode() + ": " + body);
             }
         } catch (Exception e) {
             log.error("[email] Exception sending email via Resend to {}: {}", recipientEmail, e.getMessage());

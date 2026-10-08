@@ -178,18 +178,25 @@ public class TaskRepository {
                 title = COALESCE(?, title),
                 description = COALESCE(?, description),
                 category = COALESCE(?, category),
+                subcategory = COALESCE(?, subcategory),
                 status = COALESCE(?, status),
                 priority = COALESCE(?, priority),
+                intensity = COALESCE(?, intensity),
+                reference_label = COALESCE(?, reference_label),
+                reference_url = COALESCE(?, reference_url),
+                due_date = COALESCE(?, due_date),
                 scheduled_for = COALESCE(?, scheduled_for),
-                estimated_minutes = COALESCE(?, estimated_minutes),
-                actual_minutes = COALESCE(?, actual_minutes),
+                estimated_minutes = ?,
+                actual_minutes = ?,
                 difficulty = COALESCE(?, difficulty),
+                weak_area = COALESCE(?, weak_area),
                 completed_at = ?,
                 updated_at = NOW()
             WHERE id = ? AND user_id = ?
             RETURNING *
         """;
 
+        Date dueDate = t.getDueDate() != null ? Date.valueOf(t.getDueDate()) : null;
         Date sched = t.getScheduledFor() != null ? Date.valueOf(t.getScheduledFor()) : null;
         Timestamp comp = t.getCompletedAt() != null ? Timestamp.from(t.getCompletedAt().toInstant()) : null;
 
@@ -199,12 +206,18 @@ public class TaskRepository {
                 t.getTitle(),
                 t.getDescription(),
                 t.getCategory(),
+                t.getSubcategory(),
                 t.getStatus(),
                 t.getPriority(),
+                t.getIntensity(),
+                t.getReferenceLabel(),
+                t.getReferenceUrl(),
+                dueDate,
                 sched,
-                t.getEstimatedMinutes() > 0 ? t.getEstimatedMinutes() : null,
-                t.getActualMinutes() > 0 ? t.getActualMinutes() : null,
+                t.getEstimatedMinutes() >= 0 ? t.getEstimatedMinutes() : 30,
+                t.getActualMinutes() >= 0 ? t.getActualMinutes() : 0,
                 t.getDifficulty() > 0 ? t.getDifficulty() : null,
+                t.getWeakArea(),
                 comp,
                 t.getId(),
                 t.getUserId()
@@ -337,6 +350,28 @@ public class TaskRepository {
             setParams.add(status);
             if ("completed".equals(status)) {
                 sql.append(", completed_at = NOW()");
+            }
+        }
+        if (updates.containsKey("estimatedMinutes") || updates.containsKey("estimated_minutes")) {
+            Object est = updates.get("estimatedMinutes");
+            if (est == null) est = updates.get("estimated_minutes");
+            if (est != null) {
+                int val = est instanceof Number n ? n.intValue() : Integer.parseInt(est.toString().trim());
+                if (val >= 0) {
+                    sql.append(", estimated_minutes = ?");
+                    setParams.add(val);
+                }
+            }
+        }
+        if (updates.containsKey("actualMinutes") || updates.containsKey("actual_minutes")) {
+            Object act = updates.get("actualMinutes");
+            if (act == null) act = updates.get("actual_minutes");
+            if (act != null) {
+                int val = act instanceof Number n ? n.intValue() : Integer.parseInt(act.toString().trim());
+                if (val >= 0) {
+                    sql.append(", actual_minutes = ?");
+                    setParams.add(val);
+                }
             }
         }
 

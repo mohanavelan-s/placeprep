@@ -601,14 +601,15 @@ public class McpController {
                 }
 
                 case "update_task" -> {
-                    String taskIdStr = (String) args.get("taskId");
+                    String taskIdStr = args.get("taskId") instanceof String s ? s : (args.get("task_id") instanceof String s2 ? s2 : null);
                     if (taskIdStr == null || taskIdStr.isBlank()) {
                         return ResponseEntity.ok(jsonRpcToolError(id, "taskId argument is required."));
                     }
 
-                    UUID taskId = UUID.fromString(taskIdStr);
+                    UUID taskId = UUID.fromString(taskIdStr.trim());
                     Map<String, Object> updates = new HashMap<>(args);
                     updates.remove("taskId");
+                    updates.remove("task_id");
 
                     Task updated = taskService.updateTask(user, taskId, updates);
                     String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(updated);
@@ -684,6 +685,7 @@ public class McpController {
 
                     Map<String, Object> updates = new HashMap<>(args);
                     updates.remove("taskIds");
+                    updates.remove("task_ids");
 
                     List<Task> updated = taskService.bulkUpdateTasks(user, uuids, updates);
                     String confirmation = String.format("Updated %d task(s) successfully.", updated.size());

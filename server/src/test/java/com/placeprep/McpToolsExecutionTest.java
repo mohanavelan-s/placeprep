@@ -650,4 +650,147 @@ public class McpToolsExecutionTest {
             org.junit.jupiter.api.Assertions.assertEquals(origBrowserEnabled, restoredProfile.isNotificationBrowserEnabled());
         }
     }
+
+    @Test
+    void testUpdateTaskEstimatedMinutesPersistsAndIsRetrieved() throws Exception {
+        Task t = new Task();
+        t.setUserId(testUser.getId());
+        t.setTitle("Estimated Minutes Verification Task");
+        t.setCategory("DSA");
+        t.setEstimatedMinutes(25);
+        t.setScheduledFor(LocalDate.now());
+        Task created = taskRepository.createTask(t);
+        org.junit.jupiter.api.Assertions.assertEquals(25, created.getEstimatedMinutes());
+
+        // 1. Invoke update_task via MCP with estimatedMinutes = 75
+        String updateBody = String.format("""
+            {
+                "jsonrpc": "2.0",
+                "id": 30,
+                "method": "tools/call",
+                "params": {
+                    "name": "update_task",
+                    "arguments": {
+                        "taskId": "%s",
+                        "estimatedMinutes": 75,
+                        "priority": "high"
+                    }
+                }
+            }
+        """, created.getId());
+
+        mockMvc.perform(post("/mcp")
+                .header("Authorization", "Bearer " + validToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.isError").value(false))
+                .andExpect(jsonPath("$.result.content[0].text").value(containsString("\"estimatedMinutes\" : 75")));
+
+        // 2. Directly verify from DB repository
+        Task fromDb = taskRepository.findByUserAndId(testUser.getId(), created.getId()).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertEquals(75, fromDb.getEstimatedMinutes());
+        org.junit.jupiter.api.Assertions.assertEquals("high", fromDb.getPriority());
+
+        // 3. Confirm via MCP get_task tool
+        String getTaskBody = String.format("""
+            {
+                "jsonrpc": "2.0",
+                "id": 31,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_task",
+                    "arguments": {
+                        "taskId": "%s"
+                    }
+                }
+            }
+        """, created.getId());
+
+        mockMvc.perform(post("/mcp")
+                .header("Authorization", "Bearer " + validToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(getTaskBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.isError").value(false))
+                .andExpect(jsonPath("$.result.content[0].text").value(containsString("\"estimatedMinutes\" : 75")));
+    }
+
+    @Test
+    void testBulkUpdateTasksEstimatedMinutesPersists() throws Exception {
+        Task t1 = new Task();
+        t1.setUserId(testUser.getId());
+        t1.setTitle("Bulk Est Min Task 1");
+        t1.setEstimatedMinutes(15);
+        t1.setScheduledFor(LocalDate.now());
+        Task created1 = taskRepository.createTask(t1);
+
+        Task t2 = new Task();
+        t2.setUserId(testUser.getId());
+        t2.setTitle("Bulk Est Min Task 2");
+        t2.setEstimatedMinutes(15);
+        t2.setScheduledFor(LocalDate.now());
+        Task created2 = taskRepository.createTask(t2);
+
+        String bulkUpdateBody = String.format("""
+            {
+                "jsonrpc": "2.0",
+                "id": 32,
+                "method": "tools/call",
+                "params": {
+                    "name": "bulk_update_tasks",
+                    "arguments": {
+                        "taskIds": ["%s", "%s"],
+                        "estimatedMinutes": 60
+                    }
+                }
+            }
+        """, created1.getId(), created2.getId());
+
+        mockMvc.perform(post("/mcp")
+                .header("Authorization", "Bearer " + validToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(bulkUpdateBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.isError").value(false))
+                .andExpect(jsonPath("$.result.content[0].text").value(containsString("Updated 2 task(s) successfully")));
+
+        Task fromDb1 = taskRepository.findByUserAndId(testUser.getId(), created1.getId()).orElseThrow();
+        Task fromDb2 = taskRepository.findByUserAndId(testUser.getId(), created2.getId()).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertEquals(60, fromDb1.getEstimatedMinutes());
+        org.junit.jupiter.api.Assertions.assertEquals(60, fromDb2.getEstimatedMinutes());
+    }
+
+    @Test
+    void testUpdateTaskEstimatedMinutesNegativeFails() throws Exception {
+        Task t = new Task();
+        t.setUserId(testUser.getId());
+        t.setTitle("Negative Est Min Task");
+        t.setEstimatedMinutes(30);
+        t.setScheduledFor(LocalDate.now());
+        Task created = taskRepository.createTask(t);
+
+        String updateBody = String.format("""
+            {
+                "jsonrpc": "2.0",
+                "id": 33,
+                "method": "tools/call",
+                "params": {
+                    "name": "update_task",
+                    "arguments": {
+                        "taskId": "%s",
+                        "estimatedMinutes": -10
+                    }
+                }
+            }
+        """, created.getId());
+
+        mockMvc.perform(post("/mcp")
+                .header("Authorization", "Bearer " + validToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.isError").value(true))
+                .andExpect(jsonPath("$.result.content[0].text").value(containsString("cannot be negative")));
+    }
 }

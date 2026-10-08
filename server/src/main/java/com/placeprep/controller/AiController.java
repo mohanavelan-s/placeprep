@@ -50,8 +50,8 @@ public class AiController {
             @CurrentUser User user,
             @RequestBody(required = false) Map<String, Object> req
     ) {
-        List<Task> tasks = aiService.generateTasks(user, req != null ? req : Map.of());
-        return ResponseEntity.ok(Map.of("success", true, "data", tasks));
+        Map<String, Object> plan = aiService.generateTaskPlan(user, req != null ? req : Map.of());
+        return ResponseEntity.ok(Map.of("success", true, "data", plan));
     }
 
     @GetMapping("/prep-architect/latest")
