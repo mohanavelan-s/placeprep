@@ -215,4 +215,185 @@ public class TaskRepository {
         int rows = jdbcTemplate.update("DELETE FROM tasks WHERE user_id = ? AND id = ?", userId, id);
         return rows > 0;
     }
+
+    public record BulkDeleteResult(
+            int requestedCount,
+            int deletedCount,
+            int alreadyMissingCount,
+            int unauthorizedCount,
+            int failedCount,
+            List<UUID> deletedIds,
+            List<UUID> missingIds,
+            List<UUID> unauthorizedIds,
+            String summary
+    ) {}
+
+    public BulkDeleteResult bulkDeleteTasks(UUID userId, List<UUID> taskIds) {
+        if (taskIds == null || taskIds.isEmpty()) {
+            return new BulkDeleteResult(0, 0, 0, 0, 0, List.of(), List.of(), List.of(), "No task IDs were provided.");
+        }
+
+        List<UUID> uniqueIds = taskIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (uniqueIds.isEmpty()) {
+            return new BulkDeleteResult(0, 0, 0, 0, 0, List.of(), List.of(), List.of(), "No valid task IDs were provided.");
+        }
+
+        int requestedCount = uniqueIds.size();
+        String inSql = String.join(",", Collections.nCopies(uniqueIds.size(), "?"));
+        String selectSql = "SELECT id, user_id FROM tasks WHERE id IN (" + inSql + ")";
+
+        List<Map<String, Object>> existing = jdbcTemplate.queryForList(selectSql, uniqueIds.toArray());
+        Map<UUID, UUID> idToUser = new HashMap<>();
+        for (Map<String, Object> row : existing) {
+            UUID id = (UUID) row.get("id");
+            UUID uid = (UUID) row.get("user_id");
+            idToUser.put(id, uid);
+        }
+
+        List<UUID> ownedIds = new ArrayList<>();
+        List<UUID> unauthorizedIds = new ArrayList<>();
+        List<UUID> missingIds = new ArrayList<>();
+
+        for (UUID id : uniqueIds) {
+            if (!idToUser.containsKey(id)) {
+                missingIds.add(id);
+            } else if (!userId.equals(idToUser.get(id))) {
+                unauthorizedIds.add(id);
+            } else {
+                ownedIds.add(id);
+            }
+        }
+
+        int deletedCount = 0;
+        int failedCount = 0;
+        if (!ownedIds.isEmpty()) {
+            String deleteInSql = String.join(",", Collections.nCopies(ownedIds.size(), "?"));
+            String deleteSql = "DELETE FROM tasks WHERE user_id = ? AND id IN (" + deleteInSql + ")";
+            List<Object> deleteParams = new ArrayList<>();
+            deleteParams.add(userId);
+            deleteParams.addAll(ownedIds);
+            deletedCount = jdbcTemplate.update(deleteSql, deleteParams.toArray());
+            if (deletedCount < ownedIds.size()) {
+                failedCount = ownedIds.size() - deletedCount;
+            }
+        }
+
+        String summary = String.format("Requested %d task(s): %d deleted, %d already missing, %d unauthorized, %d failed.",
+                requestedCount, deletedCount, missingIds.size(), unauthorizedIds.size(), failedCount);
+
+        return new BulkDeleteResult(
+                requestedCount,
+                deletedCount,
+                missingIds.size(),
+                unauthorizedIds.size(),
+                failedCount,
+                ownedIds,
+                missingIds,
+                unauthorizedIds,
+                summary
+        );
+    }
+
+    public List<Task> bulkCompleteTasks(UUID userId, List<UUID> taskIds) {
+        if (taskIds == null || taskIds.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> uniqueIds = taskIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (uniqueIds.isEmpty()) return List.of();
+
+        String inSql = String.join(",", Collections.nCopies(uniqueIds.size(), "?"));
+        String updateSql = "UPDATE tasks SET status = 'completed', completed_at = NOW(), updated_at = NOW() WHERE user_id = ? AND id IN (" + inSql + ") RETURNING *";
+        List<Object> params = new ArrayList<>();
+        params.add(userId);
+        params.addAll(uniqueIds);
+        return jdbcTemplate.query(updateSql, rowMapper, params.toArray());
+    }
+
+    public List<Task> bulkUpdateTasks(UUID userId, List<UUID> taskIds, Map<String, Object> updates) {
+        if (taskIds == null || taskIds.isEmpty() || updates == null || updates.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> uniqueIds = taskIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (uniqueIds.isEmpty()) return List.of();
+
+        StringBuilder sql = new StringBuilder("UPDATE tasks SET updated_at = NOW()");
+        List<Object> setParams = new ArrayList<>();
+
+        if (updates.containsKey("scheduledFor") && updates.get("scheduledFor") != null) {
+            sql.append(", scheduled_for = ?::date");
+            setParams.add(updates.get("scheduledFor").toString());
+        }
+        if (updates.containsKey("priority") && updates.get("priority") != null) {
+            sql.append(", priority = ?");
+            setParams.add(updates.get("priority").toString());
+        }
+        if (updates.containsKey("category") && updates.get("category") != null) {
+            sql.append(", category = ?");
+            setParams.add(updates.get("category").toString());
+        }
+        if (updates.containsKey("status") && updates.get("status") != null) {
+            String status = updates.get("status").toString().toLowerCase();
+            sql.append(", status = ?");
+            setParams.add(status);
+            if ("completed".equals(status)) {
+                sql.append(", completed_at = NOW()");
+            }
+        }
+
+        String inSql = String.join(",", Collections.nCopies(uniqueIds.size(), "?"));
+        sql.append(" WHERE user_id = ? AND id IN (").append(inSql).append(") RETURNING *");
+
+        List<Object> allParams = new ArrayList<>(setParams);
+        allParams.add(userId);
+        allParams.addAll(uniqueIds);
+
+        return jdbcTemplate.query(sql.toString(), rowMapper, allParams.toArray());
+    }
+
+    public List<Task> searchTasks(UUID userId, String query, String status, String category, LocalDate fromDate, LocalDate toDate, Integer limit) {
+        StringBuilder sql = new StringBuilder("SELECT * FROM tasks WHERE user_id = ?");
+        List<Object> params = new ArrayList<>();
+        params.add(userId);
+
+        if (query != null && !query.isBlank()) {
+            sql.append(" AND (title ILIKE ? OR description ILIKE ? OR subcategory ILIKE ? OR weak_area ILIKE ?)");
+            String p = "%" + query.trim() + "%";
+            params.add(p);
+            params.add(p);
+            params.add(p);
+            params.add(p);
+        }
+
+        if (status != null && !status.isBlank()) {
+            sql.append(" AND status = ?");
+            params.add(status.toLowerCase());
+        }
+
+        if (category != null && !category.isBlank()) {
+            sql.append(" AND category = ?");
+            params.add(category);
+        }
+
+        if (fromDate != null) {
+            sql.append(" AND (scheduled_for >= ? OR due_date >= ?)");
+            params.add(Date.valueOf(fromDate));
+            params.add(Date.valueOf(fromDate));
+        }
+
+        if (toDate != null) {
+            sql.append(" AND (scheduled_for <= ? OR due_date <= ?)");
+            params.add(Date.valueOf(toDate));
+            params.add(Date.valueOf(toDate));
+        }
+
+        sql.append(" ORDER BY scheduled_for ASC NULLS LAST, priority DESC, created_at DESC");
+        if (limit != null && limit > 0) {
+            sql.append(" LIMIT ?");
+            params.add(limit);
+        } else {
+            sql.append(" LIMIT 50");
+        }
+
+        return jdbcTemplate.query(sql.toString(), rowMapper, params.toArray());
+    }
 }

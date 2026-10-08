@@ -87,4 +87,20 @@ public class TaskService {
         }
         return existing;
     }
+
+    public TaskRepository.BulkDeleteResult bulkDeleteTasks(User user, List<UUID> taskIds) {
+        return taskRepository.bulkDeleteTasks(user.getId(), taskIds);
+    }
+
+    public List<Task> bulkCompleteTasks(User user, List<UUID> taskIds) {
+        return taskRepository.bulkCompleteTasks(user.getId(), taskIds);
+    }
+
+    public List<Task> bulkUpdateTasks(User user, List<UUID> taskIds, Map<String, Object> updates) {
+        return taskRepository.bulkUpdateTasks(user.getId(), taskIds, updates);
+    }
+
+    public List<Task> searchTasks(User user, String query, String status, String category, LocalDate from, LocalDate to, Integer limit) {
+        return taskRepository.searchTasks(user.getId(), query, status, category, from, to, limit);
+    }
 }

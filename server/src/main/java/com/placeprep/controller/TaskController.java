@@ -2,6 +2,7 @@ package com.placeprep.controller;
 
 import com.placeprep.model.Task;
 import com.placeprep.model.User;
+import com.placeprep.repository.TaskRepository;
 import com.placeprep.security.CurrentUser;
 import com.placeprep.service.TaskService;
 import org.springframework.http.HttpStatus;
@@ -47,6 +48,56 @@ public class TaskController {
     public ResponseEntity<Map<String, Object>> getTodayTasks(@CurrentUser User user) {
         List<Task> tasks = taskService.listTasks(user, "today", null, null, null);
         return ResponseEntity.ok(Map.of("success", true, "data", tasks));
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<Map<String, Object>> searchTasks(
+            @CurrentUser User user,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) Integer limit
+    ) {
+        List<Task> tasks = taskService.searchTasks(user, q, status, category, null, null, limit);
+        return ResponseEntity.ok(Map.of("success", true, "data", tasks, "count", tasks.size()));
+    }
+
+    @PostMapping("/bulk-delete")
+    public ResponseEntity<Map<String, Object>> bulkDeleteTasks(
+            @CurrentUser User user,
+            @RequestBody Map<String, Object> body
+    ) {
+        @SuppressWarnings("unchecked")
+        List<String> rawIds = (List<String>) body.get("taskIds");
+        List<UUID> ids = rawIds != null ? rawIds.stream().map(UUID::fromString).toList() : List.of();
+        TaskRepository.BulkDeleteResult result = taskService.bulkDeleteTasks(user, ids);
+        return ResponseEntity.ok(Map.of("success", true, "data", result));
+    }
+
+    @PostMapping("/bulk-complete")
+    public ResponseEntity<Map<String, Object>> bulkCompleteTasks(
+            @CurrentUser User user,
+            @RequestBody Map<String, Object> body
+    ) {
+        @SuppressWarnings("unchecked")
+        List<String> rawIds = (List<String>) body.get("taskIds");
+        List<UUID> ids = rawIds != null ? rawIds.stream().map(UUID::fromString).toList() : List.of();
+        List<Task> completed = taskService.bulkCompleteTasks(user, ids);
+        return ResponseEntity.ok(Map.of("success", true, "data", completed, "count", completed.size()));
+    }
+
+    @PostMapping("/bulk-update")
+    public ResponseEntity<Map<String, Object>> bulkUpdateTasks(
+            @CurrentUser User user,
+            @RequestBody Map<String, Object> body
+    ) {
+        @SuppressWarnings("unchecked")
+        List<String> rawIds = (List<String>) body.get("taskIds");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> updates = (Map<String, Object>) body.get("updates");
+        List<UUID> ids = rawIds != null ? rawIds.stream().map(UUID::fromString).toList() : List.of();
+        List<Task> updated = taskService.bulkUpdateTasks(user, ids, updates);
+        return ResponseEntity.ok(Map.of("success", true, "data", updated, "count", updated.size()));
     }
 
     @GetMapping("/{id}")

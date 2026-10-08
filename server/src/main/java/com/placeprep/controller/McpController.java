@@ -1,15 +1,14 @@
 package com.placeprep.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.placeprep.model.DailyLog;
 import com.placeprep.model.Task;
 import com.placeprep.model.User;
 import com.placeprep.model.UserProfile;
+import com.placeprep.repository.TaskRepository;
 import com.placeprep.repository.UserProfileRepository;
 import com.placeprep.repository.UserRepository;
-import com.placeprep.service.AuthService;
-import com.placeprep.service.OAuthService;
-import com.placeprep.service.ProgressService;
-import com.placeprep.service.TaskService;
+import com.placeprep.service.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
@@ -30,6 +29,11 @@ public class McpController {
     private final TaskService taskService;
     private final ProgressService progressService;
     private final AuthService authService;
+    private final AiService aiService;
+    private final LogService logService;
+    private final NotificationService notificationService;
+    private final EmailService emailService;
+    private final WebPushService webPushService;
     private final ObjectMapper objectMapper;
 
     public McpController(
@@ -39,6 +43,11 @@ public class McpController {
             TaskService taskService,
             ProgressService progressService,
             AuthService authService,
+            AiService aiService,
+            LogService logService,
+            NotificationService notificationService,
+            EmailService emailService,
+            WebPushService webPushService,
             ObjectMapper objectMapper
     ) {
         this.oAuthService = oAuthService;
@@ -47,6 +56,11 @@ public class McpController {
         this.taskService = taskService;
         this.progressService = progressService;
         this.authService = authService;
+        this.aiService = aiService;
+        this.logService = logService;
+        this.notificationService = notificationService;
+        this.emailService = emailService;
+        this.webPushService = webPushService;
         this.objectMapper = objectMapper;
     }
 
@@ -88,7 +102,7 @@ public class McpController {
                 Map<String, Object> parsed = objectMapper.readValue(rawBody, Map.class);
                 body = parsed;
             } catch (Exception ignored) {
-                // Non-JSON or probe body
+                // Non-JSON probe
             }
         }
         Object reqId = body != null ? body.get("id") : null;
@@ -170,9 +184,10 @@ public class McpController {
     private List<Map<String, Object>> getRegisteredTools() {
         List<Map<String, Object>> tools = new ArrayList<>();
 
+        // 1. Profile & Progress
         tools.add(Map.of(
                 "name", "get_profile",
-                "description", "Retrieve the authenticated student's placement preparation profile, target role, deadline, current streak, readiness score, consistency score, and topic strengths.",
+                "description", "Retrieve the authenticated student's placement preparation profile, target role, deadline, streak, readiness score, consistency score, and topic strengths.",
                 "inputSchema", Map.of(
                         "type", "object",
                         "properties", Map.of(),
@@ -182,7 +197,7 @@ public class McpController {
 
         tools.add(Map.of(
                 "name", "get_progress_summary",
-                "description", "Retrieve the authenticated student's placement readiness analytics, topic strengths, and AI coach directive.",
+                "description", "Retrieve the student's placement readiness analytics, weekly completion velocity, topic strengths, and AI coach directive.",
                 "inputSchema", Map.of(
                         "type", "object",
                         "properties", Map.of(),
@@ -190,9 +205,10 @@ public class McpController {
                 )
         ));
 
+        // 2. Task Retrieval
         tools.add(Map.of(
                 "name", "get_tasks",
-                "description", "List placement preparation tasks for the authenticated student with optional filters.",
+                "description", "List placement preparation tasks for the student with optional date, status, category, and limit filters.",
                 "inputSchema", Map.of(
                         "type", "object",
                         "properties", Map.of(
@@ -207,7 +223,7 @@ public class McpController {
 
         tools.add(Map.of(
                 "name", "get_task",
-                "description", "Retrieve details of a specific placement preparation task owned by the student by its unique task ID.",
+                "description", "Retrieve full details of a specific placement preparation task owned by the student by its unique UUID.",
                 "inputSchema", Map.of(
                         "type", "object",
                         "properties", Map.of(
@@ -219,8 +235,24 @@ public class McpController {
         ));
 
         tools.add(Map.of(
+                "name", "search_tasks",
+                "description", "Search the student's preparation tasks by text keyword across title, description, and subcategory, with optional status and category filters.",
+                "inputSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "query", Map.of("type", "string", "description", "Search text to match in task title, description, or subcategory"),
+                                "status", Map.of("type", "string", "enum", List.of("pending", "in_progress", "completed", "skipped"), "description", "Filter by task status"),
+                                "category", Map.of("type", "string", "enum", List.of("DSA", "Core", "Project", "Aptitude", "Resume", "MockInterview", "Other"), "description", "Filter by category"),
+                                "limit", Map.of("type", "integer", "minimum", 1, "maximum", 100, "description", "Maximum search results (default 20)")
+                        ),
+                        "additionalProperties", false
+                )
+        ));
+
+        // 3. Task Creation & Single Updates
+        tools.add(Map.of(
                 "name", "create_task",
-                "description", "Persist a new placement preparation task for the authenticated student.",
+                "description", "Create a new placement preparation task for the student.",
                 "inputSchema", Map.of(
                         "type", "object",
                         "properties", Map.of(
@@ -253,14 +285,183 @@ public class McpController {
         ));
 
         tools.add(Map.of(
+                "name", "update_task",
+                "description", "Comprehensive update of a single task's properties including title, description, category, priority, scheduled date, estimated minutes, actual minutes, difficulty, and status.",
+                "inputSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "taskId", Map.of("type", "string", "format", "uuid", "description", "Unique UUID of the task to update"),
+                                "title", Map.of("type", "string", "description", "Updated title"),
+                                "description", Map.of("type", "string", "description", "Updated description or problem notes"),
+                                "category", Map.of("type", "string", "enum", List.of("DSA", "Core", "Project", "Aptitude", "Resume", "MockInterview", "Other")),
+                                "priority", Map.of("type", "string", "enum", List.of("low", "medium", "high")),
+                                "scheduledFor", Map.of("type", "string", "pattern", "^\\d{4}-\\d{2}-\\d{2}$", "description", "Rescheduled date in YYYY-MM-DD format"),
+                                "estimatedMinutes", Map.of("type", "integer", "minimum", 5, "maximum", 480),
+                                "actualMinutes", Map.of("type", "integer", "minimum", 0, "maximum", 480),
+                                "difficulty", Map.of("type", "integer", "minimum", 1, "maximum", 5),
+                                "status", Map.of("type", "string", "enum", List.of("pending", "in_progress", "completed", "skipped"))
+                        ),
+                        "required", List.of("taskId"),
+                        "additionalProperties", false
+                )
+        ));
+
+        // 4. Single & Bulk Deletions
+        tools.add(Map.of(
                 "name", "delete_task",
-                "description", "Permanently delete a preparation task owned by the authenticated student.",
+                "description", "DESTRUCTIVE OPERATION: Permanently delete a single preparation task owned by the student by its unique task ID.",
                 "inputSchema", Map.of(
                         "type", "object",
                         "properties", Map.of(
                                 "taskId", Map.of("type", "string", "format", "uuid", "description", "Unique UUID of the task to delete")
                         ),
                         "required", List.of("taskId"),
+                        "additionalProperties", false
+                )
+        ));
+
+        tools.add(Map.of(
+                "name", "bulk_delete_tasks",
+                "description", "DESTRUCTIVE OPERATION: Permanently delete multiple preparation tasks in bulk by their task IDs. Treats already missing or deleted IDs idempotently without failing the batch. Enforces strict student ownership verification.",
+                "inputSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "taskIds", Map.of(
+                                        "type", "array",
+                                        "items", Map.of("type", "string", "format", "uuid"),
+                                        "description", "List of task UUIDs to permanently delete in bulk"
+                                )
+                        ),
+                        "required", List.of("taskIds"),
+                        "additionalProperties", false
+                )
+        ));
+
+        // 5. Bulk Completions & Bulk Updates
+        tools.add(Map.of(
+                "name", "bulk_complete_tasks",
+                "description", "Mark multiple preparation tasks as completed in a single batch operation.",
+                "inputSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "taskIds", Map.of(
+                                        "type", "array",
+                                        "items", Map.of("type", "string", "format", "uuid"),
+                                        "description", "List of task UUIDs to mark as completed"
+                                )
+                        ),
+                        "required", List.of("taskIds"),
+                        "additionalProperties", false
+                )
+        ));
+
+        tools.add(Map.of(
+                "name", "bulk_update_tasks",
+                "description", "Reschedule or update multiple tasks at once (e.g. shift scheduled date, adjust priority, change category).",
+                "inputSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "taskIds", Map.of(
+                                        "type", "array",
+                                        "items", Map.of("type", "string", "format", "uuid"),
+                                        "description", "List of task UUIDs to update"
+                                ),
+                                "scheduledFor", Map.of("type", "string", "pattern", "^\\d{4}-\\d{2}-\\d{2}$", "description", "Rescheduled date in YYYY-MM-DD format"),
+                                "priority", Map.of("type", "string", "enum", List.of("low", "medium", "high"), "description", "New priority level"),
+                                "category", Map.of("type", "string", "enum", List.of("DSA", "Core", "Project", "Aptitude", "Resume", "MockInterview", "Other"), "description", "New category"),
+                                "status", Map.of("type", "string", "enum", List.of("pending", "in_progress", "completed", "skipped"), "description", "New task status")
+                        ),
+                        "required", List.of("taskIds"),
+                        "additionalProperties", false
+                )
+        ));
+
+        // 6. Prep Architect Roadmap & Plans
+        tools.add(Map.of(
+                "name", "get_prep_plan",
+                "description", "Retrieve the student's active Prep Architect preparation roadmap, including target role, weekly milestone themes, focus topics, study hours, and resources.",
+                "inputSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(),
+                        "additionalProperties", false
+                )
+        ));
+
+        tools.add(Map.of(
+                "name", "list_prep_plans",
+                "description", "List previous and current preparation plan versions for the authenticated student.",
+                "inputSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "limit", Map.of("type", "integer", "minimum", 1, "maximum", 20, "description", "Maximum plans to return (default 5)")
+                        ),
+                        "additionalProperties", false
+                )
+        ));
+
+        // 7. Daily Reflection & Habit Logs
+        tools.add(Map.of(
+                "name", "get_daily_log",
+                "description", "Retrieve the student's daily preparation reflection log, recorded hours studied, focus minutes, mood, energy, wins, and blockers for today or a specific date.",
+                "inputSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "date", Map.of("type", "string", "pattern", "^\\d{4}-\\d{2}-\\d{2}$", "description", "Log date in YYYY-MM-DD format (defaults to today)")
+                        ),
+                        "additionalProperties", false
+                )
+        ));
+
+        tools.add(Map.of(
+                "name", "log_daily_reflection",
+                "description", "Record or update a daily reflection log for the student (hours studied, focus minutes, wins, blockers, energy level 1-5, mood 1-5, notes).",
+                "inputSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "date", Map.of("type", "string", "pattern", "^\\d{4}-\\d{2}-\\d{2}$", "description", "Log date in YYYY-MM-DD format (defaults to today)"),
+                                "hoursStudied", Map.of("type", "number", "minimum", 0, "maximum", 24, "description", "Total hours studied today"),
+                                "focusMinutes", Map.of("type", "integer", "minimum", 0, "maximum", 1440, "description", "High-focus deep work minutes"),
+                                "wins", Map.of("type", "string", "description", "Key wins or topics mastered today"),
+                                "blockers", Map.of("type", "string", "description", "Blockers or obstacles encountered"),
+                                "energy", Map.of("type", "integer", "minimum", 1, "maximum", 5, "description", "Energy level from 1 (drained) to 5 (energized)"),
+                                "mood", Map.of("type", "integer", "minimum", 1, "maximum", 5, "description", "Mood rating from 1 to 5"),
+                                "notes", Map.of("type", "string", "description", "Additional reflection notes")
+                        ),
+                        "additionalProperties", false
+                )
+        ));
+
+        // 8. Notification Settings & Testing
+        tools.add(Map.of(
+                "name", "get_notification_preferences",
+                "description", "Retrieve the student's current notification preferences (master toggle, email alerts enabled, browser alerts enabled, permissions).",
+                "inputSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(),
+                        "additionalProperties", false
+                )
+        ));
+
+        tools.add(Map.of(
+                "name", "update_notification_preferences",
+                "description", "Update the student's notification settings (enable/disable email alerts, enable/disable notifications).",
+                "inputSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "notificationsEnabled", Map.of("type", "boolean", "description", "Master switch for all notifications"),
+                                "notificationEmailEnabled", Map.of("type", "boolean", "description", "Enable daily email prompts and tactical signals"),
+                                "notificationBrowserEnabled", Map.of("type", "boolean", "description", "Enable browser push notifications")
+                        ),
+                        "additionalProperties", false
+                )
+        ));
+
+        tools.add(Map.of(
+                "name", "send_test_notification",
+                "description", "Dispatch a live test notification signal across the student's active delivery channels (in-app, browser web push, and email).",
+                "inputSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(),
                         "additionalProperties", false
                 )
         ));
@@ -334,6 +535,18 @@ public class McpController {
                     return ResponseEntity.ok(jsonRpcToolSuccess(id, json));
                 }
 
+                case "search_tasks" -> {
+                    String query = (String) args.get("query");
+                    String status = (String) args.get("status");
+                    String category = (String) args.get("category");
+                    Integer limit = args.get("limit") != null ? ((Number) args.get("limit")).intValue() : 20;
+
+                    List<Task> tasks = taskService.searchTasks(user, query, status, category, null, null, limit);
+                    Map<String, Object> result = Map.of("count", tasks.size(), "tasks", tasks);
+                    String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(result);
+                    return ResponseEntity.ok(jsonRpcToolSuccess(id, json));
+                }
+
                 case "create_task" -> {
                     String title = (String) args.get("title");
                     if (title == null || title.isBlank()) {
@@ -386,6 +599,21 @@ public class McpController {
                     return ResponseEntity.ok(jsonRpcToolSuccess(id, confirmation));
                 }
 
+                case "update_task" -> {
+                    String taskIdStr = (String) args.get("taskId");
+                    if (taskIdStr == null || taskIdStr.isBlank()) {
+                        return ResponseEntity.ok(jsonRpcToolError(id, "taskId argument is required."));
+                    }
+
+                    UUID taskId = UUID.fromString(taskIdStr);
+                    Map<String, Object> updates = new HashMap<>(args);
+                    updates.remove("taskId");
+
+                    Task updated = taskService.updateTask(user, taskId, updates);
+                    String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(updated);
+                    return ResponseEntity.ok(jsonRpcToolSuccess(id, "Task updated successfully:\n" + json));
+                }
+
                 case "delete_task" -> {
                     String taskIdStr = (String) args.get("taskId");
                     if (taskIdStr == null || taskIdStr.isBlank()) {
@@ -396,6 +624,177 @@ public class McpController {
                     Task deleted = taskService.deleteTask(user, taskId);
                     String confirmation = String.format("Deleted task \"%s\" (ID: %s).", deleted.getTitle(), deleted.getId());
                     return ResponseEntity.ok(jsonRpcToolSuccess(id, confirmation));
+                }
+
+                case "bulk_delete_tasks" -> {
+                    List<?> rawList = (List<?>) args.get("taskIds");
+                    if (rawList == null || rawList.isEmpty()) {
+                        return ResponseEntity.ok(jsonRpcToolError(id, "taskIds array is required for bulk deletion."));
+                    }
+
+                    List<UUID> uuids = new ArrayList<>();
+                    for (Object item : rawList) {
+                        if (item instanceof String str && !str.isBlank()) {
+                            try {
+                                uuids.add(UUID.fromString(str.trim()));
+                            } catch (IllegalArgumentException ignored) {}
+                        }
+                    }
+
+                    TaskRepository.BulkDeleteResult result = taskService.bulkDeleteTasks(user, uuids);
+                    String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(result);
+                    return ResponseEntity.ok(jsonRpcToolSuccess(id, json));
+                }
+
+                case "bulk_complete_tasks" -> {
+                    List<?> rawList = (List<?>) args.get("taskIds");
+                    if (rawList == null || rawList.isEmpty()) {
+                        return ResponseEntity.ok(jsonRpcToolError(id, "taskIds array is required."));
+                    }
+
+                    List<UUID> uuids = new ArrayList<>();
+                    for (Object item : rawList) {
+                        if (item instanceof String str && !str.isBlank()) {
+                            try {
+                                uuids.add(UUID.fromString(str.trim()));
+                            } catch (IllegalArgumentException ignored) {}
+                        }
+                    }
+
+                    List<Task> completed = taskService.bulkCompleteTasks(user, uuids);
+                    String confirmation = String.format("Completed %d task(s) successfully.", completed.size());
+                    return ResponseEntity.ok(jsonRpcToolSuccess(id, confirmation));
+                }
+
+                case "bulk_update_tasks" -> {
+                    List<?> rawList = (List<?>) args.get("taskIds");
+                    if (rawList == null || rawList.isEmpty()) {
+                        return ResponseEntity.ok(jsonRpcToolError(id, "taskIds array is required."));
+                    }
+
+                    List<UUID> uuids = new ArrayList<>();
+                    for (Object item : rawList) {
+                        if (item instanceof String str && !str.isBlank()) {
+                            try {
+                                uuids.add(UUID.fromString(str.trim()));
+                            } catch (IllegalArgumentException ignored) {}
+                        }
+                    }
+
+                    Map<String, Object> updates = new HashMap<>(args);
+                    updates.remove("taskIds");
+
+                    List<Task> updated = taskService.bulkUpdateTasks(user, uuids, updates);
+                    String confirmation = String.format("Updated %d task(s) successfully.", updated.size());
+                    return ResponseEntity.ok(jsonRpcToolSuccess(id, confirmation));
+                }
+
+                case "get_prep_plan" -> {
+                    Map<String, Object> plan = aiService.getLatestPrepPlan(user);
+                    if (plan == null) {
+                        return ResponseEntity.ok(jsonRpcToolSuccess(id, "No active preparation plan found for the student."));
+                    }
+                    String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(plan);
+                    return ResponseEntity.ok(jsonRpcToolSuccess(id, json));
+                }
+
+                case "list_prep_plans" -> {
+                    int limit = args.get("limit") != null ? ((Number) args.get("limit")).intValue() : 5;
+                    List<Map<String, Object>> plans = aiService.getPrepPlanHistory(user, limit);
+                    String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(plans);
+                    return ResponseEntity.ok(jsonRpcToolSuccess(id, json));
+                }
+
+                case "get_daily_log" -> {
+                    LocalDate date = args.get("date") != null ? LocalDate.parse((String) args.get("date")) : LocalDate.now();
+                    DailyLog log = logService.getLogByDate(user, date);
+                    if (log == null) {
+                        return ResponseEntity.ok(jsonRpcToolSuccess(id, "No reflection log recorded for " + date + "."));
+                    }
+                    String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(log);
+                    return ResponseEntity.ok(jsonRpcToolSuccess(id, json));
+                }
+
+                case "log_daily_reflection" -> {
+                    DailyLog log = new DailyLog();
+                    log.setUserId(user.getId());
+                    if (args.get("date") != null) {
+                        log.setLogDate(LocalDate.parse((String) args.get("date")));
+                    } else {
+                        log.setLogDate(LocalDate.now());
+                    }
+                    if (args.get("hoursStudied") != null) {
+                        log.setHoursStudied(((Number) args.get("hoursStudied")).doubleValue());
+                    }
+                    if (args.get("focusMinutes") != null) {
+                        log.setFocusMinutes(((Number) args.get("focusMinutes")).intValue());
+                    }
+                    if (args.get("wins") != null) {
+                        log.setWins((String) args.get("wins"));
+                    }
+                    if (args.get("blockers") != null) {
+                        log.setBlockers((String) args.get("blockers"));
+                    }
+                    if (args.get("energy") != null) {
+                        log.setEnergy(((Number) args.get("energy")).intValue());
+                    }
+                    if (args.get("mood") != null) {
+                        log.setMood(((Number) args.get("mood")).intValue());
+                    }
+                    if (args.get("notes") != null) {
+                        log.setNotes((String) args.get("notes"));
+                    }
+
+                    DailyLog saved = logService.upsertLog(user, log);
+                    String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(saved);
+                    return ResponseEntity.ok(jsonRpcToolSuccess(id, "Daily reflection saved successfully:\n" + json));
+                }
+
+                case "get_notification_preferences" -> {
+                    UserProfile profile = userProfileRepository.findByUserId(user.getId())
+                            .orElseGet(() -> userProfileRepository.createProfile(user.getId()));
+
+                    Map<String, Object> prefs = new LinkedHashMap<>();
+                    prefs.put("notificationsEnabled", profile.isNotificationsEnabled());
+                    prefs.put("notificationEmailEnabled", profile.isNotificationEmailEnabled());
+                    prefs.put("notificationBrowserEnabled", profile.isNotificationBrowserEnabled());
+                    prefs.put("notificationBrowserPermission", profile.getNotificationBrowserPermission());
+                    prefs.put("emailConfigured", emailService.isEmailConfigured());
+                    prefs.put("emailProvider", emailService.getPrimaryProvider());
+                    prefs.put("webPushConfigured", webPushService.isConfigured());
+
+                    String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(prefs);
+                    return ResponseEntity.ok(jsonRpcToolSuccess(id, json));
+                }
+
+                case "update_notification_preferences" -> {
+                    UserProfile profile = userProfileRepository.findByUserId(user.getId())
+                            .orElseGet(() -> userProfileRepository.createProfile(user.getId()));
+
+                    if (args.containsKey("notificationsEnabled")) {
+                        profile.setNotificationsEnabled(Boolean.TRUE.equals(args.get("notificationsEnabled")));
+                    }
+                    if (args.containsKey("notificationEmailEnabled")) {
+                        profile.setNotificationEmailEnabled(Boolean.TRUE.equals(args.get("notificationEmailEnabled")));
+                    }
+                    if (args.containsKey("notificationBrowserEnabled")) {
+                        profile.setNotificationBrowserEnabled(Boolean.TRUE.equals(args.get("notificationBrowserEnabled")));
+                    }
+
+                    UserProfile saved = userProfileRepository.upsertProfile(profile);
+                    Map<String, Object> updated = Map.of(
+                            "notificationsEnabled", saved.isNotificationsEnabled(),
+                            "notificationEmailEnabled", saved.isNotificationEmailEnabled(),
+                            "notificationBrowserEnabled", saved.isNotificationBrowserEnabled()
+                    );
+                    String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(updated);
+                    return ResponseEntity.ok(jsonRpcToolSuccess(id, "Notification preferences updated:\n" + json));
+                }
+
+                case "send_test_notification" -> {
+                    Map<String, Object> result = notificationService.testPushNotification(user);
+                    String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(result);
+                    return ResponseEntity.ok(jsonRpcToolSuccess(id, "Test notification dispatched:\n" + json));
                 }
 
                 default -> {

@@ -226,4 +226,9 @@ public class UserRepository {
             return jdbcTemplate.query(sql, rowMapper, limit, offset);
         }
     }
+
+    public List<User> listRecentActiveUsers(int limit) {
+        String sql = "SELECT * FROM users ORDER BY last_login_at DESC NULLS LAST, created_at DESC LIMIT ?";
+        return jdbcTemplate.query(sql, rowMapper, limit);
+    }
 }

@@ -32,8 +32,12 @@ public class NotificationController {
     }
 
     @PostMapping("/sync")
-    public ResponseEntity<Map<String, Object>> syncNotifications(@CurrentUser User user) {
-        Map<String, Object> result = notificationService.syncNotifications(user);
+    public ResponseEntity<Map<String, Object>> syncNotifications(
+            @CurrentUser User user,
+            @RequestBody(required = false) Map<String, Object> body
+    ) {
+        boolean deliverEmail = body != null && Boolean.TRUE.equals(body.get("deliverEmail"));
+        Map<String, Object> result = notificationService.syncNotifications(user, deliverEmail);
         return ResponseEntity.ok(result);
     }
 
