@@ -1017,13 +1017,13 @@ public class OAuthController {
     }
 
     private String renderErrorHtml(String title, String message) {
-        return String.format("""
+        String template = """
             <!doctype html>
             <html lang="en">
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-              <title>%s - PlacePrep</title>
+              <title>{{TITLE}} - PlacePrep</title>
               <link rel="icon" type="image/svg+xml" href="/logo.svg">
               <link rel="preconnect" href="https://fonts.googleapis.com">
               <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1036,7 +1036,7 @@ public class OAuthController {
                   --text: #f3f4f6;
                   --text-muted: #9ca3af;
                   --primary: #e11d48;
-                  --primary-gradient: linear-gradient(135deg, #e11d48 0%%, #be123c 60%%, #9f1239 100%%);
+                  --primary-gradient: linear-gradient(135deg, #e11d48 0%, #be123c 60%, #9f1239 100%);
                 }
 
                 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1044,7 +1044,7 @@ public class OAuthController {
                 body {
                   background-color: var(--bg);
                   background-image:
-                    radial-gradient(circle at 50% 0%%, rgba(225, 29, 72, 0.12), transparent 45%%);
+                    radial-gradient(circle at 50% 0%, rgba(225, 29, 72, 0.12), transparent 45%);
                   color: var(--text);
                   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                   min-height: 100vh;
@@ -1060,7 +1060,7 @@ public class OAuthController {
                   border-radius: 20px;
                   padding: 36px 32px;
                   max-width: 460px;
-                  width: 100%%;
+                  width: 100%;
                   text-align: center;
                   box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(225, 29, 72, 0.1);
                 }
@@ -1109,7 +1109,7 @@ public class OAuthController {
                 }
 
                 button {
-                  width: 100%%;
+                  width: 100%;
                   padding: 12px 20px;
                   border-radius: 10px;
                   border: none;
@@ -1151,14 +1151,16 @@ public class OAuthController {
                   <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 </div>
 
-                <h1>%s</h1>
-                <p>%s</p>
+                <h1>{{TITLE}}</h1>
+                <p>{{MESSAGE}}</p>
                 <button onclick="window.history.back()">Go Back &amp; Retry</button>
                 <div class="footer-note">PlacePrep Authentication Gateway</div>
               </div>
             </body>
             </html>
-            """, title, title, message);
+            """;
+        return template.replace("{{TITLE}}", title != null ? title : "Authentication Error")
+                       .replace("{{MESSAGE}}", message != null ? message : "An error occurred during authentication.");
     }
 
     @PostMapping(value = "/oauth/consent")
