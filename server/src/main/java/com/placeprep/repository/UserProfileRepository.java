@@ -117,9 +117,9 @@ public class UserProfileRepository {
                     p.getPortfolioUrl(),
                     p.getResumeUrl(),
                     p.getAvatarUrl(),
-                    p.isNotificationsEnabled(),
-                    p.isNotificationEmailEnabled(),
-                    p.isNotificationBrowserEnabled(),
+                    p.getNotificationsEnabled(),
+                    p.getNotificationEmailEnabled(),
+                    p.getNotificationBrowserEnabled(),
                     p.getNotificationBrowserPermission(),
                     p.getUserId()
             );

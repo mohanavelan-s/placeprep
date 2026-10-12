@@ -179,6 +179,12 @@ public class NotificationService {
         result.put("fcmError", fcmResult.error());
         result.put("fcmReady", fcmService.isConfigured());
 
+        Map<String, Object> dataPayload = new LinkedHashMap<>(result);
+        result.put("data", dataPayload);
+
+        log.info("[notifications] Test push evaluated for user {}: fcmReady={}, fcmAttempted={}, fcmSent={}, fcmFailed={}, fcmReason={}",
+                user.getId(), fcmService.isConfigured(), fcmResult.attempted(), fcmResult.sentCount(), fcmResult.failedCount(), fcmResult.reason());
+
         return result;
     }
 

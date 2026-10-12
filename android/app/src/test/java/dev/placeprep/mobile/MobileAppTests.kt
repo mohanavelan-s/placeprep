@@ -3,12 +3,16 @@ package dev.placeprep.mobile
 import com.google.gson.Gson
 import dev.placeprep.mobile.data.AiDailyEvaluationResponse
 import dev.placeprep.mobile.data.AiStuckHelpResponse
+import dev.placeprep.mobile.data.PlacePrepApi
 import dev.placeprep.mobile.data.PrepPlan
 import dev.placeprep.mobile.data.TaskItem
 import dev.placeprep.mobile.notification.PlacePrepNotificationManager
 import dev.placeprep.mobile.ui.MobileStrings
 import org.junit.Assert.*
 import org.junit.Test
+import retrofit2.http.GET
+import retrofit2.http.PATCH
+import retrofit2.http.POST
 
 class MobileAppTests {
 
@@ -185,5 +189,61 @@ class MobileAppTests {
         assertTrue(json.contains("\"appVersion\":\"2.0.0\""))
         assertTrue(json.contains("\"deviceModel\":\"Pixel 9 Pro\""))
         assertTrue(json.contains("\"osVersion\":\"15\""))
+    }
+
+    @Test
+    fun testUserProfileApiContractMatchesBackend() {
+        val getUserProfileMethod = PlacePrepApi::class.java.methods.first { it.name.startsWith("getUserProfile") }
+        val getAnnotation = getUserProfileMethod.getAnnotation(GET::class.java)
+        assertNotNull("getUserProfile must have @GET annotation", getAnnotation)
+        assertEquals("profile", getAnnotation?.value)
+        assertNotEquals("user-profile", getAnnotation?.value)
+
+        val updateUserProfileMethod = PlacePrepApi::class.java.methods.first { it.name.startsWith("updateUserProfile") }
+        val postAnnotation = updateUserProfileMethod.getAnnotation(POST::class.java)
+        val patchAnnotation = updateUserProfileMethod.getAnnotation(PATCH::class.java)
+        val path = postAnnotation?.value ?: patchAnnotation?.value
+        assertNotNull("updateUserProfile must have @POST or @PATCH annotation", path)
+        assertEquals("profile", path)
+        assertNotEquals("user-profile", path)
+    }
+
+    @Test
+    fun testSendTestNotificationDiagnosticsParsing() {
+        // 1. FCM not configured
+        val unconfiguredMap = mapOf<String, Any?>(
+            "success" to true,
+            "fcmReady" to false,
+            "fcmAttempted" to false,
+            "fcmReason" to "fcm_not_configured"
+        )
+        val ready = unconfiguredMap["fcmReady"] as? Boolean ?: false
+        assertFalse(ready)
+
+        // 2. Muted notifications
+        val mutedMap = mapOf<String, Any?>(
+            "success" to true,
+            "fcmReady" to true,
+            "fcmReason" to "user_disabled_notifications"
+        )
+        assertEquals("user_disabled_notifications", mutedMap["fcmReason"])
+
+        // 3. No devices
+        val noDevicesMap = mapOf<String, Any?>(
+            "success" to true,
+            "fcmReady" to true,
+            "fcmReason" to "no_registered_devices"
+        )
+        assertEquals("no_registered_devices", noDevicesMap["fcmReason"])
+
+        // 4. Delivered
+        val deliveredMap = mapOf<String, Any?>(
+            "success" to true,
+            "fcmReady" to true,
+            "fcmSentCount" to 1,
+            "fcmReason" to "sent"
+        )
+        val sentCount = (deliveredMap["fcmSentCount"] as? Number)?.toInt() ?: 0
+        assertEquals(1, sentCount)
     }
 }

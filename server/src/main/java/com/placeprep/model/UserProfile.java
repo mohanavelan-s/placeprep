@@ -16,9 +16,9 @@ public class UserProfile {
     private String portfolioUrl;
     private String resumeUrl;
     private String avatarUrl;
-    private boolean notificationsEnabled = true;
-    private boolean notificationEmailEnabled = true;
-    private boolean notificationBrowserEnabled = false;
+    private Boolean notificationsEnabled;
+    private Boolean notificationEmailEnabled;
+    private Boolean notificationBrowserEnabled;
     private String notificationBrowserPermission = "default";
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
@@ -49,14 +49,17 @@ public class UserProfile {
     public String getAvatarUrl() { return avatarUrl; }
     public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
 
-    public boolean isNotificationsEnabled() { return notificationsEnabled; }
-    public void setNotificationsEnabled(boolean notificationsEnabled) { this.notificationsEnabled = notificationsEnabled; }
+    public Boolean getNotificationsEnabled() { return notificationsEnabled; }
+    public boolean isNotificationsEnabled() { return Boolean.TRUE.equals(notificationsEnabled); }
+    public void setNotificationsEnabled(Boolean notificationsEnabled) { this.notificationsEnabled = notificationsEnabled; }
 
-    public boolean isNotificationEmailEnabled() { return notificationEmailEnabled; }
-    public void setNotificationEmailEnabled(boolean notificationEmailEnabled) { this.notificationEmailEnabled = notificationEmailEnabled; }
+    public Boolean getNotificationEmailEnabled() { return notificationEmailEnabled; }
+    public boolean isNotificationEmailEnabled() { return Boolean.TRUE.equals(notificationEmailEnabled); }
+    public void setNotificationEmailEnabled(Boolean notificationEmailEnabled) { this.notificationEmailEnabled = notificationEmailEnabled; }
 
-    public boolean isNotificationBrowserEnabled() { return notificationBrowserEnabled; }
-    public void setNotificationBrowserEnabled(boolean notificationBrowserEnabled) { this.notificationBrowserEnabled = notificationBrowserEnabled; }
+    public Boolean getNotificationBrowserEnabled() { return notificationBrowserEnabled; }
+    public boolean isNotificationBrowserEnabled() { return Boolean.TRUE.equals(notificationBrowserEnabled); }
+    public void setNotificationBrowserEnabled(Boolean notificationBrowserEnabled) { this.notificationBrowserEnabled = notificationBrowserEnabled; }
 
     public String getNotificationBrowserPermission() { return notificationBrowserPermission; }
     public void setNotificationBrowserPermission(String notificationBrowserPermission) { this.notificationBrowserPermission = notificationBrowserPermission; }

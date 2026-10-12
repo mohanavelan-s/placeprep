@@ -44,6 +44,16 @@ public class UserProfileController {
         return ResponseEntity.ok(Map.of("success", true, "data", saved));
     }
 
+    @PatchMapping
+    public ResponseEntity<Map<String, Object>> patchProfile(
+            @CurrentUser User user,
+            @RequestBody UserProfile payload
+    ) {
+        payload.setUserId(user.getId());
+        UserProfile saved = profileRepository.upsertProfile(payload);
+        return ResponseEntity.ok(Map.of("success", true, "data", saved));
+    }
+
     @GetMapping("/web-push/config")
     public ResponseEntity<Map<String, Object>> getWebPushConfig() {
         return ResponseEntity.ok(Map.of("success", true, "data", webPushService.getWebPushConfig()));

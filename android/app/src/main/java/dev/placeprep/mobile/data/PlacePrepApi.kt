@@ -156,10 +156,10 @@ interface PlacePrepApi {
     @DELETE("notifications/devices/{deviceToken}")
     suspend fun unregisterDevice(@Path("deviceToken") deviceToken: String): ApiEnvelope<Map<String, Any?>>
 
-    @GET("user-profile")
+    @GET("profile")
     suspend fun getUserProfile(): ApiEnvelope<UserProfileData>
 
-    @PATCH("user-profile")
+    @POST("profile")
     suspend fun updateUserProfile(@Body payload: Map<String, @JvmSuppressWildcards Any?>): ApiEnvelope<UserProfileData>
 
     companion object {

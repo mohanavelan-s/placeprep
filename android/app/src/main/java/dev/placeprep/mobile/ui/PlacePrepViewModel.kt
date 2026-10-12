@@ -827,11 +827,38 @@ class PlacePrepViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             runCatching { repository.sendTestNotification() }
-                .onSuccess {
+                .onSuccess { result ->
+                    val fcmReady = result["fcmReady"] as? Boolean ?: false
+                    val fcmSentCount = (result["fcmSentCount"] as? Number)?.toInt() ?: 0
+                    val fcmFailedCount = (result["fcmFailedCount"] as? Number)?.toInt() ?: 0
+                    val fcmReason = result["fcmReason"] as? String ?: ""
+                    val fcmError = result["fcmError"] as? String
+
+                    val feedbackMessage = when {
+                        !fcmReady -> {
+                            "Test signal created. Remote FCM push pending server credentials in Railway."
+                        }
+                        fcmReason == "user_disabled_notifications" -> {
+                            "Test signal created. Push skipped because notifications are disabled in your profile."
+                        }
+                        fcmReason == "no_registered_devices" -> {
+                            "Test signal created. No active Android devices registered for this account."
+                        }
+                        fcmSentCount > 0 -> {
+                            "Test push delivered to $fcmSentCount device(s)."
+                        }
+                        fcmFailedCount > 0 -> {
+                            "Test signal created, but FCM delivery failed: ${fcmError ?: fcmReason}"
+                        }
+                        else -> {
+                            "Test notification signal dispatched."
+                        }
+                    }
+
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            infoMessage = "Test notification signal dispatched.",
+                            infoMessage = feedbackMessage,
                         )
                     }
                 }
