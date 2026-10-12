@@ -1119,13 +1119,6 @@ public class AiService {
             );
         }
 
-        AssessmentSession baselineSession = null;
-        try {
-            baselineSession = assessmentService.generateBaselineAssessment(user, planId, researchReport, req);
-        } catch (Exception ex) {
-            System.err.println("[AiService] Warning generating baseline assessment: " + ex.getMessage());
-        }
-
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("title", title);
         metadata.put("autoTitle", title);
@@ -1146,15 +1139,11 @@ public class AiService {
         if (req.get("targetDeadline") != null) metadata.put("targetDeadline", req.get("targetDeadline"));
         if (req.get("jobDescription") != null) metadata.put("jobDescription", req.get("jobDescription"));
         if (req.get("jobPostingUrl") != null) metadata.put("jobPostingUrl", req.get("jobPostingUrl"));
-        if (baselineSession != null) {
-            metadata.put("pendingBaselineAssessmentId", baselineSession.getId().toString());
-            metadata.put("baselineStatus", "pending");
-        }
 
         // Deactivate previous plans for user
         jdbcTemplate.update("UPDATE prep_plans SET is_active = FALSE WHERE user_id = ?", user.getId());
 
-        // Insert new plan
+        // Insert new plan first so baseline assessment session can reference plan_id foreign key
         jdbcTemplate.update(
                 "INSERT INTO prep_plans (id, user_id, known_topics, target_topics, roadmap, tasks, resources, flashcards, time_per_day, duration_months, target_role, version, is_active, metadata, created_at, updated_at) " +
                         "VALUES (?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?, ?, TRUE, ?::jsonb, NOW(), NOW())",
@@ -1172,6 +1161,18 @@ public class AiService {
                 version,
                 JsonUtil.toJson(metadata)
         );
+
+        AssessmentSession baselineSession = null;
+        try {
+            baselineSession = assessmentService.generateBaselineAssessment(user, planId, researchReport, req);
+            if (baselineSession != null) {
+                metadata.put("pendingBaselineAssessmentId", baselineSession.getId().toString());
+                metadata.put("baselineStatus", "pending");
+                jdbcTemplate.update("UPDATE prep_plans SET metadata = ?::jsonb WHERE id = ?", JsonUtil.toJson(metadata), planId);
+            }
+        } catch (Exception ex) {
+            System.err.println("[AiService] Warning generating baseline assessment: " + ex.getMessage());
+        }
 
         Map<String, Object> created = new LinkedHashMap<>();
         created.put("id", planId.toString());
@@ -1303,7 +1304,7 @@ public class AiService {
         t2.setUserId(user.getId());
         t2.setTitle(focusTopic2 + " Mechanics & Production Patterns");
         t2.setDescription("Review query execution plans, transaction isolation anomalies, and index access for " + focusTopic2 + ".");
-        t2.setCategory("Core CS");
+        t2.setCategory("Core");
         t2.setSubcategory(focusTopic2);
         t2.setPriority("medium");
         t2.setIntensity("medium");
