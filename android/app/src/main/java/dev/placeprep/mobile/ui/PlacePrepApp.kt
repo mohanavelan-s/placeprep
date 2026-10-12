@@ -1081,6 +1081,7 @@ private fun WorkspaceScreen(
                                 onEngagePowerPocket = onEngagePowerPocket,
                                 onEndPowerPocket = onEndPowerPocket,
                                 onNavigateTasks = { onSwitchTab(MobileTab.Tasks) },
+                                onNavigateAssessments = { onSwitchTab(MobileTab.Assessments) },
                             )
                         }
                     }
@@ -1110,6 +1111,7 @@ private fun WorkspaceScreen(
                                 lang = lang,
                                 isLoading = state.isLoading,
                                 onGeneratePlan = onGeneratePlan,
+                                onNavigateAssessments = { onSwitchTab(MobileTab.Assessments) },
                             )
                         }
                     }
@@ -1299,6 +1301,7 @@ private fun DashboardTab(
     onEngagePowerPocket: () -> Unit,
     onEndPowerPocket: () -> Unit,
     onNavigateTasks: () -> Unit,
+    onNavigateAssessments: () -> Unit = {},
 ) {
     var coachTopic by remember { mutableStateOf("") }
     var coachBlocked by remember { mutableStateOf("") }
@@ -1318,6 +1321,53 @@ private fun DashboardTab(
             targetRole = state.user?.targetRole ?: "Software Engineer Track",
             lang = lang,
         )
+
+        // PENDING BASELINE DIAGNOSTIC ALERT (IF APPLICABLE)
+        val hasPendingBaseline = state.prepPlan?.status.equals("assessment_pending", true) ||
+            state.assessmentsOverview?.pendingBaseline?.hasPending == true ||
+            state.pendingBaseline?.hasPending == true
+
+        if (hasPendingBaseline) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateAssessments() },
+                shape = RoundedCornerShape(20.dp),
+                color = SurfaceBase,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Crimson.copy(alpha = 0.5f)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(Crimson.copy(alpha = 0.16f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Outlined.Science, contentDescription = null, tint = CrimsonSoft, modifier = Modifier.size(22.dp))
+                    }
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            "Diagnostic Baseline Assessment Pending",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                        )
+                        Text(
+                            "Complete your 20-min diagnostic to calibrate Weeks 1 & 2 of your roadmap around confirmed weak spots.",
+                            color = TextSecondary,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                        )
+                    }
+                    Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = null, tint = CrimsonSoft, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
 
         // LEVEL 3: ACTION MATRIX (4-TILE OPERATIONAL GRID)
         ActionMatrix(
@@ -2123,6 +2173,7 @@ private fun ArchitectTab(
     lang: String,
     isLoading: Boolean,
     onGeneratePlan: (targetRole: String, companyKey: String, customCompanyName: String, durationMonths: Int, timePerDay: Int) -> Unit,
+    onNavigateAssessments: () -> Unit = {},
 ) {
     var showCustomizeDialog by remember { mutableStateOf(false) }
 
@@ -2278,6 +2329,50 @@ private fun ArchitectTab(
                 }
             }
         } else {
+            // PENDING BASELINE DIAGNOSTIC BANNER (IF APPLICABLE)
+            if (plan.status.equals("assessment_pending", true)) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateAssessments() },
+                    shape = RoundedCornerShape(20.dp),
+                    color = SurfaceBase,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Crimson.copy(alpha = 0.65f)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(Icons.Outlined.Science, contentDescription = null, tint = CrimsonSoft, modifier = Modifier.size(20.dp))
+                            Text(
+                                "Baseline Diagnostic Pending",
+                                color = CrimsonSoft,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                            )
+                        }
+                        Text(
+                            "Complete your 20-min diagnostic in Assessments to benchmark your starting skills across core topics. PlacePrep will personalize weeks 1 & 2 around your exact weak spots without overwriting completed tasks.",
+                            color = TextSecondary,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp,
+                        )
+                        Button(
+                            onClick = onNavigateAssessments,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Crimson),
+                            modifier = Modifier.fillMaxWidth().height(42.dp),
+                        ) {
+                            Text("Take Diagnostic (20 min)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+
             // Plan Overview Card
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -2307,18 +2402,50 @@ private fun ArchitectTab(
                                 fontSize = 13.sp,
                             )
                         }
-                        Surface(
-                            shape = RoundedCornerShape(999.dp),
-                            color = Success.copy(alpha = 0.15f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Success.copy(alpha = 0.35f)),
-                        ) {
-                            Text(
-                                text = if (plan.isActive == true) "Active" else "Archived",
-                                color = Success,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (plan.status.equals("plan_ready", true)) {
+                                Surface(
+                                    shape = RoundedCornerShape(999.dp),
+                                    color = Success.copy(alpha = 0.15f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Success.copy(alpha = 0.35f)),
+                                ) {
+                                    Text(
+                                        text = "Calibrated",
+                                        color = Success,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    )
+                                }
+                            } else if (plan.status.equals("assessment_pending", true)) {
+                                Surface(
+                                    shape = RoundedCornerShape(999.dp),
+                                    color = Amber.copy(alpha = 0.15f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Amber.copy(alpha = 0.35f)),
+                                ) {
+                                    Text(
+                                        text = "Diagnostic Pending",
+                                        color = Amber,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    )
+                                }
+                            } else {
+                                Surface(
+                                    shape = RoundedCornerShape(999.dp),
+                                    color = Success.copy(alpha = 0.15f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Success.copy(alpha = 0.35f)),
+                                ) {
+                                    Text(
+                                        text = if (plan.isActive == true) "Active" else "Archived",
+                                        color = Success,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -2416,6 +2543,112 @@ private fun ArchitectTab(
                                             fontSize = 11.sp,
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                         )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Verified Role Research & Sources Card (if available)
+            val research = plan.researchReport
+            if (research != null) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    color = SurfaceBase,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Cyan.copy(alpha = 0.35f)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(Icons.Outlined.Verified, contentDescription = null, tint = Cyan, modifier = Modifier.size(20.dp))
+                                Text(
+                                    "Verified Role Research",
+                                    color = TextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(999.dp),
+                                color = Cyan.copy(alpha = 0.15f),
+                            ) {
+                                Text(
+                                    "${(research.confidenceScore * 100).toInt()}% Confident",
+                                    color = Cyan,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                )
+                            }
+                        }
+
+                        if (research.summary.isNotBlank()) {
+                            Text(
+                                research.summary,
+                                color = TextSecondary,
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp,
+                            )
+                        }
+
+                        if (research.interviewStages.isNotEmpty()) {
+                            Text("Interview Stages", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                research.interviewStages.forEach { stage ->
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = SurfaceRaised,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+                                    ) {
+                                        Text(
+                                            stage,
+                                            color = Lavender,
+                                            fontSize = 11.sp,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (research.verifiedSources.isNotEmpty()) {
+                            Text("Verifiable Sources (${research.verifiedSources.size})", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            research.verifiedSources.take(3).forEach { source ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = SurfaceRaised,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(source.domain, color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Text(source.tier.split(":").firstOrNull() ?: "Tier", color = TextMuted, fontSize = 10.sp)
+                                        }
+                                        Text(source.title, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                                     }
                                 }
                             }
@@ -2922,6 +3155,73 @@ private fun AssessmentsTab(
             }
         }
 
+        // Persistent Pending Baseline Diagnostic Card (if required)
+        val baseline = overview?.pendingBaseline
+        if (baseline != null && baseline.hasPending && (activeAssessment == null || activeAssessment.status.equals("completed", true))) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                color = SurfaceBase,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Crimson.copy(alpha = 0.65f)),
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Crimson.copy(alpha = 0.2f))
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Crimson))
+                        Text(
+                            "DIAGNOSTIC BASELINE PENDING",
+                            color = CrimsonSoft,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+
+                    Text(
+                        "Benchmark Diagnostic: ${baseline.targetRole ?: "Role Track"}",
+                        color = TextPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+
+                    Text(
+                        "Company: ${baseline.companyName ?: "Target"} • Level: ${baseline.seniority ?: "Mid"} • 15–20 min",
+                        color = Lavender,
+                        fontSize = 13.sp,
+                    )
+
+                    Text(
+                        "Complete this 7-question diagnostic to benchmark your skills. Prep Architect will calibrate weeks 1 & 2 of your daily schedule without overwriting completed progress.",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp,
+                    )
+
+                    Button(
+                        onClick = {
+                            answers.clear()
+                            selectedQuestionIdx = 0
+                            onGenerateAssessment("mcq")
+                        },
+                        enabled = !isAssessmentLoading,
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Crimson),
+                    ) {
+                        Text("Take Diagnostic Assessment (20 min)", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
         // Active Assessment Quiz Card (if session exists and not completed)
         if (activeAssessment != null && activeAssessment.questions.isNotEmpty() && !activeAssessment.status.equals("completed", true)) {
             val questions = activeAssessment.questions
@@ -3137,6 +3437,29 @@ private fun AssessmentsTab(
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.padding(bottom = 6.dp),
                         )
+                    }
+
+                    if (activeAssessment.metadata?.get("isBaseline") == true || activeAssessment.assessmentScope.equals("baseline", true)) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Success.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Success.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(Icons.Outlined.Check, contentDescription = null, tint = Success, modifier = Modifier.size(18.dp))
+                                Text(
+                                    "Roadmap Weeks 1 & 2 calibrated around your identified weak spots.",
+                                    color = Success,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
                     }
 
                     if (activeAssessment.weakSpots.isNotEmpty()) {

@@ -90,6 +90,26 @@ data class PrepPlanDay(
     val items: List<PrepPlanTaskItem> = emptyList(),
 )
 
+data class ResearchSourceRecord(
+    val url: String = "",
+    val domain: String = "",
+    val title: String = "",
+    val tier: String = "Tier 3: Community Experience",
+    val keyFindings: List<String> = emptyList(),
+    val publicationYear: Int? = null,
+    val verified: Boolean = false,
+)
+
+data class ResearchReport(
+    val roleTitle: String = "",
+    val companyName: String = "",
+    val interviewStages: List<String> = emptyList(),
+    val coreCompetencies: List<String> = emptyList(),
+    val verifiedSources: List<ResearchSourceRecord> = emptyList(),
+    val confidenceScore: Double = 0.0,
+    val summary: String = "",
+)
+
 data class PrepPlan(
     val id: String = "",
     val title: String? = null,
@@ -104,6 +124,13 @@ data class PrepPlan(
     val durationMonths: Int? = null,
     val version: Int? = 1,
     val isActive: Boolean? = true,
+    val status: String? = null,
+    val seniority: String? = null,
+    val deadlineDate: String? = null,
+    val weeklyHoursBudget: Double? = null,
+    val researchReport: ResearchReport? = null,
+    val diagnosticTopics: List<String> = emptyList(),
+    val topicScores: Map<String, Any?>? = null,
 )
 
 data class TaskItem(
@@ -195,6 +222,26 @@ data class AiDailyEvaluationResponse(
     val usedFallback: Boolean = false,
 )
 
+data class PendingBaselineSummary(
+    val hasPending: Boolean = false,
+    val id: String? = null,
+    val sessionId: String? = null,
+    val planId: String? = null,
+    val targetRole: String? = null,
+    val companyName: String? = null,
+    val seniority: String? = null,
+    val diagnosticTopics: List<String>? = emptyList(),
+    val startedAt: String? = null,
+)
+
+data class DeviceRegistrationRequest(
+    val deviceToken: String,
+    val deviceType: String = "android",
+    val appVersion: String? = null,
+    val deviceModel: String? = null,
+    val osVersion: String? = null,
+)
+
 data class AssessmentOverview(
     val averageScore: Double = 0.0,
     val completedCount: Int = 0,
@@ -205,6 +252,7 @@ data class AssessmentOverview(
     val recentAssessments: List<AssessmentSessionData> = emptyList(),
     val identifiedWeakSpots: List<String> = emptyList(),
     val activePlan: Map<String, Any?>? = null,
+    val pendingBaseline: PendingBaselineSummary? = null,
 )
 
 data class AssessmentSessionData(
@@ -219,6 +267,8 @@ data class AssessmentSessionData(
     val startedAt: String? = null,
     val submittedAt: String? = null,
     val createdAt: String? = null,
+    val assessmentScope: String? = null,
+    val metadata: Map<String, Any?>? = null,
 )
 
 data class AssessmentChoice(

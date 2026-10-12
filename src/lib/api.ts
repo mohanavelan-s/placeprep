@@ -657,6 +657,53 @@ export interface Flashcard {
   answer: string;
 }
 
+export interface ResearchSourceRecord {
+  title: string;
+  url: string;
+  organization: string;
+  category: "official_careers" | "official_guide" | "practice_resource" | "candidate_experience" | "user_job_description" | string;
+  publicationDate?: string | null;
+  dateChecked: string;
+  supportedClaims: string[];
+  confidence: string;
+}
+
+export interface ResearchReport {
+  companyName: string;
+  companyKey: string;
+  targetRole: string;
+  seniority: string;
+  location: string;
+  dateChecked: string;
+  sources: ResearchSourceRecord[];
+  coreCompetencies: Array<{
+    area: string;
+    priority: string;
+    evidence: string;
+    sampleTopics: string[];
+  }>;
+  evidenceSummary: {
+    officialRequirementsIdentified: boolean;
+    tier1SourceCount: number;
+    tier2SourceCount: number;
+    tier3SourceCount: number;
+    notes: string;
+  };
+  diagnosticTopics: string[];
+}
+
+export interface PendingBaselineSummary {
+  hasPending: boolean;
+  id?: string;
+  session?: AssessmentSession | null;
+  planId?: string | null;
+  targetRole?: string;
+  companyName?: string;
+  seniority?: string;
+  diagnosticTopics?: string[];
+  startedAt?: string | null;
+}
+
 export interface PrepPlan {
   id: string;
   userId: string;
@@ -676,6 +723,16 @@ export interface PrepPlan {
   version: number;
   isActive: boolean;
   sourcePlanId?: string | null;
+  status?: "assessment_pending" | "plan_ready" | string;
+  researchReport?: ResearchReport | null;
+  pendingBaselineAssessmentId?: string | null;
+  coreCompetencies?: Array<any>;
+  verifiedSourcesCount?: number;
+  seniority?: string;
+  location?: string;
+  targetDeadline?: string | null;
+  topicScores?: Record<string, number>;
+  confirmedWeakSpots?: string[];
   metadata: Record<string, unknown>;
   title?: string;
   autoTitle?: string;
@@ -778,6 +835,7 @@ export interface AssessmentSession {
 export interface AssessmentOverview {
   activePlan: AssessmentPlanSummary | null;
   currentSession: AssessmentSession | null;
+  pendingBaseline?: PendingBaselineSummary | null;
   recentSessions: AssessmentSession[];
 }
 
@@ -1878,6 +1936,7 @@ function normalizeAssessmentOverview(overview: AssessmentOverview): AssessmentOv
   return {
     activePlan: normalizeAssessmentPlanSummary(overview?.activePlan || null),
     currentSession: normalizeAssessmentSession(overview?.currentSession || null),
+    pendingBaseline: overview?.pendingBaseline || null,
     recentSessions: toArray<AssessmentSession>(overview?.recentSessions).map((session) =>
       normalizeAssessmentSession(session),
     ).filter((session): session is AssessmentSession => Boolean(session)),
@@ -2559,6 +2618,11 @@ export async function generatePrepPlan(payload: {
   timePerDay?: number;
   durationMonths?: number;
   targetRole?: string;
+  seniority?: string;
+  location?: string;
+  targetDeadline?: string;
+  jobDescription?: string;
+  jobPostingUrl?: string;
   preferredLanguage?: PrepLanguage;
 }) {
   return normalizePrepPlan(await request<PrepPlan>("/ai/prep-architect", {
@@ -2574,12 +2638,39 @@ export async function updatePrepPlan(payload: {
   timePerDay?: number;
   durationMonths?: number;
   targetRole?: string;
+  seniority?: string;
+  location?: string;
+  targetDeadline?: string;
+  jobDescription?: string;
+  jobPostingUrl?: string;
   preferredLanguage?: PrepLanguage;
 }) {
   return normalizePrepPlan(await request<PrepPlan>("/ai/prep-architect/update", {
     method: "POST",
     body: JSON.stringify(payload),
   })) as PrepPlan;
+}
+
+export async function fetchPendingBaseline(): Promise<PendingBaselineSummary> {
+  return request<PendingBaselineSummary>("/assessments/pending-baseline");
+}
+
+export async function registerMobileDevice(payload: {
+  deviceToken: string;
+  platform?: string;
+  deviceName?: string;
+  appVersion?: string;
+}) {
+  return request<{ success: boolean; data: any }>("/notifications/devices", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function unregisterMobileDevice(deviceToken: string) {
+  return request<{ success: boolean; unregistered: boolean }>(`/notifications/devices/${encodeURIComponent(deviceToken)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function fetchMentorHistory() {

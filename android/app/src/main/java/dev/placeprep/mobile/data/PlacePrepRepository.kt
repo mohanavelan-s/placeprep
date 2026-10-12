@@ -250,6 +250,24 @@ class PlacePrepRepository(
 
     suspend fun sendTestNotification(): Map<String, Any?> = api.testPushNotification().data
 
+    suspend fun registerDevice(token: String): Map<String, Any?> {
+        return api.registerDevice(
+            DeviceRegistrationRequest(
+                deviceToken = token,
+                deviceType = "android",
+                appVersion = dev.placeprep.mobile.BuildConfig.VERSION_NAME,
+                deviceModel = android.os.Build.MODEL,
+                osVersion = android.os.Build.VERSION.RELEASE,
+            )
+        ).data
+    }
+
+    suspend fun unregisterDevice(token: String): Map<String, Any?> {
+        return api.unregisterDevice(token).data
+    }
+
+    suspend fun loadPendingBaseline(): PendingBaselineSummary = api.getPendingBaseline().data
+
     suspend fun loadUserProfile(): UserProfileData = api.getUserProfile().data
 
     suspend fun updateUserProfile(updates: Map<String, Any?>): UserProfileData = api.updateUserProfile(updates).data

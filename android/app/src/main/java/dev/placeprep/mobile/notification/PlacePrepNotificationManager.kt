@@ -132,4 +132,17 @@ object PlacePrepNotificationManager {
             notificationId = 1001,
         )
     }
+
+    private const val PREFS_NAME = "placeprep_device_prefs"
+    private const val KEY_DEVICE_TOKEN = "device_token"
+
+    fun getOrGenerateDeviceToken(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        var token = prefs.getString(KEY_DEVICE_TOKEN, null)
+        if (token.isNullOrBlank()) {
+            token = "android-" + java.util.UUID.randomUUID().toString()
+            prefs.edit().putString(KEY_DEVICE_TOKEN, token).apply()
+        }
+        return token
+    }
 }

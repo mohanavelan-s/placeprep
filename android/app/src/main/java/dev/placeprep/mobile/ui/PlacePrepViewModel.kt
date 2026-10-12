@@ -30,6 +30,7 @@ data class PlacePrepUiState(
     val assessmentsOverview: AssessmentOverview? = null,
     val activeAssessment: AssessmentSessionData? = null,
     val isAssessmentLoading: Boolean = false,
+    val pendingBaseline: PendingBaselineSummary? = null,
     val notifications: List<NotificationItem> = emptyList(),
     val userProfile: UserProfileData? = null,
     val selectedCodingProblem: CodingProblemSummary? = null,
@@ -82,6 +83,16 @@ class PlacePrepViewModel(
         if (!hasWelcomedInSession && appContext != null) {
             hasWelcomedInSession = true
             PlacePrepNotificationManager.showLoginWelcomeNotification(appContext, user.name, streak)
+        }
+        registerDeviceToken()
+    }
+
+    private fun registerDeviceToken() {
+        if (appContext != null) {
+            viewModelScope.launch {
+                val token = PlacePrepNotificationManager.getOrGenerateDeviceToken(appContext)
+                runCatching { repository.registerDevice(token) }
+            }
         }
     }
 
@@ -287,6 +298,8 @@ class PlacePrepViewModel(
                         prepPlan = result.prepPlan ?: it.prepPlan,
                         activePowerPocket = result.activePowerPocket,
                         assessmentsOverview = result.assessments ?: it.assessmentsOverview,
+                        pendingBaseline = result.assessments?.pendingBaseline ?: it.pendingBaseline,
+                        activeAssessment = it.activeAssessment ?: result.assessments?.currentSession,
                         notifications = result.notifications,
                         userProfile = result.profile ?: it.userProfile,
                         isLoading = false,
@@ -469,6 +482,7 @@ class PlacePrepViewModel(
                             infoMessage = "Fresh prep plan generated: ${newPlan.title ?: targetRole}",
                         )
                     }
+                    refreshWorkspace()
                 }
                 .onFailure { error ->
                     _uiState.update {
@@ -602,9 +616,7 @@ class PlacePrepViewModel(
                             infoMessage = "Assessment completed! Score: ${session.score?.toInt() ?: 0}%"
                         )
                     }
-                    runCatching { repository.loadAssessmentsOverview() }.getOrNull()?.let { overview ->
-                        _uiState.update { it.copy(assessmentsOverview = overview) }
-                    }
+                    refreshWorkspace()
                 }
                 .onFailure { err ->
                     _uiState.update {
@@ -614,6 +626,27 @@ class PlacePrepViewModel(
                         )
                     }
                 }
+        }
+    }
+
+    fun startOrResumeBaselineAssessment() {
+        val baseline = _uiState.value.pendingBaseline
+            ?: _uiState.value.assessmentsOverview?.pendingBaseline
+        val session = _uiState.value.assessmentsOverview?.recentSessions?.find {
+            it.id == baseline?.id || it.id == baseline?.sessionId
+        } ?: _uiState.value.assessmentsOverview?.currentSession
+
+        if (session != null && !session.status.equals("completed", true)) {
+            _uiState.update {
+                it.copy(
+                    activeAssessment = session,
+                    currentTab = MobileTab.Assessments,
+                    infoMessage = "Diagnostic baseline loaded. Complete the 7 diagnostic questions."
+                )
+            }
+        } else {
+            generateAssessment("mcq")
+            switchTab(MobileTab.Assessments)
         }
     }
 

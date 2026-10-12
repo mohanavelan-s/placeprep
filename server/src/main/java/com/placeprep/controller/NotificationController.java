@@ -4,6 +4,8 @@ import com.placeprep.model.Notification;
 import com.placeprep.model.User;
 import com.placeprep.security.CurrentUser;
 import com.placeprep.service.NotificationService;
+import com.placeprep.model.MobileDevice;
+import com.placeprep.repository.MobileDeviceRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,9 +18,52 @@ import java.util.UUID;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final MobileDeviceRepository mobileDeviceRepository;
 
-    public NotificationController(NotificationService notificationService) {
+    public NotificationController(NotificationService notificationService, MobileDeviceRepository mobileDeviceRepository) {
         this.notificationService = notificationService;
+        this.mobileDeviceRepository = mobileDeviceRepository;
+    }
+
+    @PostMapping("/devices")
+    public ResponseEntity<Map<String, Object>> registerDevice(
+            @CurrentUser User user,
+            @RequestBody Map<String, Object> body
+    ) {
+        String token = (String) body.get("deviceToken");
+        if (token == null || token.isBlank()) {
+            token = (String) body.get("token");
+        }
+        if (token == null || token.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "deviceToken is required"));
+        }
+        String platform = (String) body.getOrDefault("platform", "android");
+        String deviceName = (String) body.getOrDefault("deviceName", body.get("deviceModel"));
+        String appVersion = (String) body.get("appVersion");
+
+        MobileDevice device = mobileDeviceRepository.registerDevice(
+                user.getId(),
+                token.trim(),
+                platform,
+                deviceName,
+                appVersion
+        );
+        return ResponseEntity.ok(Map.of("success", true, "data", device));
+    }
+
+    @DeleteMapping("/devices/{deviceToken}")
+    public ResponseEntity<Map<String, Object>> unregisterDevice(
+            @CurrentUser User user,
+            @PathVariable String deviceToken
+    ) {
+        boolean removed = mobileDeviceRepository.unregisterDevice(user.getId(), deviceToken);
+        return ResponseEntity.ok(Map.of("success", true, "unregistered", removed));
+    }
+
+    @GetMapping("/devices")
+    public ResponseEntity<Map<String, Object>> listDevices(@CurrentUser User user) {
+        List<MobileDevice> devices = mobileDeviceRepository.listByUserId(user.getId());
+        return ResponseEntity.ok(Map.of("success", true, "data", devices));
     }
 
     @GetMapping

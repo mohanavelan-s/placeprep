@@ -1,11 +1,14 @@
 package com.placeprep.service;
 
 import com.placeprep.exception.AppException;
+import com.placeprep.model.AssessmentSession;
 import com.placeprep.model.Task;
 import com.placeprep.model.User;
 import com.placeprep.repository.TaskRepository;
+import com.placeprep.service.RoleResearchService.ResearchReport;
 import com.placeprep.util.JsonUtil;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -26,6 +29,8 @@ public class AiService {
 
     private final TaskRepository taskRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final RoleResearchService roleResearchService;
+    private final AssessmentService assessmentService;
     private final RestClient restClient;
     private final RestClient geminiClient;
     private final String apiKey;
@@ -42,6 +47,8 @@ public class AiService {
     public AiService(
             TaskRepository taskRepository,
             JdbcTemplate jdbcTemplate,
+            RoleResearchService roleResearchService,
+            @Lazy AssessmentService assessmentService,
             @Value("${placeprep.ai.api-key:}") String apiKey,
             @Value("${placeprep.ai.base-url:https://openrouter.ai/api/v1}") String baseUrl,
             @Value("${placeprep.ai.model:openai/gpt-5.1}") String model,
@@ -52,6 +59,8 @@ public class AiService {
     ) {
         this.taskRepository = taskRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.roleResearchService = roleResearchService;
+        this.assessmentService = assessmentService;
         this.apiKey = apiKey != null ? apiKey.trim() : "";
         this.baseUrl = baseUrl != null ? baseUrl.trim().replaceAll("/$", "") : "https://openrouter.ai/api/v1";
         this.model = model != null ? model.trim() : "openai/gpt-5.1";
@@ -895,22 +904,20 @@ public class AiService {
     }
 
     public Map<String, Object> createAndPersistPlan(User user, Map<String, Object> req) {
-        String targetRole = (String) req.getOrDefault("targetRole", user.getTargetRole() != null ? user.getTargetRole() : "SDE Intern");
-        String companyKey = (String) req.getOrDefault("companyKey", "custom");
+        ResearchReport researchReport = roleResearchService.conductResearch(req);
+        String targetRole = researchReport.targetRole;
+        String companyKey = researchReport.companyKey;
+        String companyLabel = researchReport.companyName;
+        String seniority = researchReport.seniority;
+        String location = researchReport.location;
         String customCompanyName = (String) req.get("customCompanyName");
-
-        if ("custom".equalsIgnoreCase(companyKey)) {
-            if (customCompanyName == null || customCompanyName.trim().isEmpty()) {
-                customCompanyName = "Target Tech Company";
-            }
-        }
 
         int timePerDay = req.get("timePerDay") instanceof Number ? ((Number) req.get("timePerDay")).intValue() : 120;
         int durationMonths = req.get("durationMonths") instanceof Number ? ((Number) req.get("durationMonths")).intValue() : 1;
         String preferredLanguage = (String) req.getOrDefault("preferredLanguage", "english");
 
         List<String> knownTopics = req.get("knownTopics") instanceof List ? (List<String>) req.get("knownTopics") : List.of("Arrays", "Strings");
-        List<String> targetTopics = req.get("targetTopics") instanceof List ? (List<String>) req.get("targetTopics") : List.of("Queues", "Binary Trees", "DBMS", "Operating Systems");
+        List<String> targetTopics = req.get("targetTopics") instanceof List ? (List<String>) req.get("targetTopics") : (researchReport.diagnosticTopics != null && !researchReport.diagnosticTopics.isEmpty() ? researchReport.diagnosticTopics : List.of("Queues", "Binary Trees", "DBMS", "Operating Systems"));
 
         UUID planId = UUID.randomUUID();
         int version = 1;
@@ -920,11 +927,8 @@ public class AiService {
         } catch (Exception ignored) {
         }
 
-        String companyLabel = customCompanyName != null && !customCompanyName.isBlank()
-                ? customCompanyName.trim()
-                : (companyKey.equalsIgnoreCase("custom") ? "Target Company" : companyKey.toUpperCase());
         String title = targetRole + ": " + companyLabel + " Target Track";
-        String coachLine = "Targeted " + durationMonths + "-month plan for " + targetRole + " at " + companyLabel + " with " + timePerDay + " mins daily discipline.";
+        String coachLine = "Targeted " + durationMonths + "-month plan for " + targetRole + " at " + companyLabel + " (" + seniority + "). Complete baseline diagnostic to calibrate.";
 
         List<Map<String, Object>> roadmap = null;
         List<Map<String, Object>> tasks = null;
@@ -1115,6 +1119,13 @@ public class AiService {
             );
         }
 
+        AssessmentSession baselineSession = null;
+        try {
+            baselineSession = assessmentService.generateBaselineAssessment(user, planId, researchReport, req);
+        } catch (Exception ex) {
+            System.err.println("[AiService] Warning generating baseline assessment: " + ex.getMessage());
+        }
+
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("title", title);
         metadata.put("autoTitle", title);
@@ -1123,9 +1134,22 @@ public class AiService {
         metadata.put("companyKey", companyKey);
         metadata.put("companyName", companyLabel);
         metadata.put("customCompanyName", customCompanyName);
+        metadata.put("seniority", seniority);
+        metadata.put("location", location);
         metadata.put("timePerDay", timePerDay);
         metadata.put("durationMonths", durationMonths);
         metadata.put("preferredLanguage", preferredLanguage);
+        metadata.put("status", "assessment_pending");
+        metadata.put("researchReport", researchReport.toMap());
+        metadata.put("verifiedSourcesCount", researchReport.sources.size());
+        metadata.put("coreCompetencies", researchReport.coreCompetencies);
+        if (req.get("targetDeadline") != null) metadata.put("targetDeadline", req.get("targetDeadline"));
+        if (req.get("jobDescription") != null) metadata.put("jobDescription", req.get("jobDescription"));
+        if (req.get("jobPostingUrl") != null) metadata.put("jobPostingUrl", req.get("jobPostingUrl"));
+        if (baselineSession != null) {
+            metadata.put("pendingBaselineAssessmentId", baselineSession.getId().toString());
+            metadata.put("baselineStatus", "pending");
+        }
 
         // Deactivate previous plans for user
         jdbcTemplate.update("UPDATE prep_plans SET is_active = FALSE WHERE user_id = ?", user.getId());
@@ -1163,6 +1187,7 @@ public class AiService {
         created.put("targetRole", targetRole);
         created.put("version", version);
         created.put("isActive", true);
+        created.put("status", "assessment_pending");
         created.put("metadata", metadata);
         created.put("title", title);
         created.put("autoTitle", title);
@@ -1170,10 +1195,164 @@ public class AiService {
         created.put("companyKey", companyKey);
         created.put("companyName", companyLabel);
         created.put("customCompanyName", customCompanyName);
+        created.put("seniority", seniority);
+        created.put("location", location);
         created.put("preferredLanguage", preferredLanguage);
+        created.put("researchReport", researchReport.toMap());
+        created.put("verifiedSourcesCount", researchReport.sources.size());
+        created.put("coreCompetencies", researchReport.coreCompetencies);
+        if (baselineSession != null) {
+            created.put("pendingBaselineAssessmentId", baselineSession.getId().toString());
+            created.put("baselineSession", baselineSession);
+        }
         created.put("createdAt", LocalDate.now().toString());
         created.put("updatedAt", LocalDate.now().toString());
         return created;
+    }
+
+    public Map<String, Object> finalizePlanAfterBaseline(
+            User user,
+            UUID planId,
+            UUID baselineSessionId,
+            Map<String, Double> topicScores,
+            List<String> weakSpots
+    ) {
+        List<Map<String, Object>> plans = jdbcTemplate.query(
+                "SELECT * FROM prep_plans WHERE id = ? AND user_id = ?",
+                (rs, rowNum) -> mapRowToPrepPlan(rs),
+                planId, user.getId()
+        );
+        if (plans.isEmpty()) {
+            return getLatestPrepPlan(user);
+        }
+        Map<String, Object> plan = plans.get(0);
+        Map<String, Object> metadata = (Map<String, Object>) plan.getOrDefault("metadata", new LinkedHashMap<>());
+
+        List<String> confirmedWeak = new ArrayList<>(weakSpots);
+        List<String> confirmedStrong = new ArrayList<>();
+        if (topicScores != null) {
+            for (Map.Entry<String, Double> entry : topicScores.entrySet()) {
+                if (entry.getValue() < 60.0 && !confirmedWeak.contains(entry.getKey())) {
+                    confirmedWeak.add(entry.getKey());
+                } else if (entry.getValue() >= 80.0) {
+                    confirmedStrong.add(entry.getKey());
+                }
+            }
+        }
+
+        try {
+            if (!confirmedWeak.isEmpty()) {
+                String weakJson = JsonUtil.toJson(confirmedWeak);
+                jdbcTemplate.update("UPDATE users SET weak_areas = ?::jsonb, updated_at = NOW() WHERE id = ?", weakJson, user.getId());
+                user.setWeakAreas(confirmedWeak);
+            }
+        } catch (Exception ignored) {}
+
+        List<Map<String, Object>> currentRoadmap = (List<Map<String, Object>>) plan.get("roadmap");
+        List<Map<String, Object>> calibratedRoadmap = new ArrayList<>();
+        if (currentRoadmap != null) {
+            int weekNum = 1;
+            for (Map<String, Object> w : currentRoadmap) {
+                Map<String, Object> wCopy = new LinkedHashMap<>(w);
+                if (weekNum == 1 && !confirmedWeak.isEmpty()) {
+                    wCopy.put("title", "Remediation & Core Foundation: " + String.join(", ", confirmedWeak));
+                    wCopy.put("theme", "Remediation & Core Foundation: " + String.join(", ", confirmedWeak));
+                    wCopy.put("focusTopics", confirmedWeak);
+                    wCopy.put("topics", confirmedWeak);
+                    wCopy.put("goal", "Remediate diagnostic weak areas (" + String.join(", ", confirmedWeak) + ") with high-frequency targeted drills.");
+                } else if (weekNum == 2 && confirmedWeak.size() > 1) {
+                    List<String> secondaryWeak = confirmedWeak.subList(1, confirmedWeak.size());
+                    wCopy.put("focusTopics", secondaryWeak);
+                }
+                calibratedRoadmap.add(wCopy);
+                weekNum++;
+            }
+        }
+
+        String companyName = (String) metadata.getOrDefault("companyName", "Target Company");
+        String targetRole = (String) plan.getOrDefault("targetRole", "SDE");
+        int timePerDay = plan.get("timePerDay") instanceof Number ? ((Number) plan.get("timePerDay")).intValue() : 120;
+
+        List<Task> generatedTasks = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+
+        String focusTopic1 = !confirmedWeak.isEmpty() ? confirmedWeak.get(0) : "Dynamic Programming";
+        Task t1 = new Task();
+        t1.setUserId(user.getId());
+        t1.setTitle(focusTopic1 + " Core Patterns & Optimal Substructure");
+        t1.setDescription("Diagnostic highlighted immediate focus on " + focusTopic1 + ". Drill foundational invariants and verify boundary edge cases.");
+        t1.setCategory("DSA");
+        t1.setSubcategory(focusTopic1);
+        t1.setPriority("high");
+        t1.setIntensity("high");
+        t1.setDifficulty(3);
+        t1.setEstimatedMinutes(Math.min(50, timePerDay / 2));
+        t1.setScheduledFor(today);
+        t1.setAiGenerated(true);
+        t1.setReferenceLabel("Coding Lab: " + focusTopic1);
+        t1.setReferenceUrl("/coding-lab?problem=" + URLEncoder.encode(focusTopic1 + " Diagnostic Drill", StandardCharsets.UTF_8));
+        Map<String, Object> t1Meta = new LinkedHashMap<>();
+        t1Meta.put("whyMattersForRole", "Crucial for " + targetRole + " interviews at " + companyName + " to demonstrate optimal space-time trade-offs.");
+        t1Meta.put("whyAssignedToYou", "Assigned based on your baseline diagnostic assessment where " + focusTopic1 + " scored below target benchmark (" + (topicScores != null && topicScores.containsKey(focusTopic1) ? topicScores.get(focusTopic1) + "%" : "diagnostic gap") + ").");
+        t1Meta.put("planId", planId.toString());
+        t1.setMetadata(t1Meta);
+        generatedTasks.add(t1);
+
+        String focusTopic2 = confirmedWeak.size() > 1 ? confirmedWeak.get(1) : "DBMS & System Concurrency";
+        Task t2 = new Task();
+        t2.setUserId(user.getId());
+        t2.setTitle(focusTopic2 + " Mechanics & Production Patterns");
+        t2.setDescription("Review query execution plans, transaction isolation anomalies, and index access for " + focusTopic2 + ".");
+        t2.setCategory("Core CS");
+        t2.setSubcategory(focusTopic2);
+        t2.setPriority("medium");
+        t2.setIntensity("medium");
+        t2.setDifficulty(3);
+        t2.setEstimatedMinutes(Math.min(40, timePerDay / 3));
+        t2.setScheduledFor(today);
+        t2.setAiGenerated(true);
+        t2.setReferenceLabel(focusTopic2 + " Reference");
+        t2.setReferenceUrl("https://geeksforgeeks.org");
+        Map<String, Object> t2Meta = new LinkedHashMap<>();
+        t2Meta.put("whyMattersForRole", "Consistently tested in technical screenings for " + targetRole + " roles at " + companyName + ".");
+        t2Meta.put("whyAssignedToYou", "Calibrated to your skill assessment to eliminate knowledge blind spots before technical interview rounds.");
+        t2Meta.put("planId", planId.toString());
+        t2.setMetadata(t2Meta);
+        generatedTasks.add(t2);
+
+        // Preserve all existing tasks; only create calibrated tasks if today's pending count is low
+        try {
+            long existingPendingToday = taskRepository.listTasks(user.getId(), "today", "pending", null, null).size();
+            if (existingPendingToday < 2) {
+                for (Task gt : generatedTasks) {
+                    taskRepository.createTask(gt);
+                }
+            }
+        } catch (Exception ex) {
+            System.err.println("[AiService] Error saving calibrated tasks: " + ex.getMessage());
+        }
+
+        metadata.put("status", "plan_ready");
+        metadata.put("baselineCompletedAt", Instant.now().toString());
+        metadata.put("baselineScore", topicScores != null ? topicScores.values().stream().mapToDouble(Double::doubleValue).average().orElse(70.0) : 70.0);
+        metadata.put("topicScores", topicScores);
+        metadata.put("confirmedWeakSpots", confirmedWeak);
+        metadata.put("confirmedStrongSpots", confirmedStrong);
+        metadata.put("coachLine", "Personalized roadmap calibrated to your baseline diagnostic. Priority focus on " + String.join(", ", confirmedWeak) + ".");
+
+        jdbcTemplate.update(
+                "UPDATE prep_plans SET roadmap = ?::jsonb, metadata = ?::jsonb, updated_at = NOW() WHERE id = ? AND user_id = ?",
+                JsonUtil.toJson(calibratedRoadmap),
+                JsonUtil.toJson(metadata),
+                planId,
+                user.getId()
+        );
+
+        plan.put("roadmap", calibratedRoadmap);
+        plan.put("metadata", metadata);
+        plan.put("coachLine", metadata.get("coachLine"));
+        plan.put("status", "plan_ready");
+        return plan;
     }
 
     private Map<String, Object> mapRowToPrepPlan(ResultSet rs) throws SQLException {
@@ -1232,6 +1411,16 @@ public class AiService {
         plan.put("companyName", metadata.get("companyName"));
         plan.put("customCompanyName", metadata.get("customCompanyName"));
         plan.put("preferredLanguage", metadata.get("preferredLanguage"));
+        plan.put("status", metadata.getOrDefault("status", "plan_ready"));
+        plan.put("researchReport", metadata.get("researchReport"));
+        plan.put("pendingBaselineAssessmentId", metadata.get("pendingBaselineAssessmentId"));
+        plan.put("coreCompetencies", metadata.get("coreCompetencies"));
+        plan.put("targetDeadline", metadata.get("targetDeadline"));
+        plan.put("seniority", metadata.get("seniority"));
+        plan.put("location", metadata.get("location"));
+        plan.put("verifiedSourcesCount", metadata.get("verifiedSourcesCount"));
+        plan.put("topicScores", metadata.get("topicScores"));
+        plan.put("confirmedWeakSpots", metadata.get("confirmedWeakSpots"));
         plan.put("createdAt", rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toInstant().toString() : "");
         plan.put("updatedAt", rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toInstant().toString() : "");
         return plan;

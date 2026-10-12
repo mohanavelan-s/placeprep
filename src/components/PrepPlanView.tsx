@@ -31,6 +31,87 @@ export default function PrepPlanView({ plan }: PrepPlanViewProps) {
         </p>
       </div>
 
+      {(plan.status === "assessment_pending" || plan.metadata?.status === "assessment_pending") && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 md:p-7">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/20 px-3 py-1 text-xs font-semibold text-amber-400">
+                <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                Baseline Diagnostic Assessment Pending
+              </div>
+              <h4 className="mt-2.5 font-heading text-2xl text-foreground">
+                Calibrate Your Roadmap With A 20-Min Diagnostic
+              </h4>
+              <p className="mt-1 text-sm text-muted-foreground max-w-2xl leading-relaxed">
+                This curriculum was synthesized using verified company guides and role benchmarks. Complete the 20-minute diagnostic assessment to identify your personal weak spots, adjust topic pacing, and lock in high-yield daily tasks.
+              </p>
+            </div>
+            <Link
+              to="/assessments"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-sm font-bold text-black transition hover:bg-amber-400 shrink-0"
+            >
+              Take Baseline Diagnostic
+              <ArrowUpRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {Boolean(plan.researchReport?.sources?.length) && (
+        <section className="surface-panel p-6 md:p-7">
+          <div className="mb-5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <BookOpen className="h-5 w-5 text-primary" />
+              <div>
+                <p className="section-label">Evidence-Based Research</p>
+                <h3 className="mt-1 font-heading text-2xl text-foreground">Verified Interview Sources</h3>
+              </div>
+            </div>
+            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+              {plan.researchReport?.sources?.length || 0} sources verified
+            </span>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            {plan.researchReport?.sources?.map((src, i) => (
+              <div key={i} className="rounded-xl border border-border/70 bg-card/60 p-4 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {src.organization || "Official"}
+                    </span>
+                    <span className="rounded bg-secondary/30 px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">
+                      {src.confidence}
+                    </span>
+                  </div>
+                  <h5 className="mt-1.5 text-sm font-medium text-foreground">{src.title}</h5>
+                  {src.supportedClaims?.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {src.supportedClaims.slice(0, 3).map((claim, ci) => (
+                        <span key={ci} className="rounded bg-background/80 px-2 py-0.5 text-[11px] text-muted-foreground">
+                          {claim}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {src.url && src.url.startsWith("http") && (
+                  <a
+                    href={src.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    View official source
+                    <ArrowUpRight className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="surface-panel p-6 md:p-7">
         <div className="mb-5 flex items-center gap-3">
           <CalendarDays className="h-5 w-5 text-primary" />

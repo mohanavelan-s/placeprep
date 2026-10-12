@@ -28,6 +28,12 @@ public class AssessmentController {
         return ResponseEntity.ok(Map.of("success", true, "data", overview));
     }
 
+    @GetMapping("/pending-baseline")
+    public ResponseEntity<Map<String, Object>> getPendingBaseline(@CurrentUser User user) {
+        Map<String, Object> pending = assessmentService.getPendingBaseline(user);
+        return ResponseEntity.ok(Map.of("success", true, "data", pending != null ? pending : Map.of("hasPending", false)));
+    }
+
     @PostMapping("/generate")
     public ResponseEntity<Map<String, Object>> generateAssessment(
             @CurrentUser User user,

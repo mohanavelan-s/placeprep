@@ -4,6 +4,7 @@ import com.placeprep.exception.AppException;
 import com.placeprep.model.AssessmentSession;
 import com.placeprep.model.User;
 import com.placeprep.repository.AssessmentRepository;
+import com.placeprep.service.RoleResearchService.ResearchReport;
 import com.placeprep.util.JsonUtil;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -68,8 +69,11 @@ public class AssessmentService {
                 .findFirst()
                 .orElse(sessions.isEmpty() ? null : sessions.get(0));
 
+        Map<String, Object> pendingBaseline = getPendingBaseline(user);
+
         Map<String, Object> overview = new LinkedHashMap<>();
         overview.put("activePlan", activePlanSummary);
+        overview.put("pendingBaseline", pendingBaseline);
         overview.put("currentSession", currentSession);
         overview.put("recentSessions", sessions);
         overview.put("recentAssessments", sessions);
@@ -79,6 +83,70 @@ public class AssessmentService {
         overview.put("identifiedWeakSpots", new ArrayList<>(weakSpots));
 
         return overview;
+    }
+
+    public Map<String, Object> getPendingBaseline(User user) {
+        // 1. Check existing sessions for an uncompleted baseline
+        List<AssessmentSession> sessions = assessmentRepository.listByUser(user.getId(), 20);
+        for (AssessmentSession s : sessions) {
+            Map<String, Object> meta = s.getMetadata();
+            if (meta != null && (Boolean.TRUE.equals(meta.get("isBaseline")) || "baseline".equalsIgnoreCase(String.valueOf(meta.get("assessmentScope"))))) {
+                if (!"completed".equalsIgnoreCase(s.getStatus())) {
+                    Map<String, Object> res = new LinkedHashMap<>();
+                    res.put("hasPending", true);
+                    res.put("session", s);
+                    res.put("id", s.getId().toString());
+                    res.put("planId", s.getPlanId() != null ? s.getPlanId().toString() : null);
+                    res.put("targetRole", meta.getOrDefault("targetRole", "SDE"));
+                    res.put("companyName", meta.getOrDefault("companyName", "Target Company"));
+                    res.put("seniority", meta.getOrDefault("seniority", "Mid-Level"));
+                    res.put("diagnosticTopics", meta.get("diagnosticTopics"));
+                    res.put("startedAt", s.getStartedAt() != null ? s.getStartedAt().toString() : null);
+                    return res;
+                }
+            }
+        }
+
+        // 2. Check active plan if status is assessment_pending
+        try {
+            List<Map<String, Object>> plans = jdbcTemplate.query(
+                    "SELECT id, target_role, metadata FROM prep_plans WHERE user_id = ? AND is_active = TRUE ORDER BY created_at DESC LIMIT 1",
+                    (rs, rowNum) -> {
+                        Map<String, Object> m = JsonUtil.toMap(rs.getString("metadata"));
+                        return Map.of("id", rs.getObject("id"), "role", rs.getString("target_role"), "meta", m);
+                    },
+                    user.getId()
+            );
+            if (!plans.isEmpty()) {
+                Map<String, Object> p = plans.get(0);
+                Map<String, Object> meta = (Map<String, Object>) p.get("meta");
+                String status = (String) meta.get("status");
+                String pendingId = (String) meta.get("pendingBaselineAssessmentId");
+                if ("assessment_pending".equalsIgnoreCase(status) && pendingId != null) {
+                    try {
+                        Optional<AssessmentSession> opt = assessmentRepository.findById(UUID.fromString(pendingId), user.getId());
+                        if (opt.isPresent() && !"completed".equalsIgnoreCase(opt.get().getStatus())) {
+                            AssessmentSession s = opt.get();
+                            Map<String, Object> res = new LinkedHashMap<>();
+                            res.put("hasPending", true);
+                            res.put("session", s);
+                            res.put("id", s.getId().toString());
+                            res.put("planId", p.get("id").toString());
+                            res.put("targetRole", p.get("role"));
+                            res.put("companyName", meta.getOrDefault("companyName", "Target Company"));
+                            res.put("seniority", meta.getOrDefault("seniority", "Mid-Level"));
+                            res.put("diagnosticTopics", meta.get("diagnosticTopics"));
+                            res.put("startedAt", s.getStartedAt() != null ? s.getStartedAt().toString() : null);
+                            return res;
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception ignored) {}
+
+        Map<String, Object> empty = new LinkedHashMap<>();
+        empty.put("hasPending", false);
+        return empty;
     }
 
     public Map<String, Object> generateAssessment(User user, Map<String, Object> payload) {
@@ -293,7 +361,6 @@ public class AssessmentService {
         recommendedPlan.put("sourceAssessmentId", assessmentId.toString());
         recommendedPlan.put("assessmentScore", overallScore);
         recommendedPlan.put("previousReadinessScore", currentReadiness);
-        recommendedPlan.put("newReadinessScore", newReadiness);
         recommendedPlan.put("focusShift", detectedWeakSpots.isEmpty()
                 ? "Accelerated Polish Track"
                 : "Targeted Remediation on " + String.join(", ", detectedWeakSpots));
@@ -302,10 +369,51 @@ public class AssessmentService {
                 : String.format("Assessment highlighted gaps in %s. We recommend adapting your daily tasks to include high-yield reinforcement problems for these topics.", String.join(", ", detectedWeakSpots)));
         recommendedPlan.put("recommendedTopics", detectedWeakSpots.isEmpty() ? List.of("Dynamic Programming", "System Design", "Trie") : detectedWeakSpots);
 
+        // If baseline assessment, calculate per-topic diagnostic scores and finalize prep plan
+        boolean isBaseline = session.getMetadata() != null &&
+                (Boolean.TRUE.equals(session.getMetadata().get("isBaseline")) || "baseline".equalsIgnoreCase(String.valueOf(session.getMetadata().get("assessmentScope"))));
+
+        Map<String, Double> topicScores = new LinkedHashMap<>();
+        Map<String, Integer> topicTotal = new LinkedHashMap<>();
+        Map<String, Integer> topicCorrect = new LinkedHashMap<>();
+
+        for (Map<String, Object> qr : questionResults) {
+            String topic = (String) qr.get("topic");
+            if (topic != null) {
+                topicTotal.put(topic, topicTotal.getOrDefault(topic, 0) + 1);
+                if (Boolean.TRUE.equals(qr.get("correct"))) {
+                    topicCorrect.put(topic, topicCorrect.getOrDefault(topic, 0) + 1);
+                }
+            }
+        }
+        for (String t : topicTotal.keySet()) {
+            int tot = topicTotal.get(t);
+            int cor = topicCorrect.getOrDefault(t, 0);
+            topicScores.put(t, Math.round(((double) cor / tot) * 100.0 * 10.0) / 10.0);
+        }
+
         Map<String, Object> meta = session.getMetadata() != null ? new HashMap<>(session.getMetadata()) : new HashMap<>();
         meta.put("recommendedPlan", recommendedPlan);
         meta.put("newReadinessScore", newReadiness);
         meta.put("readinessDelta", readinessDelta);
+        meta.put("topicScores", topicScores);
+        meta.put("isBaseline", isBaseline);
+
+        if (isBaseline && session.getPlanId() != null) {
+            try {
+                aiService.finalizePlanAfterBaseline(
+                        user,
+                        session.getPlanId(),
+                        session.getId(),
+                        topicScores,
+                        detectedWeakSpots
+                );
+                meta.put("calibratedPlanId", session.getPlanId().toString());
+                meta.put("calibratedPlanStatus", "plan_ready");
+            } catch (Exception ex) {
+                System.err.println("[AssessmentService] finalizePlanAfterBaseline failed: " + ex.getMessage());
+            }
+        }
         session.setMetadata(meta);
 
         return assessmentRepository.updateSession(assessmentId, user.getId(), session)
@@ -597,5 +705,255 @@ public class AssessmentService {
             deleted = assessmentRepository.deleteAllByUser(user.getId());
         }
         return Map.of("success", true, "deletedCount", deleted);
+    }
+
+    public AssessmentSession generateBaselineAssessment(User user, UUID planId, ResearchReport report, Map<String, Object> targetContext) {
+        List<Map<String, Object>> questions = buildBaselineQuestions(report);
+
+        AssessmentSession session = new AssessmentSession();
+        session.setUserId(user.getId());
+        session.setPlanId(planId);
+        session.setAssessmentType("mcq");
+        session.setDurationMinutes(20);
+        session.setStatus("started");
+        session.setQuestions(questions);
+        session.setStartedAt(OffsetDateTime.now());
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("isBaseline", true);
+        metadata.put("assessmentScope", "baseline");
+        metadata.put("targetRole", report.targetRole);
+        metadata.put("companyName", report.companyName);
+        metadata.put("seniority", report.seniority);
+        metadata.put("diagnosticTopics", report.diagnosticTopics);
+        metadata.put("planId", planId.toString());
+        session.setMetadata(metadata);
+
+        return assessmentRepository.createSession(session);
+    }
+
+    private List<Map<String, Object>> buildBaselineQuestions(ResearchReport report) {
+        List<Map<String, Object>> questions = new ArrayList<>();
+        String roleLower = report.targetRole != null ? report.targetRole.toLowerCase() : "";
+        boolean isDataRole = roleLower.contains("data") || roleLower.contains("analyst") || roleLower.contains("sql");
+        boolean isFrontendRole = roleLower.contains("front") || roleLower.contains("react") || roleLower.contains("ui");
+
+        // Q1: Arrays & Invariants (DSA)
+        questions.add(Map.of(
+                "id", "diag_q1",
+                "type", "mcq",
+                "topic", "Arrays & Two Pointers",
+                "prompt", "You are given a sorted integer array and must find two numbers that sum to a target. What is the tightest time and space complexity possible?",
+                "question", "You are given a sorted integer array and must find two numbers that sum to a target. What is the tightest time and space complexity possible?",
+                "options", List.of(
+                        "A. O(N log N) time and O(N) space via sorting and hashing",
+                        "B. O(N) time and O(1) auxiliary space using two converging pointers",
+                        "C. O(N^2) time and O(1) space with nested loops",
+                        "D. O(log N) time and O(N) space via segment trees"
+                ),
+                "choices", List.of(
+                        Map.of("id", "a", "label", "A", "text", "O(N log N) time and O(N) space via sorting and hashing"),
+                        Map.of("id", "b", "label", "B", "text", "O(N) time and O(1) auxiliary space using two converging pointers"),
+                        Map.of("id", "c", "label", "C", "text", "O(N^2) time and O(1) space with nested loops"),
+                        Map.of("id", "d", "label", "D", "text", "O(log N) time and O(N) space via segment trees")
+                ),
+                "correctAnswer", "b",
+                "averageTimeMinutes", 2,
+                "difficulty", "easy"
+        ));
+
+        // Q2: Dynamic Programming (DSA)
+        questions.add(Map.of(
+                "id", "diag_q2",
+                "type", "mcq",
+                "topic", "Dynamic Programming",
+                "prompt", "In the 0/1 Knapsack problem with N items and maximum capacity W, what state recurrence allows reducing auxiliary space from O(N*W) to O(W)?",
+                "question", "In the 0/1 Knapsack problem with N items and maximum capacity W, what state recurrence allows reducing auxiliary space from O(N*W) to O(W)?",
+                "options", List.of(
+                        "A. Iterate capacity W backwards (from W down to weight[i]) using a 1D DP array",
+                        "B. Iterate capacity W forward (from 0 up to W) using a 1D DP array",
+                        "C. Greedily pick the highest value-to-weight ratio item without memoization",
+                        "D. Sort items by weight in O(N log N) and use binary search"
+                ),
+                "choices", List.of(
+                        Map.of("id", "a", "label", "A", "text", "Iterate capacity W backwards (from W down to weight[i]) using a 1D DP array"),
+                        Map.of("id", "b", "label", "B", "text", "Iterate capacity W forward (from 0 up to W) using a 1D DP array"),
+                        Map.of("id", "c", "label", "C", "text", "Greedily pick the highest value-to-weight ratio item without memoization"),
+                        Map.of("id", "d", "label", "D", "text", "Sort items by weight in O(N log N) and use binary search")
+                ),
+                "correctAnswer", "a",
+                "averageTimeMinutes", 3,
+                "difficulty", "medium"
+        ));
+
+        // Q3: Trees & Graphs (DSA)
+        questions.add(Map.of(
+                "id", "diag_q3",
+                "type", "mcq",
+                "topic", "Trees & Graphs",
+                "prompt", "When detecting cycles in a directed graph using Depth-First Search (DFS), what node coloring or state indicates a back-edge (cycle)?",
+                "question", "When detecting cycles in a directed graph using Depth-First Search (DFS), what node coloring or state indicates a back-edge (cycle)?",
+                "options", List.of(
+                        "A. Encountering an unvisited node (WHITE)",
+                        "B. Encountering a node currently on the active recursion stack (GRAY / In-Progress)",
+                        "C. Encountering a node whose subtree is completely processed (BLACK / Visited)",
+                        "D. Calculating tree diameter with double BFS"
+                ),
+                "choices", List.of(
+                        Map.of("id", "a", "label", "A", "text", "Encountering an unvisited node (WHITE)"),
+                        Map.of("id", "b", "label", "B", "text", "Encountering a node currently on the active recursion stack (GRAY / In-Progress)"),
+                        Map.of("id", "c", "label", "C", "text", "Encountering a node whose subtree is completely processed (BLACK / Visited)"),
+                        Map.of("id", "d", "label", "D", "text", "Calculating tree diameter with double BFS")
+                ),
+                "correctAnswer", "b",
+                "averageTimeMinutes", 3,
+                "difficulty", "medium"
+        ));
+
+        // Q4: DBMS & SQL (Core CS)
+        questions.add(Map.of(
+                "id", "diag_q4",
+                "type", "mcq",
+                "topic", "DBMS & SQL",
+                "prompt", "In relational database engines, what anomaly is strictly prevented under Repeatable Read isolation that is allowed under Read Committed?",
+                "question", "In relational database engines, what anomaly is strictly prevented under Repeatable Read isolation that is allowed under Read Committed?",
+                "options", List.of(
+                        "A. Dirty Read only",
+                        "B. Non-repeatable (fuzzy) read where re-reading a row in the same transaction sees modified committed values",
+                        "C. Write skew in distributed two-phase commits",
+                        "D. Cascading rollbacks in unlogged tables"
+                ),
+                "choices", List.of(
+                        Map.of("id", "a", "label", "A", "text", "Dirty Read only"),
+                        Map.of("id", "b", "label", "B", "text", "Non-repeatable (fuzzy) read where re-reading a row in the same transaction sees modified committed values"),
+                        Map.of("id", "c", "label", "C", "text", "Write skew in distributed two-phase commits"),
+                        Map.of("id", "d", "label", "D", "text", "Cascading rollbacks in unlogged tables")
+                ),
+                "correctAnswer", "b",
+                "averageTimeMinutes", 2,
+                "difficulty", "medium"
+        ));
+
+        // Q5: Operating Systems & Concurrency (Core CS)
+        questions.add(Map.of(
+                "id", "diag_q5",
+                "type", "mcq",
+                "topic", "Operating Systems & Concurrency",
+                "prompt", "Which of the following is NOT one of Coffman's four necessary conditions for a deadlock to occur?",
+                "question", "Which of the following is NOT one of Coffman's four necessary conditions for a deadlock to occur?",
+                "options", List.of(
+                        "A. Mutual Exclusion",
+                        "B. Hold and Wait",
+                        "C. Preemption allowed by kernel priority scheduler",
+                        "D. Circular Wait"
+                ),
+                "choices", List.of(
+                        Map.of("id", "a", "label", "A", "text", "Mutual Exclusion"),
+                        Map.of("id", "b", "label", "B", "text", "Hold and Wait"),
+                        Map.of("id", "c", "label", "C", "text", "Preemption allowed by kernel priority scheduler"),
+                        Map.of("id", "d", "label", "D", "text", "Circular Wait")
+                ),
+                "correctAnswer", "c",
+                "averageTimeMinutes", 2,
+                "difficulty", "easy"
+        ));
+
+        // Q6: Role-specific diagnostic
+        if (isDataRole) {
+            questions.add(Map.of(
+                    "id", "diag_q6",
+                    "type", "mcq",
+                    "topic", "Database SQL & Analytics",
+                    "prompt", "In SQL analytics, how does DENSE_RANK() differ from RANK() when two rows share identical sorting values?",
+                    "question", "In SQL analytics, how does DENSE_RANK() differ from RANK() when two rows share identical sorting values?",
+                    "options", List.of(
+                            "A. DENSE_RANK leaves gaps in sequence numbering (1, 1, 3); RANK does not (1, 1, 2)",
+                            "B. DENSE_RANK assigns consecutive rank values without gaps (1, 1, 2); RANK skips subsequent ranks (1, 1, 3)",
+                            "C. DENSE_RANK requires an explicit RANGE BETWEEN window frame",
+                            "D. DENSE_RANK can only be used with COUNT aggregations"
+                    ),
+                    "choices", List.of(
+                            Map.of("id", "a", "label", "A", "text", "DENSE_RANK leaves gaps in sequence numbering (1, 1, 3); RANK does not (1, 1, 2)"),
+                            Map.of("id", "b", "label", "B", "text", "DENSE_RANK assigns consecutive rank values without gaps (1, 1, 2); RANK skips subsequent ranks (1, 1, 3)"),
+                            Map.of("id", "c", "label", "C", "text", "DENSE_RANK requires an explicit RANGE BETWEEN window frame"),
+                            Map.of("id", "d", "label", "D", "text", "DENSE_RANK can only be used with COUNT aggregations")
+                    ),
+                    "correctAnswer", "b",
+                    "averageTimeMinutes", 2,
+                    "difficulty", "medium"
+            ));
+        } else if (isFrontendRole) {
+            questions.add(Map.of(
+                    "id", "diag_q6",
+                    "type", "mcq",
+                    "topic", "Frontend Architecture & Web Vitals",
+                    "prompt", "In the browser JavaScript event loop, which queue has strict priority and drains completely before the next macrotask (e.g. setTimeout) executes?",
+                    "question", "In the browser JavaScript event loop, which queue has strict priority and drains completely before the next macrotask (e.g. setTimeout) executes?",
+                    "options", List.of(
+                            "A. Microtask queue (Promises, queueMicrotask, MutationObserver)",
+                            "B. RequestAnimationFrame callback queue",
+                            "C. DOM I/O event listener queue",
+                            "D. Web Worker background message queue"
+                    ),
+                    "choices", List.of(
+                            Map.of("id", "a", "label", "A", "text", "Microtask queue (Promises, queueMicrotask, MutationObserver)"),
+                            Map.of("id", "b", "label", "B", "text", "RequestAnimationFrame callback queue"),
+                            Map.of("id", "c", "label", "C", "text", "DOM I/O event listener queue"),
+                            Map.of("id", "d", "label", "D", "text", "Web Worker background message queue")
+                    ),
+                    "correctAnswer", "a",
+                    "averageTimeMinutes", 2,
+                    "difficulty", "medium"
+            ));
+        } else {
+            questions.add(Map.of(
+                    "id", "diag_q6",
+                    "type", "mcq",
+                    "topic", "System Design & Architecture",
+                    "prompt", "In a distributed caching architecture under high read concurrency, how does the Cache-Aside pattern mitigate cache stampede upon key expiration?",
+                    "question", "In a distributed caching architecture under high read concurrency, how does the Cache-Aside pattern mitigate cache stampede upon key expiration?",
+                    "options", List.of(
+                            "A. Using probabilistic early expiration (XFetch) or distributed mutex locks around the database fetch",
+                            "B. Setting TTL to zero so all reads bypass the cache",
+                            "C. Writing all queries synchronously to disk before returning to client",
+                            "D. Replacing Redis with an unindexed relational view"
+                    ),
+                    "choices", List.of(
+                            Map.of("id", "a", "label", "A", "text", "Using probabilistic early expiration (XFetch) or distributed mutex locks around the database fetch"),
+                            Map.of("id", "b", "label", "B", "text", "Setting TTL to zero so all reads bypass the cache"),
+                            Map.of("id", "c", "label", "C", "text", "Writing all queries synchronously to disk before returning to client"),
+                            Map.of("id", "d", "label", "D", "text", "Replacing Redis with an unindexed relational view")
+                    ),
+                    "correctAnswer", "a",
+                    "averageTimeMinutes", 3,
+                    "difficulty", "medium"
+            ));
+        }
+
+        // Q7: Diagnostic Coding Invariant
+        questions.add(Map.of(
+                "id", "diag_q7",
+                "type", "mcq",
+                "topic", "Algorithmic Complexity & Edge Cases",
+                "prompt", "When implementing Monotonic Stack for 'Next Greater Element' on an array of size N, what is the amortized total number of push and pop operations across the entire algorithm?",
+                "question", "When implementing Monotonic Stack for 'Next Greater Element' on an array of size N, what is the amortized total number of push and pop operations across the entire algorithm?",
+                "options", List.of(
+                        "A. Exactly N^2 operations in the worst case",
+                        "B. At most 2N operations total, giving O(N) amortized linear time",
+                        "C. O(N log N) operations due to tree rebalancing",
+                        "D. O(N!) factorial transitions"
+                ),
+                "choices", List.of(
+                        Map.of("id", "a", "label", "A", "text", "Exactly N^2 operations in the worst case"),
+                        Map.of("id", "b", "label", "B", "text", "At most 2N operations total, giving O(N) amortized linear time"),
+                        Map.of("id", "c", "label", "C", "text", "O(N log N) operations due to tree rebalancing"),
+                        Map.of("id", "d", "label", "D", "text", "O(N!) factorial transitions")
+                ),
+                "correctAnswer", "b",
+                "averageTimeMinutes", 3,
+                "difficulty", "medium"
+        ));
+
+        return questions;
     }
 }

@@ -119,6 +119,10 @@ interface PlacePrepApi {
         @Path("id") id: String
     ): ApiEnvelope<Map<String, Any?>>
 
+    // --- Assessments Baseline Diagnostic ---
+    @GET("assessments/pending-baseline")
+    suspend fun getPendingBaseline(): ApiEnvelope<PendingBaselineSummary>
+
     // --- Coding Lab ---
     @GET("coding/languages")
     suspend fun getCodingLanguages(): ApiEnvelope<List<Map<String, Any?>>>
@@ -145,6 +149,12 @@ interface PlacePrepApi {
 
     @POST("notifications/test-push")
     suspend fun testPushNotification(): ApiEnvelope<Map<String, Any?>>
+
+    @POST("notifications/devices")
+    suspend fun registerDevice(@Body payload: DeviceRegistrationRequest): ApiEnvelope<Map<String, Any?>>
+
+    @DELETE("notifications/devices/{deviceToken}")
+    suspend fun unregisterDevice(@Path("deviceToken") deviceToken: String): ApiEnvelope<Map<String, Any?>>
 
     @GET("user-profile")
     suspend fun getUserProfile(): ApiEnvelope<UserProfileData>

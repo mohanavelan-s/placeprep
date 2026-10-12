@@ -434,6 +434,7 @@ export default function AssessmentsPage() {
   const [now, setNow] = useState(() => Date.now());
   const [missingPlanDialogOpen, setMissingPlanDialogOpen] = useState(false);
   const [planChoiceState, setPlanChoiceState] = useState<"pending" | "accepted" | "declined">("pending");
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   const overviewQuery = useQuery({
     queryKey: ["assessments", "overview"],
@@ -442,10 +443,18 @@ export default function AssessmentsPage() {
 
   useQueryErrorLogger("AssessmentsPage:overview", overviewQuery.error);
 
-  const currentSession = overviewQuery.data?.currentSession || null;
+  const pendingBaseline = overviewQuery.data?.pendingBaseline || null;
   const recentSessions = overviewQuery.data?.recentSessions || [];
   const activePlan = overviewQuery.data?.activePlan || null;
   const isBooting = overviewQuery.isPending && !overviewQuery.data;
+
+  const currentSession = useMemo(() => {
+    if (selectedSessionId) {
+      const found = recentSessions.find((s) => s.id === selectedSessionId);
+      if (found) return found;
+    }
+    return overviewQuery.data?.currentSession || null;
+  }, [selectedSessionId, recentSessions, overviewQuery.data?.currentSession]);
 
   useEffect(() => {
     if (overviewQuery.isPending) {
@@ -681,7 +690,61 @@ export default function AssessmentsPage() {
         />
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+      {pendingBaseline?.hasPending && (
+        <section className="relative overflow-hidden rounded-[1.5rem] border border-primary/40 bg-gradient-to-r from-primary/15 via-primary/5 to-card p-6 md:p-7 shadow-[0_0_35px_rgba(235,94,40,0.12)]">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/20 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Baseline Diagnostic Pending
+                </span>
+                <span className="rounded-full border border-border/80 bg-background/60 px-2.5 py-0.5 text-xs text-muted-foreground">
+                  {pendingBaseline.targetRole || activePlan?.targetRole || "Role"} • {pendingBaseline.companyName || "Target Company"}
+                </span>
+                <span className="rounded-full border border-border/80 bg-background/60 px-2.5 py-0.5 text-xs text-muted-foreground">
+                  {pendingBaseline.seniority || "Mid-Level"}
+                </span>
+                <span className="rounded-full border border-border/80 bg-background/60 px-2.5 py-0.5 text-xs text-muted-foreground">
+                  15–20 min • 7 questions
+                </span>
+              </div>
+              <h3 className="font-heading text-2xl text-foreground md:text-3xl">
+                Benchmark your readiness to finalize your preparation roadmap
+              </h3>
+              <p className="max-w-2xl text-sm leading-6 text-foreground/80">
+                Prep Architect generated this diagnostic assessment based on verified interview patterns for {pendingBaseline.targetRole || "your role"}. Your scores pinpoint exact weak spots and calibrate Weeks 1 &amp; 2 of your daily schedule without touching existing completed progress.
+              </p>
+            </div>
+
+            <div className="shrink-0 flex items-center gap-3">
+              {currentSession?.id === pendingBaseline.id && currentSession?.status !== "completed" ? (
+                <span className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/20 px-4 py-2.5 text-sm font-medium text-primary">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Diagnostic in progress below
+                </span>
+              ) : (
+                <Button
+                  type="button"
+                  className="h-11 gap-2 bg-primary px-5 font-semibold text-primary-foreground shadow-md transition hover:bg-primary/90"
+                  onClick={() => {
+                    if (pendingBaseline.id) {
+                      setSelectedSessionId(pendingBaseline.id);
+                    }
+                    const elem = document.getElementById("active-assessment-section");
+                    elem?.scrollIntoView({ behavior: "smooth" });
+                  }}
+                >
+                  <Brain className="h-4 w-4" />
+                  Take Diagnostic Assessment
+                </Button>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      <div id="active-assessment-section" className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
         <section className="surface-panel p-6 md:p-7">
           <div className="flex items-center gap-2 text-foreground">
             <Brain className="h-4 w-4 text-primary" />
@@ -782,18 +845,24 @@ export default function AssessmentsPage() {
             <>
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Current assessment</p>
+                  <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">
+                    {Boolean(currentSession.metadata?.isBaseline || currentSession.assessmentScope === "baseline")
+                      ? "Diagnostic Baseline Assessment"
+                      : "Current assessment"}
+                  </p>
                   <h3 className="mt-2 font-heading text-3xl text-foreground">
-                    {currentSession.assessmentType === "mcq"
-                      ? "MCQ sprint"
-                      : currentSession.assessmentType === "fill_blank"
-                        ? "Fill in the blanks"
-                        : currentSession.assessmentType === "ordering"
-                          ? "Ordering drill"
-                          : "Short programming"}
+                    {Boolean(currentSession.metadata?.isBaseline || currentSession.assessmentScope === "baseline")
+                      ? "Diagnostic Benchmark (Roadmap Calibration)"
+                      : currentSession.assessmentType === "mcq"
+                        ? "MCQ sprint"
+                        : currentSession.assessmentType === "fill_blank"
+                          ? "Fill in the blanks"
+                          : currentSession.assessmentType === "ordering"
+                            ? "Ordering drill"
+                            : "Short programming"}
                   </h3>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Started {formatDateTime(currentSession.startedAt)} / {currentSession.durationMinutes} total minutes / {currentSession.assessmentScope || "daily"} scope
+                    Started {formatDateTime(currentSession.startedAt)} / {currentSession.durationMinutes} total minutes / {Boolean(currentSession.metadata?.isBaseline || currentSession.assessmentScope === "baseline") ? "Diagnostic Baseline scope" : `${currentSession.assessmentScope || "daily"} scope`}
                   </p>
                 </div>
 
@@ -868,10 +937,21 @@ export default function AssessmentsPage() {
             <>
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Latest result</p>
-                  <h3 className="mt-2 font-heading text-3xl text-foreground">Assessment complete</h3>
+                  <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">
+                    {Boolean(currentSession.metadata?.isBaseline || currentSession.assessmentScope === "baseline")
+                      ? "Diagnostic Baseline Complete"
+                      : "Latest result"}
+                  </p>
+                  <h3 className="mt-2 font-heading text-3xl text-foreground">
+                    {Boolean(currentSession.metadata?.isBaseline || currentSession.assessmentScope === "baseline")
+                      ? "Roadmap Calibrated to Weak Spots"
+                      : "Assessment complete"}
+                  </h3>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     Submitted {formatDateTime(currentSession.submittedAt)}
+                    {Boolean(currentSession.metadata?.isBaseline || currentSession.assessmentScope === "baseline") && (
+                      <span className="ml-2 font-medium text-primary">• Roadmap calibrated</span>
+                    )}
                   </p>
                 </div>
 
@@ -911,6 +991,25 @@ export default function AssessmentsPage() {
                     ))}
                   </div>
                 </div>
+
+                {Boolean(currentSession.metadata?.topicScores) && (
+                  <div className="rounded-[1.15rem] border border-border/80 bg-background/45 p-4 md:col-span-2">
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Diagnostic Topic Mastery</p>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                      {Object.entries(currentSession.metadata?.topicScores as Record<string, { correct: number; total: number; pct: number }>).map(([topic, data]) => (
+                        <div key={topic} className="rounded-[1rem] border border-border/70 bg-card/60 p-3">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-medium text-foreground truncate">{topic}</span>
+                            <span className={`font-mono font-semibold ${Number(data.pct || 0) >= 70 ? "text-emerald-400" : Number(data.pct || 0) >= 40 ? "text-amber-400" : "text-rose-400"}`}>
+                              {data.pct}%
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[11px] text-muted-foreground">{data.correct} / {data.total} correct</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Adaptive Assessment & Plan Revision Engine (Student Authority) */}
                 {(() => {
@@ -1200,44 +1299,68 @@ export default function AssessmentsPage() {
           )}
         </div>
         <div className="mt-5 grid gap-3 xl:grid-cols-3">
-          {recentSessions.length ? recentSessions.map((session: AssessmentSession) => (
-            <article
-              key={session.id}
-              className="rounded-[1.15rem] border border-border/80 bg-card/60 p-4"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">
-                    {session.assessmentType.replace("_", " ")}
-                  </p>
-                  <p className="mt-2 text-base text-foreground">{formatDateTime(session.createdAt)}</p>
-                  <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                    {session.assessmentScope || "daily"} scope
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.16em] ${scoreTone(session.score)}`}>
-                    {session.status === "completed" ? `${Math.round(session.score)}%` : session.status}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => deleteAssessmentMutation.mutate(session.id)}
-                    disabled={deleteAssessmentMutation.isPending}
-                    className="rounded-lg p-1 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
-                    title="Delete assessment attempt"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
+          {recentSessions.length ? recentSessions.map((session: AssessmentSession) => {
+            const isBaseline = Boolean(session.metadata?.isBaseline || session.assessmentScope === "baseline");
+            const isSelected = currentSession?.id === session.id;
 
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                {session.weakSpots?.length
-                  ? `Weak spots: ${session.weakSpots.join(", ")}`
-                  : "No weak spots recorded yet for this session."}
-              </p>
-            </article>
-          )) : (
+            return (
+              <article
+                key={session.id}
+                onClick={() => {
+                  setSelectedSessionId(session.id);
+                  const elem = document.getElementById("active-assessment-section");
+                  elem?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className={`rounded-[1.15rem] border p-4 cursor-pointer transition ${
+                  isSelected
+                    ? "border-primary/50 bg-primary/10 shadow-[0_0_20px_rgba(235,94,40,0.12)]"
+                    : "border-border/80 bg-card/60 hover:border-border hover:bg-background/60"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm uppercase tracking-[0.16em] text-muted-foreground">
+                        {isBaseline ? "Diagnostic Baseline" : session.assessmentType.replace("_", " ")}
+                      </p>
+                      {isBaseline && (
+                        <span className="rounded-full border border-primary/30 bg-primary/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                          Baseline
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-2 text-base text-foreground">{formatDateTime(session.createdAt)}</p>
+                    <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                      {isBaseline ? "diagnostic scope" : `${session.assessmentScope || "daily"} scope`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.16em] ${scoreTone(session.score)}`}>
+                      {session.status === "completed" ? `${Math.round(session.score)}%` : session.status}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteAssessmentMutation.mutate(session.id);
+                      }}
+                      disabled={deleteAssessmentMutation.isPending}
+                      className="rounded-lg p-1 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+                      title="Delete assessment attempt"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  {session.weakSpots?.length
+                    ? `Weak spots: ${session.weakSpots.join(", ")}`
+                    : "No weak spots recorded yet for this session."}
+                </p>
+              </article>
+            );
+          }) : (
             <div className="xl:col-span-3 rounded-[1.15rem] border border-border/80 bg-card/60 px-4 py-4 text-sm text-muted-foreground">
               Once you submit assessments, the latest attempts will appear here with weak spots and the score trend.
             </div>
