@@ -156,34 +156,54 @@ public class NotificationService {
         // 3. Dispatch FCM Push to registered Android devices
         FcmService.FcmDeliveryResult fcmResult = fcmService.sendNotificationToUser(user.getId(), note);
 
+        int emailSentCount = emailResult.success() ? 1 : 0;
+        int emailFailedCount = (emailResult.attempted() && !emailResult.success()) ? 1 : 0;
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("success", true);
         result.put("notification", created != null ? created : Map.of());
         result.put("attempted", true);
-        result.put("sentCount", pushResult.sentCount());
-        result.put("failedCount", pushResult.failedCount());
-        result.put("reason", pushResult.sentCount() > 0 ? "sent" : (pushResult.attempted() ? "delivery_failed" : "no_subscriptions"));
+
+        // Web push metrics
         result.put("browserReady", webPushService.isConfigured());
         result.put("pushReady", webPushService.isConfigured());
+        result.put("pushSentCount", pushResult.sentCount());
+        result.put("pushFailedCount", pushResult.failedCount());
+        result.put("pushAttempted", pushResult.attempted());
+        result.put("pushReason", pushResult.sentCount() > 0 ? "sent" : (pushResult.attempted() ? "delivery_failed" : "no_subscriptions"));
+
+        // Email metrics (isolated and counted separately)
+        result.put("emailReady", emailService.isEmailConfigured());
         result.put("emailAttempted", emailResult.attempted());
         result.put("emailSent", emailResult.success());
+        result.put("emailSentCount", emailSentCount);
+        result.put("emailFailedCount", emailFailedCount);
         result.put("emailReason", emailResult.reason());
         result.put("emailError", emailResult.error());
-        result.put("emailReady", emailService.isEmailConfigured());
 
-        // FCM status
+        // FCM status (isolated and counted separately)
+        result.put("fcmReady", fcmService.isConfigured());
         result.put("fcmAttempted", fcmResult.attempted());
         result.put("fcmSentCount", fcmResult.sentCount());
         result.put("fcmFailedCount", fcmResult.failedCount());
         result.put("fcmReason", fcmResult.reason());
         result.put("fcmError", fcmResult.error());
-        result.put("fcmReady", fcmService.isConfigured());
+        result.put("fcmDiagnostics", fcmService.getDiagnostics());
+
+        // Aggregated metrics
+        result.put("sentCount", pushResult.sentCount() + fcmResult.sentCount() + emailSentCount);
+        result.put("failedCount", pushResult.failedCount() + fcmResult.failedCount() + emailFailedCount);
+        result.put("reason", (pushResult.sentCount() > 0 || fcmResult.sentCount() > 0 || emailResult.success())
+                ? "sent"
+                : (pushResult.attempted() || fcmResult.attempted() || emailResult.attempted() ? "delivery_failed" : "no_subscriptions"));
 
         Map<String, Object> dataPayload = new LinkedHashMap<>(result);
         result.put("data", dataPayload);
 
-        log.info("[notifications] Test push evaluated for user {}: fcmReady={}, fcmAttempted={}, fcmSent={}, fcmFailed={}, fcmReason={}",
-                user.getId(), fcmService.isConfigured(), fcmResult.attempted(), fcmResult.sentCount(), fcmResult.failedCount(), fcmResult.reason());
+        log.info("[notifications] Test push evaluated for user {}: fcmReady={}, fcmSent={}, fcmFailed={}, fcmReason={}, emailSent={}, emailFailed={}, emailReason={}, pushSent={}, pushFailed={}",
+                user.getId(), fcmService.isConfigured(), fcmResult.sentCount(), fcmResult.failedCount(), fcmResult.reason(),
+                emailSentCount, emailFailedCount, emailResult.reason(),
+                pushResult.sentCount(), pushResult.failedCount());
 
         return result;
     }

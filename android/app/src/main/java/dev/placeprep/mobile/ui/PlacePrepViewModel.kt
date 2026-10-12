@@ -836,7 +836,11 @@ class PlacePrepViewModel(
 
                     val feedbackMessage = when {
                         !fcmReady -> {
-                            "Test signal created. Remote FCM push pending server credentials in Railway."
+                            if (!fcmError.isNullOrBlank()) {
+                                "FCM issue: $fcmError"
+                            } else {
+                                "Test signal created. Remote FCM push pending server credentials in Railway."
+                            }
                         }
                         fcmReason == "user_disabled_notifications" -> {
                             "Test signal created. Push skipped because notifications are disabled in your profile."

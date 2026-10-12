@@ -144,11 +144,44 @@ public class FcmNotificationTest {
     }
 
     @Test
-    void testNotificationServiceTestPushIncludesFcmStatus() {
+    void testEmailMaskingDoesNotLeakFullEmail() {
+        assertEquals("null", FcmService.maskEmail(null));
+        assertEquals("***@test.com", FcmService.maskEmail("a@test.com"));
+        String adminEmail = "firebase-adminsdk-123@mvs1-10078.iam.gserviceaccount.com";
+        String masked = FcmService.maskEmail(adminEmail);
+        assertTrue(masked.startsWith("fir***@mvs1-10078"));
+        assertFalse(masked.contains("adminsdk-123"));
+    }
+
+    @Test
+    void testFcmDiagnosticsAvailable() {
+        Map<String, Object> diag = fcmService.getDiagnostics();
+        assertNotNull(diag);
+        assertTrue(diag.containsKey("configured"));
+        assertTrue(diag.containsKey("initializationStatus"));
+        assertTrue(diag.containsKey("projectId"));
+        assertTrue(diag.containsKey("detectedFormat"));
+    }
+
+    @Test
+    void testNotificationServiceTestPushSeparatesEmailAndFcmTelemetry() {
         Map<String, Object> testPushResult = notificationService.testPushNotification(testUser);
         assertNotNull(testPushResult);
         assertTrue(testPushResult.containsKey("fcmReady"));
         assertTrue(testPushResult.containsKey("fcmAttempted"));
         assertTrue(testPushResult.containsKey("fcmReason"));
+        assertTrue(testPushResult.containsKey("fcmSentCount"));
+        assertTrue(testPushResult.containsKey("fcmFailedCount"));
+        assertTrue(testPushResult.containsKey("emailSentCount"));
+        assertTrue(testPushResult.containsKey("emailFailedCount"));
+        assertTrue(testPushResult.containsKey("pushSentCount"));
+        assertTrue(testPushResult.containsKey("pushFailedCount"));
+        assertTrue(testPushResult.containsKey("fcmDiagnostics"));
+
+        // Verify counts are distinct numerical fields
+        assertTrue(testPushResult.get("fcmSentCount") instanceof Number);
+        assertTrue(testPushResult.get("fcmFailedCount") instanceof Number);
+        assertTrue(testPushResult.get("emailSentCount") instanceof Number);
+        assertTrue(testPushResult.get("emailFailedCount") instanceof Number);
     }
 }
