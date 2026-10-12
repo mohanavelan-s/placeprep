@@ -157,4 +157,33 @@ class MobileAppTests {
         assertEquals(1, overview.recentSessions.size)
         assertEquals(80.0, overview.recentSessions[0].score ?: 0.0, 0.01)
     }
+
+    @Test
+    fun testFcmTokenMasking() {
+        assertEquals("null", PlacePrepNotificationManager.maskToken(null))
+        assertEquals("***", PlacePrepNotificationManager.maskToken("abc"))
+        assertEquals("***", PlacePrepNotificationManager.maskToken("1234567890"))
+
+        val sampleFcmToken = "eX_9Z1K2L3M:APA91bFvO8d0E9r2_test_sample_fcm_token_xyz"
+        val masked = PlacePrepNotificationManager.maskToken(sampleFcmToken)
+        assertEquals("eX_9Z1..._xyz", masked)
+        assertFalse(masked.contains("APA91bFvO8d0E9r2_test_sample"))
+    }
+
+    @Test
+    fun testDeviceRegistrationSerialization() {
+        val req = dev.placeprep.mobile.data.DeviceRegistrationRequest(
+            deviceToken = "fcm_live_token_sample",
+            deviceType = "android",
+            appVersion = "2.0.0",
+            deviceModel = "Pixel 9 Pro",
+            osVersion = "15"
+        )
+        val json = gson.toJson(req)
+        assertTrue(json.contains("\"deviceToken\":\"fcm_live_token_sample\""))
+        assertTrue(json.contains("\"deviceType\":\"android\""))
+        assertTrue(json.contains("\"appVersion\":\"2.0.0\""))
+        assertTrue(json.contains("\"deviceModel\":\"Pixel 9 Pro\""))
+        assertTrue(json.contains("\"osVersion\":\"15\""))
+    }
 }

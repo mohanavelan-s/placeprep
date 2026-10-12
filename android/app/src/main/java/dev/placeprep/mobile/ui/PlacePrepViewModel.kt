@@ -90,8 +90,32 @@ class PlacePrepViewModel(
     private fun registerDeviceToken() {
         if (appContext != null) {
             viewModelScope.launch {
-                val token = PlacePrepNotificationManager.getOrGenerateDeviceToken(appContext)
-                runCatching { repository.registerDevice(token) }
+                // Register cached token immediately if available to prevent delay
+                val cached = PlacePrepNotificationManager.getCachedFcmToken(appContext)
+                if (!cached.isNullOrBlank()) {
+                    runCatching { repository.registerDevice(cached) }
+                }
+
+                // Retrieve live FCM token from Firebase client
+                try {
+                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                        .addOnCompleteListener { task ->
+                            if (task.isSuccessful && !task.result.isNullOrBlank()) {
+                                val freshToken = task.result
+                                PlacePrepNotificationManager.cacheFcmToken(appContext, freshToken)
+                                android.util.Log.i("PlacePrepFCM", "Fetched live FCM registration token: ${PlacePrepNotificationManager.maskToken(freshToken)}")
+                                viewModelScope.launch {
+                                    runCatching { repository.registerDevice(freshToken) }
+                                }
+                            } else {
+                                android.util.Log.w("PlacePrepFCM", "Failed to retrieve live FCM token: ${task.exception?.message}")
+                            }
+                        }
+                } catch (e: Exception) {
+                    android.util.Log.w("PlacePrepFCM", "FirebaseMessaging unavailable: ${e.message}")
+                    val fallback = PlacePrepNotificationManager.getOrGenerateDeviceToken(appContext)
+                    runCatching { repository.registerDevice(fallback) }
+                }
             }
         }
     }
@@ -854,6 +878,11 @@ class PlacePrepViewModel(
 
     fun logout() {
         viewModelScope.launch {
+            if (appContext != null) {
+                val token = PlacePrepNotificationManager.getCachedFcmToken(appContext)
+                    ?: PlacePrepNotificationManager.getOrGenerateDeviceToken(appContext)
+                runCatching { repository.unregisterDevice(token) }
+            }
             repository.logout()
             hasWelcomedInSession = false
             _uiState.value = PlacePrepUiState(

@@ -92,6 +92,11 @@ public class MobileDeviceRepository {
         return rows > 0;
     }
 
+    public boolean deleteByToken(String deviceToken) {
+        int rows = jdbcTemplate.update("DELETE FROM mobile_devices WHERE device_token = ?", deviceToken);
+        return rows > 0;
+    }
+
     public List<MobileDevice> listByUserId(UUID userId) {
         return jdbcTemplate.query(
                 "SELECT * FROM mobile_devices WHERE user_id = ? ORDER BY updated_at DESC",

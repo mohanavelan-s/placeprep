@@ -135,8 +135,34 @@ object PlacePrepNotificationManager {
 
     private const val PREFS_NAME = "placeprep_device_prefs"
     private const val KEY_DEVICE_TOKEN = "device_token"
+    private const val KEY_FCM_TOKEN = "fcm_token"
+
+    fun maskToken(token: String?): String {
+        if (token == null) return "null"
+        if (token.length <= 10) return "***"
+        return "${token.take(6)}...${token.takeLast(4)}"
+    }
+
+    fun getCachedFcmToken(context: Context): String? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_FCM_TOKEN, null)
+    }
+
+    fun cacheFcmToken(context: Context, token: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_FCM_TOKEN, token).apply()
+    }
+
+    fun clearCachedFcmToken(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().remove(KEY_FCM_TOKEN).apply()
+    }
 
     fun getOrGenerateDeviceToken(context: Context): String {
+        val cached = getCachedFcmToken(context)
+        if (!cached.isNullOrBlank()) {
+            return cached
+        }
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         var token = prefs.getString(KEY_DEVICE_TOKEN, null)
         if (token.isNullOrBlank()) {

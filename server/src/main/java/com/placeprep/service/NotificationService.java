@@ -26,6 +26,7 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final EmailService emailService;
     private final WebPushService webPushService;
+    private final FcmService fcmService;
     private final UserProfileRepository userProfileRepository;
     private final UserRepository userRepository;
     private final TaskRepository taskRepository;
@@ -34,6 +35,7 @@ public class NotificationService {
             NotificationRepository notificationRepository,
             EmailService emailService,
             WebPushService webPushService,
+            FcmService fcmService,
             UserProfileRepository userProfileRepository,
             UserRepository userRepository,
             TaskRepository taskRepository
@@ -41,6 +43,7 @@ public class NotificationService {
         this.notificationRepository = notificationRepository;
         this.emailService = emailService;
         this.webPushService = webPushService;
+        this.fcmService = fcmService;
         this.userProfileRepository = userProfileRepository;
         this.userRepository = userRepository;
         this.taskRepository = taskRepository;
@@ -104,6 +107,12 @@ public class NotificationService {
             webPushService.sendPushNotificationToUser(user.getId(), note);
         }
 
+        // Mobile FCM push dispatch if user enabled
+        FcmService.FcmDeliveryResult fcmSyncResult = null;
+        if (created != null && isUserMobileEnabled(user.getId())) {
+            fcmSyncResult = fcmService.sendNotificationToUser(user.getId(), note);
+        }
+
         List<Notification> unread = notificationRepository.listNotifications(user.getId(), true, 20);
 
         Map<String, Object> response = new LinkedHashMap<>();
@@ -116,6 +125,13 @@ public class NotificationService {
         response.put("emailReason", emailReason);
         response.put("emailError", emailError);
         response.put("emailReady", emailService.isEmailConfigured());
+        if (fcmSyncResult != null) {
+            response.put("fcmAttempted", fcmSyncResult.attempted());
+            response.put("fcmSentCount", fcmSyncResult.sentCount());
+            response.put("fcmFailedCount", fcmSyncResult.failedCount());
+            response.put("fcmReason", fcmSyncResult.reason());
+            response.put("fcmReady", fcmService.isConfigured());
+        }
         return response;
     }
 
@@ -123,7 +139,7 @@ public class NotificationService {
         Notification note = new Notification();
         note.setUserId(user.getId());
         note.setType("test_notification");
-        note.setMessage("Test signal from PlacePrep command chamber. Browser push and email delivery operational.");
+        note.setMessage("Test signal from PlacePrep command chamber. Remote mobile push, browser push, and email delivery operational.");
         note.setDedupeKey(UUID.randomUUID().toString());
         note.setDeliveryChannels(List.of("in_app", "push", "email"));
         note.setSentAt(OffsetDateTime.now());
@@ -136,6 +152,9 @@ public class NotificationService {
 
         // 2. Dispatch Email
         EmailService.EmailSendResult emailResult = emailService.sendNotificationEmail(user, note);
+
+        // 3. Dispatch FCM Push to registered Android devices
+        FcmService.FcmDeliveryResult fcmResult = fcmService.sendNotificationToUser(user.getId(), note);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("success", true);
@@ -152,7 +171,21 @@ public class NotificationService {
         result.put("emailError", emailResult.error());
         result.put("emailReady", emailService.isEmailConfigured());
 
+        // FCM status
+        result.put("fcmAttempted", fcmResult.attempted());
+        result.put("fcmSentCount", fcmResult.sentCount());
+        result.put("fcmFailedCount", fcmResult.failedCount());
+        result.put("fcmReason", fcmResult.reason());
+        result.put("fcmError", fcmResult.error());
+        result.put("fcmReady", fcmService.isConfigured());
+
         return result;
+    }
+
+    private boolean isUserMobileEnabled(UUID userId) {
+        return userProfileRepository.findByUserId(userId)
+                .map(UserProfile::isNotificationsEnabled)
+                .orElse(true);
     }
 
     private boolean isUserEmailEnabled(UUID userId) {

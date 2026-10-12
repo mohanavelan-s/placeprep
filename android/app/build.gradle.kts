@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.gms.google-services")
 }
 
 val versionCodeValue = (project.findProperty("PLACEPREP_VERSION_CODE") as String?)
@@ -82,7 +83,6 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".dev"
             versionNameSuffix = "-dev"
             resValue("string", "app_name", debugAppName)
             buildConfigField("String", "APP_ENV", "\"debug\"")
@@ -131,6 +131,10 @@ if (!releaseSigningReady) {
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    val firebaseBom = platform("com.google.firebase:firebase-bom:33.10.0")
+
+    implementation(firebaseBom)
+    implementation("com.google.firebase:firebase-messaging")
 
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-compose:1.10.1")
