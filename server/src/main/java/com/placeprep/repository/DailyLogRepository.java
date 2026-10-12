@@ -81,17 +81,18 @@ public class DailyLogRepository {
             )
             ON CONFLICT (user_id, log_date)
             DO UPDATE SET
-              summary = EXCLUDED.summary,
-              wins = EXCLUDED.wins,
-              blockers = EXCLUDED.blockers,
-              mood = EXCLUDED.mood,
-              energy = EXCLUDED.energy,
-              productivity_score = EXCLUDED.productivity_score,
-              focus_minutes = EXCLUDED.focus_minutes,
-              hours_studied = EXCLUDED.hours_studied,
-              tasks_completed_count = EXCLUDED.tasks_completed_count,
-              notes = EXCLUDED.notes,
-              improvement_plan = EXCLUDED.improvement_plan
+              summary = COALESCE(EXCLUDED.summary, daily_logs.summary),
+              wins = COALESCE(EXCLUDED.wins, daily_logs.wins),
+              blockers = COALESCE(EXCLUDED.blockers, daily_logs.blockers),
+              mood = COALESCE(EXCLUDED.mood, daily_logs.mood),
+              energy = COALESCE(EXCLUDED.energy, daily_logs.energy),
+              productivity_score = COALESCE(EXCLUDED.productivity_score, daily_logs.productivity_score),
+              focus_minutes = COALESCE(EXCLUDED.focus_minutes, daily_logs.focus_minutes),
+              hours_studied = COALESCE(EXCLUDED.hours_studied, daily_logs.hours_studied),
+              tasks_completed_count = COALESCE(EXCLUDED.tasks_completed_count, daily_logs.tasks_completed_count),
+              notes = COALESCE(EXCLUDED.notes, daily_logs.notes),
+              improvement_plan = COALESCE(EXCLUDED.improvement_plan, daily_logs.improvement_plan),
+              updated_at = NOW()
             RETURNING *
         """;
 
@@ -106,10 +107,10 @@ public class DailyLogRepository {
                 payload.getBlockers(),
                 payload.getMood(),
                 payload.getEnergy(),
-                payload.getProductivityScore() != null ? payload.getProductivityScore() : 0,
-                payload.getFocusMinutes() != null ? payload.getFocusMinutes() : 0,
-                payload.getHoursStudied() != null ? payload.getHoursStudied() : 0.0,
-                payload.getTasksCompletedCount() != null ? payload.getTasksCompletedCount() : 0,
+                payload.getProductivityScore(),
+                payload.getFocusMinutes(),
+                payload.getHoursStudied(),
+                payload.getTasksCompletedCount(),
                 payload.getNotes(),
                 payload.getImprovementPlan()
         );

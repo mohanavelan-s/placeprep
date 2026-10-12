@@ -56,6 +56,11 @@ public class EmailService {
     @Value("${placeprep.email.resend-from:PlacePrep <onboarding@resend.dev>}")
     private String resendFrom;
 
+    @Value("${placeprep.email.resend-owner-email:${RESEND_OWNER_EMAIL:mohanavelansathiamurthi@gmail.com}}")
+    private String resendOwnerEmail;
+
+    private final java.util.concurrent.atomic.AtomicBoolean resendDomainUnverified = new java.util.concurrent.atomic.AtomicBoolean(false);
+
     @Value("${placeprep.email.allow-smtp-fallback:false}")
     private boolean allowSmtpFallback;
 
@@ -195,17 +200,40 @@ public class EmailService {
         return EmailSendResult.skipped("email_not_configured");
     }
 
+    public boolean isResendDomainVerified() {
+        return !resendDomainUnverified.get();
+    }
+
     private EmailSendResult sendViaResend(String recipientEmail, String subject, String htmlBody, String textBody) {
         String primaryFrom = (resendFrom != null && !resendFrom.isBlank()) ? resendFrom : "PlacePrep <onboarding@resend.dev>";
+        boolean isOwner = recipientEmail != null && resendOwnerEmail != null &&
+                recipientEmail.trim().equalsIgnoreCase(resendOwnerEmail.trim());
+
+        // Fast-path: if Resend domain is already detected as unverified, only the sandbox owner can receive emails
+        if (resendDomainUnverified.get()) {
+            if (!isOwner) {
+                log.info("[email] Resend domain is unverified. Skipping dispatch to non-owner recipient '{}' (sandbox restricted to '{}').",
+                        recipientEmail, resendOwnerEmail);
+                return EmailSendResult.failed("provider_restricted",
+                        "Resend sending domain is unverified. Sandbox mode only permits delivery to verified account owner (" + resendOwnerEmail + ").");
+            }
+            // For verified account owner, use official sandbox onboarding sender directly
+            return executeResendRequest("PlacePrep <onboarding@resend.dev>", recipientEmail, subject, htmlBody, textBody);
+        }
+
         EmailSendResult result = executeResendRequest(primaryFrom, recipientEmail, subject, htmlBody, textBody);
 
-        // If Resend failed due to unverified custom domain (HTTP 403 / domain validation error),
-        // and we were not already using onboarding@resend.dev, immediately retry with onboarding@resend.dev
-        if (!result.success() && !primaryFrom.contains("onboarding@resend.dev") &&
-                result.error() != null && (result.error().contains("403") || result.error().toLowerCase().contains("domain"))) {
-            log.warn("[email] Resend sender '{}' failed with domain validation error ({}). Retrying with onboarding@resend.dev",
-                    primaryFrom, result.error());
-            return executeResendRequest("PlacePrep <onboarding@resend.dev>", recipientEmail, subject, htmlBody, textBody);
+        // If Resend failed due to unverified custom domain (HTTP 403 / domain validation error)
+        if (!result.success() && result.error() != null &&
+                (result.error().contains("403") || result.error().toLowerCase().contains("domain") || result.error().toLowerCase().contains("sandbox"))) {
+            resendDomainUnverified.set(true);
+            log.warn("[email] Marked Resend domain unverified due to API restriction ({}).", result.error());
+
+            // If recipient is the account owner and we were using a custom from-address, retry once with onboarding@resend.dev
+            if (isOwner && !primaryFrom.contains("onboarding@resend.dev")) {
+                log.info("[email] Retrying dispatch to verified account owner '{}' using onboarding@resend.dev", recipientEmail);
+                return executeResendRequest("PlacePrep <onboarding@resend.dev>", recipientEmail, subject, htmlBody, textBody);
+            }
         }
 
         return result;
@@ -238,6 +266,7 @@ public class EmailService {
                 String body = response.body() != null ? response.body() : "";
                 log.error("[email] Resend API error {}: {}", response.statusCode(), body);
                 if (response.statusCode() == 403 && (body.contains("only send testing emails") || body.contains("validation_error") || body.contains("verify a domain"))) {
+                    resendDomainUnverified.set(true);
                     return EmailSendResult.failed("provider_restricted", "HTTP 403: Resend account in sandbox mode restricted to verified owner. Verify a custom domain in Resend to send to arbitrary recipients.");
                 }
                 return EmailSendResult.failed("resend_delivery_failed", "HTTP " + response.statusCode() + ": " + body);

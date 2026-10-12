@@ -28,6 +28,9 @@ server/*-secrets.json
 server-node/secrets/
 server-node/*.secrets.json
 android/keystore.properties
+*.pem
+data/
+server/data/
 
 # Build artifacts
 target/

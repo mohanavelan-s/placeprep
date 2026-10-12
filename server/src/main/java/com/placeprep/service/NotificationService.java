@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.*;
 
 @Service
@@ -58,11 +59,20 @@ public class NotificationService {
     }
 
     public Map<String, Object> syncNotifications(User user, boolean deliverEmail) {
-        String todayKey = LocalDate.now().toString();
+        ZoneId userZone;
+        try {
+            userZone = user.getTimezone() != null && !user.getTimezone().isBlank()
+                    ? ZoneId.of(user.getTimezone().trim())
+                    : ZoneId.of("Asia/Calcutta");
+        } catch (Exception e) {
+            userZone = ZoneId.of("Asia/Calcutta");
+        }
+        LocalDate todayInUserZone = LocalDate.now(userZone);
+        String todayKey = todayInUserZone.toString();
         List<Notification> createdList = new ArrayList<>();
 
-        // Check pending tasks for today
-        long pendingCount = taskRepository.listTasks(user.getId(), "today", "pending", null, null).size();
+        // Check pending tasks for today in user's timezone
+        long pendingCount = taskRepository.listTasks(user.getId(), todayKey, "pending", null, null).size();
         String type;
         String message;
 
@@ -226,21 +236,39 @@ public class NotificationService {
                 .orElse(false);
     }
 
+    public boolean isUserInQuietHours(User user) {
+        try {
+            ZoneId zone = user.getTimezone() != null && !user.getTimezone().isBlank()
+                    ? ZoneId.of(user.getTimezone().trim())
+                    : ZoneId.of("Asia/Calcutta");
+            int hour = java.time.LocalTime.now(zone).getHour();
+            return hour >= 22 || hour < 7;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public void runDailySweep() {
         log.info("[notifications] Starting daily scheduled notification sweep...");
         try {
-            // Simple daily sweep for active students
+            // Daily sweep for recent active students
             List<User> users = userRepository.listRecentActiveUsers(50);
             int sent = 0;
+            int skippedQuiet = 0;
             for (User u : users) {
                 try {
+                    if (isUserInQuietHours(u)) {
+                        skippedQuiet++;
+                        log.debug("[notifications] User {} is within quiet hours. Skipping scheduled notification sweep.", u.getId());
+                        continue;
+                    }
                     syncNotifications(u, false);
                     sent++;
                 } catch (Exception ex) {
                     log.error("[notifications] Failed to run sync for user {}: {}", u.getId(), ex.getMessage());
                 }
             }
-            log.info("[notifications] Daily scheduled sweep completed for {} users.", sent);
+            log.info("[notifications] Daily scheduled sweep completed for {} users ({} skipped during quiet hours).", sent, skippedQuiet);
         } catch (Exception e) {
             log.error("[notifications] Daily sweep failed: {}", e.getMessage(), e);
         }

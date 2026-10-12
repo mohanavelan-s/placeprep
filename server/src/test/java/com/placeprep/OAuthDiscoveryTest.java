@@ -70,4 +70,27 @@ public class OAuthDiscoveryTest {
                 .andExpect(jsonPath("$.keys").isArray())
                 .andExpect(jsonPath("$.keys[0].kty").value("RSA"));
     }
+
+    @Test
+    void testPersistentRsaKeyGenerationAndSigning() throws Exception {
+        java.security.KeyPairGenerator kpg = java.security.KeyPairGenerator.getInstance("RSA");
+        kpg.initialize(2048);
+        java.security.KeyPair kp = kpg.generateKeyPair();
+        String pem = com.placeprep.security.OAuthKeyProvider.formatPkcs8Pem(kp.getPrivate());
+
+        com.placeprep.security.OAuthKeyProvider provider = new com.placeprep.security.OAuthKeyProvider(
+                "test-persistent-key",
+                pem,
+                null
+        );
+
+        org.junit.jupiter.api.Assertions.assertTrue(provider.isPersistent());
+        org.junit.jupiter.api.Assertions.assertEquals("test-persistent-key", provider.getKeyId());
+        org.junit.jupiter.api.Assertions.assertNotNull(provider.getJwks().get("keys"));
+
+        String token = provider.signToken("https://placeprep.test", "user-123", "mcp", "client-1", "mcp:read", "tok-1", 60000);
+        io.jsonwebtoken.Claims claims = provider.verifyToken(token);
+        org.junit.jupiter.api.Assertions.assertEquals("user-123", claims.getSubject());
+        org.junit.jupiter.api.Assertions.assertEquals("client-1", claims.get("client_id"));
+    }
 }

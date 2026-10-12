@@ -191,6 +191,7 @@ public class TaskRepository {
                 difficulty = COALESCE(?, difficulty),
                 weak_area = COALESCE(?, weak_area),
                 completed_at = ?,
+                metadata = COALESCE(?::jsonb, metadata),
                 updated_at = NOW()
             WHERE id = ? AND user_id = ?
             RETURNING *
@@ -219,6 +220,7 @@ public class TaskRepository {
                 t.getDifficulty() > 0 ? t.getDifficulty() : null,
                 t.getWeakArea(),
                 comp,
+                JsonUtil.toJson(t.getMetadata()),
                 t.getId(),
                 t.getUserId()
         );
@@ -350,7 +352,13 @@ public class TaskRepository {
             setParams.add(status);
             if ("completed".equals(status)) {
                 sql.append(", completed_at = NOW()");
+            } else {
+                sql.append(", completed_at = NULL");
             }
+        }
+        if (updates.containsKey("metadata") && updates.get("metadata") != null) {
+            sql.append(", metadata = ?::jsonb");
+            setParams.add(JsonUtil.toJson(updates.get("metadata")));
         }
         if (updates.containsKey("estimatedMinutes") || updates.containsKey("estimated_minutes")) {
             Object est = updates.get("estimatedMinutes");

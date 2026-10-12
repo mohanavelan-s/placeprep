@@ -4,6 +4,7 @@ import com.placeprep.exception.AppException;
 import com.placeprep.model.Task;
 import com.placeprep.model.User;
 import com.placeprep.repository.TaskRepository;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -17,9 +18,11 @@ import java.util.UUID;
 public class TaskService {
 
     private final TaskRepository taskRepository;
+    private final ProgressService progressService;
 
-    public TaskService(TaskRepository taskRepository) {
+    public TaskService(TaskRepository taskRepository, @Lazy ProgressService progressService) {
         this.taskRepository = taskRepository;
+        this.progressService = progressService;
     }
 
     public Task createTask(User user, Task t) {
@@ -32,7 +35,9 @@ public class TaskService {
             t.setScheduledFor(LocalDate.now());
         }
 
-        return taskRepository.createTask(t);
+        Task created = taskRepository.createTask(t);
+        progressService.refreshProgressStats(user.getId(), user.getTimezone());
+        return created;
     }
 
     public List<Task> listTasks(User user, String date, String status, String category, Integer limit) {
@@ -94,6 +99,16 @@ public class TaskService {
             existing.setStatus(newStatus);
             if ("completed".equals(newStatus)) {
                 existing.setCompletedAt(OffsetDateTime.now());
+            } else {
+                existing.setCompletedAt(null);
+            }
+        }
+        if (updates.containsKey("metadata")) {
+            Object meta = updates.get("metadata");
+            if (meta instanceof Map<?, ?> map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> castMap = (Map<String, Object>) map;
+                existing.setMetadata(castMap);
             }
         }
         if (updates.containsKey("estimatedMinutes") || updates.containsKey("estimated_minutes")) {
@@ -147,7 +162,9 @@ public class TaskService {
             existing.setWeakArea(wa != null ? wa.toString() : null);
         }
 
-        return taskRepository.updateTask(existing);
+        Task updated = taskRepository.updateTask(existing);
+        progressService.refreshProgressStats(user.getId(), user.getTimezone());
+        return updated;
     }
 
     public Task deleteTask(User user, UUID taskId) {
@@ -156,19 +173,26 @@ public class TaskService {
         if (!deleted) {
             throw new AppException("Failed to delete task.", HttpStatus.INTERNAL_SERVER_ERROR);
         }
+        progressService.refreshProgressStats(user.getId(), user.getTimezone());
         return existing;
     }
 
     public TaskRepository.BulkDeleteResult bulkDeleteTasks(User user, List<UUID> taskIds) {
-        return taskRepository.bulkDeleteTasks(user.getId(), taskIds);
+        TaskRepository.BulkDeleteResult result = taskRepository.bulkDeleteTasks(user.getId(), taskIds);
+        progressService.refreshProgressStats(user.getId(), user.getTimezone());
+        return result;
     }
 
     public List<Task> bulkCompleteTasks(User user, List<UUID> taskIds) {
-        return taskRepository.bulkCompleteTasks(user.getId(), taskIds);
+        List<Task> result = taskRepository.bulkCompleteTasks(user.getId(), taskIds);
+        progressService.refreshProgressStats(user.getId(), user.getTimezone());
+        return result;
     }
 
     public List<Task> bulkUpdateTasks(User user, List<UUID> taskIds, Map<String, Object> updates) {
-        return taskRepository.bulkUpdateTasks(user.getId(), taskIds, updates);
+        List<Task> result = taskRepository.bulkUpdateTasks(user.getId(), taskIds, updates);
+        progressService.refreshProgressStats(user.getId(), user.getTimezone());
+        return result;
     }
 
     public List<Task> searchTasks(User user, String query, String status, String category, LocalDate from, LocalDate to, Integer limit) {

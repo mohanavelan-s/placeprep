@@ -50,8 +50,8 @@ private val Border = Color(0x2EFFFFFF)
 private val TextPrimary = Color(0xFFF3F4F6)
 private val TextSecondary = Color(0xFF9CA3AF)
 private val TextMuted = Color(0xFF64748B)
-private val Crimson = Color(0xFFE11D48)
-private val CrimsonSoft = Color(0xFFFDA4AF)
+private val Crimson = Color(0xFF9C2E34)
+private val CrimsonSoft = Color(0xFFE26D75)
 private val Lavender = Color(0xFFE0E7FF)
 private val Success = Color(0xFF10B981)
 private val Amber = Color(0xFFD97706)
@@ -1044,6 +1044,8 @@ private fun WorkspaceScreen(
                                 Text(
                                     label,
                                     fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSelected) TextPrimary else TextSecondary,
                                 )
