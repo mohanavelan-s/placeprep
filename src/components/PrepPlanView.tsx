@@ -48,7 +48,7 @@ export default function PrepPlanView({ plan }: PrepPlanViewProps) {
             </div>
             <Link
               to="/assessments"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-sm font-bold text-black transition hover:bg-amber-400 shrink-0"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-sm font-semibold text-black shadow-sm transition hover:bg-amber-400 active:scale-[0.98] shrink-0"
             >
               Take Baseline Diagnostic
               <ArrowUpRight className="h-4 w-4" />
@@ -59,17 +59,34 @@ export default function PrepPlanView({ plan }: PrepPlanViewProps) {
 
       {Boolean(plan.researchReport?.sources?.length) && (
         <section className="surface-panel p-6 md:p-7">
-          <div className="mb-5 flex items-center justify-between">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <BookOpen className="h-5 w-5 text-primary" />
               <div>
                 <p className="section-label">Evidence-Based Research</p>
-                <h3 className="mt-1 font-heading text-2xl text-foreground">Verified Interview Sources</h3>
+                <h3 className="mt-1 font-heading text-2xl text-foreground">
+                  {plan.guidanceClassification ||
+                    plan.researchReport?.guidanceClassification ||
+                    (plan.isGeneralGuidance || plan.researchReport?.isGeneralGuidance
+                      ? "General Role Guidance (Unverified Company Specifics)"
+                      : "Company-Verified Preparation Framework")}
+                </h3>
               </div>
             </div>
-            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-              {plan.researchReport?.sources?.length || 0} sources verified
-            </span>
+            <div className="flex items-center gap-2">
+              {(plan.isGeneralGuidance || plan.researchReport?.isGeneralGuidance) ? (
+                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-400">
+                  General Guidance
+                </span>
+              ) : (
+                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-400">
+                  Verified Company Sources
+                </span>
+              )}
+              <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                {plan.researchReport?.sources?.length || 0} sources
+              </span>
+            </div>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
@@ -112,49 +129,125 @@ export default function PrepPlanView({ plan }: PrepPlanViewProps) {
         </section>
       )}
 
-      <section className="surface-panel p-6 md:p-7">
-        <div className="mb-5 flex items-center gap-3">
-          <CalendarDays className="h-5 w-5 text-primary" />
-          <div>
-            <p className="section-label">Roadmap</p>
-            <h3 className="mt-1 font-heading text-3xl text-foreground">Week-wise plan</h3>
+      <section className="tactile-card-editorial p-6 md:p-7">
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary shadow-[0_0_16px_rgba(201,42,54,0.15)]">
+              <CalendarDays className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-mono">Curriculum Journey</p>
+              <h3 className="font-heading text-3xl text-foreground">Week-by-week placement milestones</h3>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="tactile-badge font-mono text-[11px]">
+              {roadmap.length} Milestones
+            </span>
+            <span className="tactile-badge-crimson font-mono text-[11px]">
+              Active: Week 1
+            </span>
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
-          {roadmap.map((week) => (
-            <motion.div
-              key={`${plan.id}-${week.week}`}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.24 }}
-              className="rounded-2xl border border-border/80 bg-card/70 p-5"
-            >
-              <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">Week {week.week}</p>
-              <h4 className="mt-2 font-heading text-2xl text-foreground">
-                {week.title || (week as any).theme || `Week ${week.week} Focus`}
-              </h4>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {(week.focusTopics || (week as any).topics || []).map((topic: string) => (
-                  <span key={topic} className="coach-chip border-primary/25">
-                    {topic}
-                  </span>
-                ))}
-              </div>
-              <p className="mt-4 text-sm uppercase tracking-[0.16em] text-muted-foreground">
-                {week.estimatedHours || 12} hours / week
-              </p>
-              <div className="mt-4 space-y-2">
-                {(week.goals || ((week as any).goal ? [(week as any).goal, (week as any).milestone].filter(Boolean) : [])).map((goal: string) => (
-                  <p key={goal} className="text-sm leading-6 text-foreground/80">
-                    {goal}
-                  </p>
-                ))}
-              </div>
-            </motion.div>
-          ))}
+        {/* Milestone Timeline Roadmap */}
+        <div className="relative space-y-4 before:absolute before:left-5 before:top-4 before:bottom-4 before:w-0.5 before:bg-gradient-to-b before:from-primary before:via-border/60 before:to-border/20 md:before:left-7">
+          {roadmap.map((week, idx) => {
+            const isFirst = idx === 0;
+            const isLast = idx === roadmap.length - 1;
+            const goals = (week.goals || ((week as any).goal ? [(week as any).goal, (week as any).milestone].filter(Boolean) : []));
+            const topics = (week.focusTopics || (week as any).topics || []);
+
+            return (
+              <motion.div
+                key={`${plan.id}-${week.week}`}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.22, delay: idx * 0.03 }}
+                className={`relative ml-10 md:ml-14 rounded-2xl border transition-all ${
+                  isFirst
+                    ? "border-primary/40 bg-gradient-to-r from-primary/[0.08] via-card/80 to-card/60 p-5 md:p-6 shadow-[0_0_24px_rgba(201,42,54,0.08)]"
+                    : "border-border/70 bg-card/50 p-5 md:p-6 hover:border-border hover:bg-card/70"
+                }`}
+              >
+                {/* Timeline node marker on the line */}
+                <div
+                  className={`absolute -left-10 md:-left-14 top-6 flex h-7 w-7 items-center justify-center rounded-full border text-xs font-mono font-bold transition ${
+                    isFirst
+                      ? "border-primary bg-primary text-primary-foreground shadow-[0_0_12px_rgba(201,42,54,0.4)]"
+                      : "border-border/80 bg-background text-muted-foreground"
+                  }`}
+                >
+                  {week.week}
+                </div>
+
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider ${
+                        isFirst
+                          ? "bg-primary/20 text-primary border border-primary/30"
+                          : isLast
+                            ? "bg-emerald-500/15 text-emerald-300 border border-emerald-400/30"
+                            : "bg-muted/40 text-muted-foreground border border-border/60"
+                      }`}>
+                        {isFirst ? "Current Sprint • Week 1" : isLast ? "Placement Readiness" : `Sprint Milestone ${week.week}`}
+                      </span>
+                      <span className="text-xs font-mono text-muted-foreground">
+                        {week.estimatedHours || 12} hrs scheduled
+                      </span>
+                    </div>
+
+                    <h4 className="mt-2 font-heading text-2xl text-foreground">
+                      {week.title || (week as any).theme || `Week ${week.week} Focus`}
+                    </h4>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to="/coding-lab"
+                      className="tactile-btn-secondary px-3 py-1.5 text-xs inline-flex items-center gap-1.5 font-medium"
+                    >
+                      <Code2 className="h-3.5 w-3.5 text-primary" />
+                      Practice Lab
+                    </Link>
+                  </div>
+                </div>
+
+                {/* Focus Topics Chips */}
+                {topics.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {topics.map((topic: string) => (
+                      <span
+                        key={topic}
+                        className="rounded-lg border border-border/80 bg-background/60 px-2.5 py-1 text-xs font-medium text-foreground/90 transition hover:border-primary/40 hover:bg-primary/5"
+                      >
+                        {topic}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Goals & Deliverables */}
+                {goals.length > 0 && (
+                  <div className="mt-4 rounded-xl border border-border/50 bg-background/40 p-3.5 space-y-2">
+                    <p className="text-[11px] uppercase tracking-wider text-muted-foreground/80 font-mono font-semibold">
+                      Weekly Exit Criteria:
+                    </p>
+                    {goals.map((goal: string, gIdx: number) => (
+                      <div key={gIdx} className="flex items-start gap-2 text-sm leading-6 text-foreground/85">
+                        <span className="text-primary mt-1">•</span>
+                        <span>{goal}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
+
           {!roadmap.length && (
-            <div className="rounded-2xl border border-border/80 bg-card/70 p-5 text-sm leading-6 text-muted-foreground xl:col-span-2">
+            <div className="rounded-2xl border border-border/80 bg-card/70 p-6 text-sm leading-6 text-muted-foreground">
               No roadmap weeks are available yet. Regenerate the plan to rebuild the weekly structure.
             </div>
           )}
