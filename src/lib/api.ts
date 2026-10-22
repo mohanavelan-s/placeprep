@@ -688,8 +688,12 @@ export interface ResearchReport {
     tier2SourceCount: number;
     tier3SourceCount: number;
     notes: string;
+    isGeneralGuidance?: boolean;
+    guidanceClassification?: string;
   };
   diagnosticTopics: string[];
+  isGeneralGuidance?: boolean;
+  guidanceClassification?: string;
 }
 
 export interface PendingBaselineSummary {
@@ -733,6 +737,8 @@ export interface PrepPlan {
   targetDeadline?: string | null;
   topicScores?: Record<string, number>;
   confirmedWeakSpots?: string[];
+  isGeneralGuidance?: boolean;
+  guidanceClassification?: string;
   metadata: Record<string, unknown>;
   title?: string;
   autoTitle?: string;

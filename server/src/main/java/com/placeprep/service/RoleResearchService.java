@@ -1,10 +1,18 @@
 package com.placeprep.service;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.placeprep.model.blueprint.CompanyBlueprint;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Service;
 
+import java.io.InputStream;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class RoleResearchService {
@@ -55,6 +63,7 @@ public class RoleResearchService {
         public List<Map<String, Object>> coreCompetencies = new ArrayList<>();
         public Map<String, Object> evidenceSummary = new LinkedHashMap<>();
         public List<String> diagnosticTopics = new ArrayList<>();
+        public CompanyBlueprint blueprint;
 
         public Map<String, Object> toMap() {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -72,8 +81,104 @@ public class RoleResearchService {
             m.put("coreCompetencies", coreCompetencies);
             m.put("evidenceSummary", evidenceSummary);
             m.put("diagnosticTopics", diagnosticTopics);
+            if (blueprint != null) {
+                m.put("blueprintCompanyId", blueprint.companyId());
+                m.put("blueprintDisplayName", blueprint.displayName());
+            }
             return m;
         }
+    }
+
+    private final ObjectMapper objectMapper;
+    private final Map<String, CompanyBlueprint> blueprints = new ConcurrentHashMap<>();
+    private final Map<String, String> aliasIndex = new ConcurrentHashMap<>();
+
+    public RoleResearchService(@Autowired(required = false) ObjectMapper objectMapper) {
+        if (objectMapper != null) {
+            this.objectMapper = objectMapper.copy().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        } else {
+            this.objectMapper = new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        }
+        loadBlueprints();
+    }
+
+    private void loadBlueprints() {
+        try {
+            PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
+            Resource[] resources = resolver.getResources("classpath*:company-blueprints/*.json");
+            for (Resource res : resources) {
+                try (InputStream is = res.getInputStream()) {
+                    CompanyBlueprint bp = objectMapper.readValue(is, CompanyBlueprint.class);
+                    registerBlueprint(bp);
+                } catch (Exception ex) {
+                    System.err.println("[RoleResearchService] Failed to load blueprint " + res.getFilename() + ": " + ex.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[RoleResearchService] Pattern resolver scan notice: " + e.getMessage());
+        }
+
+        // Direct fallback loader if pattern resolver found nothing
+        if (blueprints.isEmpty()) {
+            for (String file : List.of("microsoft.json", "standard_sde.json")) {
+                try (InputStream is = getClass().getClassLoader().getResourceAsStream("company-blueprints/" + file)) {
+                    if (is != null) {
+                        CompanyBlueprint bp = objectMapper.readValue(is, CompanyBlueprint.class);
+                        registerBlueprint(bp);
+                    }
+                } catch (Exception ex) {
+                    System.err.println("[RoleResearchService] Fallback load failed for " + file + ": " + ex.getMessage());
+                }
+            }
+        }
+
+        // Ensure standard_sde always exists
+        if (!blueprints.containsKey("standard_sde")) {
+            registerBlueprint(fallbackDefaultBlueprint());
+        }
+
+        System.out.println("[RoleResearchService] Loaded " + blueprints.size() + " verified company blueprints: " + blueprints.keySet());
+    }
+
+    private void registerBlueprint(CompanyBlueprint bp) {
+        if (bp == null || !bp.isValid()) {
+            System.err.println("[RoleResearchService] Rejected invalid blueprint: " + (bp != null ? bp.companyId() : "null"));
+            return;
+        }
+        String id = bp.companyId().toLowerCase();
+        blueprints.put(id, bp);
+        aliasIndex.put(id, id);
+        if (bp.displayName() != null) {
+            aliasIndex.put(bp.displayName().toLowerCase(), id);
+        }
+        for (String alias : bp.aliases()) {
+            if (alias != null && !alias.isBlank()) {
+                aliasIndex.put(alias.trim().toLowerCase(), id);
+            }
+        }
+    }
+
+    public Optional<CompanyBlueprint> findBlueprint(String companyOrAlias) {
+        if (companyOrAlias == null || companyOrAlias.isBlank()) return Optional.empty();
+        String norm = companyOrAlias.trim().toLowerCase();
+        if (blueprints.containsKey(norm)) return Optional.of(blueprints.get(norm));
+        if (aliasIndex.containsKey(norm)) {
+            String targetId = aliasIndex.get(norm);
+            if (blueprints.containsKey(targetId)) return Optional.of(blueprints.get(targetId));
+        }
+        for (CompanyBlueprint bp : blueprints.values()) {
+            if (bp.matchesCompany(norm)) return Optional.of(bp);
+        }
+        return Optional.empty();
+    }
+
+    public CompanyBlueprint getBlueprintOrDefault(String companyOrAlias) {
+        return findBlueprint(companyOrAlias)
+                .orElseGet(() -> blueprints.getOrDefault("standard_sde", fallbackDefaultBlueprint()));
+    }
+
+    public Map<String, CompanyBlueprint> getAllBlueprints() {
+        return Collections.unmodifiableMap(blueprints);
     }
 
     public ResearchReport conductResearch(Map<String, Object> targetContext) {
@@ -85,9 +190,13 @@ public class RoleResearchService {
         String jobDescription = (String) targetContext.get("jobDescription");
         String jobPostingUrl = (String) targetContext.get("jobPostingUrl");
 
-        String companyLabel = (customCompanyName != null && !customCompanyName.isBlank())
+        String queryCompany = (customCompanyName != null && !customCompanyName.isBlank())
                 ? customCompanyName.trim()
-                : (companyKey.equalsIgnoreCase("custom") ? "Target Tech Company" : companyKey.substring(0, 1).toUpperCase() + companyKey.substring(1));
+                : (companyKey.equalsIgnoreCase("custom") ? "Target Tech Company" : companyKey);
+
+        String companyLabel = queryCompany.equalsIgnoreCase("custom")
+                ? "Target Tech Company"
+                : (queryCompany.length() > 1 ? queryCompany.substring(0, 1).toUpperCase() + queryCompany.substring(1) : queryCompany);
 
         ResearchReport report = new ResearchReport();
         report.companyName = companyLabel;
@@ -96,12 +205,6 @@ public class RoleResearchService {
         report.seniority = seniority;
         report.location = location;
         report.dateChecked = LocalDate.now().toString();
-
-        String normalizedComp = companyKey.toLowerCase();
-        String roleLower = targetRole.toLowerCase();
-        boolean isInternship = seniority.toLowerCase().contains("intern") || roleLower.contains("intern");
-        boolean isDataRole = roleLower.contains("data") || roleLower.contains("analyst") || roleLower.contains("sql") || roleLower.contains("ml");
-        boolean isFrontendRole = roleLower.contains("front") || roleLower.contains("react") || roleLower.contains("ui") || roleLower.contains("web");
 
         // 1. Process candidate-provided Job Description if present (Tier 1 Primary Source)
         if (jobDescription != null && !jobDescription.trim().isBlank()) {
@@ -119,186 +222,90 @@ public class RoleResearchService {
             ));
         }
 
-        // 2. Company-specific Tier 1 Primary Sources
-        if (normalizedComp.contains("amazon")) {
-            report.sources.add(new SourceRecord(
-                    "Amazon SDE Internship Online Assessment Preparation",
-                    "https://www.amazon.jobs/content/en/how-we-hire/university/sde-oa",
-                    "Amazon University Recruiting",
-                    "official_guide",
-                    "2026",
-                    report.dateChecked,
-                    List.of(
-                            "Online Assessment structure: 2 coding questions on DS&A (Arrays, Strings, Trees, Hashing)",
-                            "Work Simulation Assessment (decision-making scenarios)",
-                            "Demonstrated problem-solving under strict time constraints"
-                    ),
-                    "Official preparation guidance"
-            ));
-            report.sources.add(new SourceRecord(
-                    "Amazon Software Development Interview Topics",
-                    "https://www.amazon.jobs/content/en/how-we-hire/interview-prep/software-development-topics",
-                    "Amazon Student Programs",
-                    "official_careers",
-                    "2026",
-                    report.dateChecked,
-                    List.of(
-                            "Core coding competencies: Java, C++, Python",
-                            "Data structures: Arrays, Linked Lists, Stacks, Queues, Binary Trees, Hash Maps",
-                            "Algorithms & Complexity: Big-O space and time analysis, sorting, binary search, recursion",
-                            "Object-Oriented Design principles and basic relational data handling"
-                    ),
-                    "Official requirement"
-            ));
-            report.sources.add(new SourceRecord(
-                    "LeetCode Curated Amazon Interview Assessment Collection",
-                    "https://leetcode.com/explore/interview/card/amazon/",
-                    "LeetCode",
-                    "practice_resource",
-                    "2026",
-                    report.dateChecked,
-                    List.of(
-                            "High-frequency problems: Two Pointers, BFS/DFS traversal, Sliding Window, Priority Queues",
-                            "Boundary conditions and edge-case testing verification"
-                    ),
-                    "Reputable practice resource"
-            ));
-            report.sources.add(new SourceRecord(
-                    "GeeksforGeeks Amazon Interview Experiences (SDE Intern / Campus)",
-                    "https://www.geeksforgeeks.org/amazon-interview-preparation/",
-                    "GeeksforGeeks",
-                    "candidate_experience",
-                    "2026",
-                    report.dateChecked,
-                    List.of(
-                            "Recent candidate patterns: 70-min OA1 with 2 medium coding problems",
-                            "Technical interview loop focusing on optimal tree traversal, edge-cases, and time complexity explanation",
-                            "Basic Operating Systems concepts (Threads vs Processes, Concurrency anomalies)"
-                    ),
-                    "Repeated candidate-reported pattern"
-            ));
-        } else if (normalizedComp.contains("google")) {
-            report.sources.add(new SourceRecord(
-                    "Google Technical Development Guide",
-                    "https://techdevguide.withgoogle.com/",
-                    "Google Engineering Education",
-                    "official_guide",
-                    "2026",
-                    report.dateChecked,
-                    List.of(
-                            "Algorithmic foundations: Graph traversals (BFS/DFS), Dynamic Programming, Recursion",
-                            "Strict mathematical complexity analysis (Big-O time and space invariants)",
-                            "Clean, modular, testable code without global mutable state"
-                    ),
-                    "Official preparation guidance"
-            ));
-            report.sources.add(new SourceRecord(
-                    "Google Students & Graduate Engineering Track",
-                    "https://careers.google.com/students/",
-                    "Google Careers",
-                    "official_careers",
-                    "2026",
-                    report.dateChecked,
-                    List.of(
-                            "Core competencies: Solid foundations in Computer Science",
-                            "Proficiency in one or more general-purpose programming languages",
-                            "Analytical problem decomposition and boundary verification"
-                    ),
-                    "Official requirement"
-            ));
-            report.sources.add(new SourceRecord(
-                    "LeetCode Google Curated Interview Assessment Card",
-                    "https://leetcode.com/explore/interview/card/google/",
-                    "LeetCode",
-                    "practice_resource",
-                    "2026",
-                    report.dateChecked,
-                    List.of(
-                            "Curated focus areas: Graphs, Trees, Hash Maps, String Manipulation, Dynamic Programming",
-                            "Emphasis on optimal space-time trade-offs and edge case correctness"
-                    ),
-                    "Reputable practice resource"
-            ));
-        } else if (normalizedComp.contains("microsoft")) {
-            report.sources.add(new SourceRecord(
-                    "Microsoft Global Student & Graduate Engineering",
-                    "https://careers.microsoft.com/v2/global/en/students.html",
-                    "Microsoft Careers",
-                    "official_careers",
-                    "2026",
-                    report.dateChecked,
-                    List.of(
-                            "Core competencies: Data structures, Algorithms, Object-oriented programming",
-                            "Demonstrated problem solving in C++, C#, Java, or Python",
-                            "Understanding of software engineering fundamentals (OS, Memory, Databases)"
-                    ),
-                    "Official requirement"
-            ));
-            report.sources.add(new SourceRecord(
-                    "LeetCode Microsoft Interview Assessment Track",
-                    "https://leetcode.com/explore/interview/card/microsoft/",
-                    "LeetCode",
-                    "practice_resource",
-                    "2026",
-                    report.dateChecked,
-                    List.of(
-                            "Frequent patterns: Linked Lists, Binary Trees, Strings, Arrays, Recursion",
-                            "System fundamentals and clean coding conventions"
-                    ),
-                    "Reputable practice resource"
-            ));
-        } else if (normalizedComp.contains("meta")) {
-            report.sources.add(new SourceRecord(
-                    "Meta University & Early Career Engineering Programs",
-                    "https://www.metacareers.com/careerprograms/students/",
-                    "Meta Careers",
-                    "official_careers",
-                    "2026",
-                    report.dateChecked,
-                    List.of(
-                            "Rapid, bug-free coding execution under tight 20-minute problem budgets",
-                            "Deep mastery of Binary Trees, Graph BFS/DFS, Hash Tables, and Two Pointers",
-                            "Edge-case communication and verbal dry-running"
-                    ),
-                    "Official preparation guidance"
-            ));
-            report.sources.add(new SourceRecord(
-                    "LeetCode Meta Curated Interview Track",
-                    "https://leetcode.com/explore/interview/card/facebook/",
-                    "LeetCode",
-                    "practice_resource",
-                    "2026",
-                    report.dateChecked,
-                    List.of("Curated problems: Subarray Sum, Tree Path Sum, Word Break, Interval Merging"),
-                    "Reputable practice resource"
-            ));
-        } else if (normalizedComp.contains("tcs") || normalizedComp.contains("infosys") || normalizedComp.contains("accenture") || normalizedComp.contains("zoho")) {
-            report.sources.add(new SourceRecord(
-                    companyLabel + " National Qualifier & Campus Technical Assessment Blueprint",
-                    "https://www.geeksforgeeks.org/" + normalizedComp + "-placement-papers/",
-                    "National Campus Hiring Board",
-                    "official_guide",
-                    "2026",
-                    report.dateChecked,
-                    List.of(
-                            "Sections: Advanced Coding round (2 programming problems)",
-                            "Computer Science fundamentals: OOPs concepts, DBMS queries (SQL), OS process concepts",
-                            "Time management and clean compilable code with 100% test case pass rate"
-                    ),
-                    "Official preparation guidance"
-            ));
-            report.sources.add(new SourceRecord(
-                    "GeeksforGeeks " + companyLabel + " Campus Interview Preparation",
-                    "https://www.geeksforgeeks.org/" + normalizedComp + "-interview-experience/",
-                    "GeeksforGeeks",
-                    "practice_resource",
-                    "2026",
-                    report.dateChecked,
-                    List.of("Standard patterns: Array manipulations, String parsing, Recursion basics, Relational SQL"),
-                    "Reputable practice resource"
-            ));
+        // 2. Blueprint matching
+        Optional<CompanyBlueprint> matchedBlueprint = findBlueprint(queryCompany);
+        if (matchedBlueprint.isEmpty() && !companyKey.equalsIgnoreCase("custom")) {
+            matchedBlueprint = findBlueprint(companyKey);
+        }
+
+        if (matchedBlueprint.isPresent() && !matchedBlueprint.get().companyId().equals("standard_sde")) {
+            CompanyBlueprint bp = matchedBlueprint.get();
+            report.blueprint = bp;
+            report.companyKey = bp.companyId();
+            report.companyName = bp.displayName();
+
+            // Populate Tier 1 Official Sources from verifiedDocs
+            for (CompanyBlueprint.VerifiedDoc doc : bp.verifiedDocs()) {
+                report.sources.add(new SourceRecord(
+                        doc.title(),
+                        doc.url(),
+                        bp.displayName() + " Careers",
+                        "official_careers",
+                        "2026",
+                        report.dateChecked,
+                        List.of(doc.topic()),
+                        "Official preparation guidance"
+                ));
+            }
+
+            // Populate SourceEvidence records
+            for (CompanyBlueprint.SourceEvidence ev : bp.sourceEvidence()) {
+                String conf = ev.category().contains("TIER_1") ? "Official requirement" :
+                        (ev.category().contains("TIER_2") ? "Reputable practice resource" : "Repeated candidate-reported pattern");
+                report.sources.add(new SourceRecord(
+                        ev.title(),
+                        ev.url(),
+                        ev.organization(),
+                        ev.category().toLowerCase(),
+                        "2026",
+                        report.dateChecked,
+                        ev.supportedClaims(),
+                        conf
+                ));
+            }
+
+            // Build core competencies from roleSkills & stages
+            List<Map<String, Object>> comps = new ArrayList<>();
+            for (int i = 0; i < bp.roleSkills().size(); i++) {
+                String skill = bp.roleSkills().get(i);
+                comps.add(Map.of(
+                        "name", skill,
+                        "priority", i < 3 ? "critical" : "core",
+                        "reason", "Verified requirement in " + bp.displayName() + " hiring rubric.",
+                        "source", "Tier 1 Blueprint: " + bp.displayName()
+                ));
+            }
+            report.coreCompetencies = comps;
+
+            // Diagnostic topics from core stage topics
+            List<String> dTopics = new ArrayList<>();
+            for (CompanyBlueprint.InterviewStage stg : bp.stages()) {
+                dTopics.addAll(stg.coreTopics());
+            }
+            report.diagnosticTopics = dTopics.stream().distinct().limit(6).toList();
+
+            report.evidenceSummary.put("isGeneralGuidance", false);
+            report.evidenceSummary.put("guidanceClassification", "Company-Verified Preparation Framework (" + bp.displayName() + ")");
+            report.evidenceSummary.put("researchConfidence", "high");
+            report.evidenceSummary.put("assessmentPlatform", bp.assessmentPlatform());
         } else {
-            // General / Custom Tech Company
+            // General / Unrecognized Company -> use standard_sde blueprint for structure
+            CompanyBlueprint stdBp = getBlueprintOrDefault("standard_sde");
+            report.blueprint = stdBp;
+
+            for (CompanyBlueprint.SourceEvidence ev : stdBp.sourceEvidence()) {
+                report.sources.add(new SourceRecord(
+                        ev.title(),
+                        ev.url(),
+                        ev.organization(),
+                        ev.category().toLowerCase(),
+                        "2026",
+                        report.dateChecked,
+                        ev.supportedClaims(),
+                        "Inference requiring confirmation"
+                ));
+            }
+
             report.sources.add(new SourceRecord(
                     "Standard Tech Industry Competency Matrix: " + targetRole,
                     "https://www.geeksforgeeks.org/how-to-prepare-for-technical-interviews/",
@@ -313,58 +320,111 @@ public class RoleResearchService {
                     ),
                     "Inference requiring confirmation"
             ));
-            report.sources.add(new SourceRecord(
-                    "LeetCode Top Interview 150 Core Patterns",
-                    "https://leetcode.com/studyplan/top-interview-150/",
-                    "LeetCode",
-                    "practice_resource",
-                    "2026",
-                    report.dateChecked,
-                    List.of("Foundation patterns: Two Pointers, Sliding Window, Binary Search, Tree BFS/DFS, Hash Maps"),
-                    "Reputable practice resource"
-            ));
+
+            List<Map<String, Object>> comps = new ArrayList<>();
+            for (int i = 0; i < stdBp.roleSkills().size(); i++) {
+                String skill = stdBp.roleSkills().get(i);
+                comps.add(Map.of(
+                        "name", skill,
+                        "priority", i < 3 ? "critical" : "core",
+                        "reason", "Foundational expectation across software engineering technical assessments.",
+                        "source", "General SDE Industry Standard"
+                ));
+            }
+            report.coreCompetencies = comps;
+
+            List<String> dTopics = new ArrayList<>();
+            for (CompanyBlueprint.InterviewStage stg : stdBp.stages()) {
+                dTopics.addAll(stg.coreTopics());
+            }
+            report.diagnosticTopics = dTopics.stream().distinct().limit(6).toList();
+
+            report.evidenceSummary.put("isGeneralGuidance", true);
+            report.evidenceSummary.put("guidanceClassification", "General Role Guidance (Unverified Company Specifics)");
+            report.evidenceSummary.put("researchConfidence", "provisional");
+            report.evidenceSummary.put("assessmentPlatform", stdBp.assessmentPlatform());
+            report.evidenceSummary.put("limitationsNotice", "No verified company-specific blueprint available for " + companyLabel + ". Applying standard software engineering industry curriculum and rubrics.");
         }
 
-        // 3. Synthesize Core Competencies and Evidence Summary
-        if (isDataRole) {
-            report.coreCompetencies = List.of(
-                    Map.of("name", "SQL & Relational Schema Modeling", "priority", "critical", "reason", "Core analytical competency cited in all data role postings.", "source", "Tier 1 Job Posting & Technical Matrix"),
-                    Map.of("name", "Aggregations, Window Functions & Joins", "priority", "critical", "reason", "Mandatory for technical query screenings and data manipulation.", "source", "Tier 2 LeetCode Database Track"),
-                    Map.of("name", "Python Data Manipulation (Pandas / Basic Algorithmic)", "priority", "core", "reason", "Required for data pipeline scripting and ETL logic.", "source", "Tier 1 Hiring Documentation"),
-                    Map.of("name", "Database Performance & Indexing", "priority", "core", "reason", "Frequent technical discussion topic in interview rounds.", "source", "Tier 2 Technical Literature"),
-                    Map.of("name", "Statistical Fundamentals & Metric Analysis", "priority", "supporting", "reason", "Evaluated in product analytics and experimentation loops.", "source", "Tier 3 Candidate Reports")
-            );
-            report.diagnosticTopics = List.of("SQL & Relational Models", "Aggregations & Joins", "Window Functions", "Python Data Structures", "Database Indexing");
-        } else if (isFrontendRole) {
-            report.coreCompetencies = List.of(
-                    Map.of("name", "JavaScript / TypeScript & DOM Invariants", "priority", "critical", "reason", "Fundamental engine competency for all frontend assessments.", "source", "Tier 1 Technical Specifications"),
-                    Map.of("name", "UI Component Architecture & State Management", "priority", "critical", "reason", "Primary technical interview topic for React/Web roles.", "source", "Tier 1 Hiring Specifications"),
-                    Map.of("name", "Data Structures for Frontend (Arrays, Trees, Hash Maps)", "priority", "core", "reason", "Required for technical coding rounds at product companies.", "source", "Tier 2 LeetCode Frontend Patterns"),
-                    Map.of("name", "Web Performance, Async Event Loop & Rendering Invariants", "priority", "core", "reason", "Heavily probed in senior/internship interview loops.", "source", "Tier 3 Candidate Reports"),
-                    Map.of("name", "CSS Architecture & Responsive Layout Mechanics", "priority", "supporting", "reason", "Tested in practical design matching drills.", "source", "Tier 2 Practice Standards")
-            );
-            report.diagnosticTopics = List.of("JavaScript Invariants", "Async & Event Loop", "Arrays & Two Pointers", "Component State Lifecycle", "DOM & Complexity");
-        } else {
-            // General SDE / SWE Intern / Fresher
-            report.coreCompetencies = List.of(
-                    Map.of("name", "Arrays, Strings & Two Pointers", "priority", "critical", "reason", "Foundational assessment topic verified across all OA screening rounds.", "source", "Tier 1 OA Guide & LeetCode"),
-                    Map.of("name", "Hashing & Frequency Maps", "priority", "critical", "reason", "Directly tested in OA1 and preliminary coding rounds.", "source", "Tier 1 Official Prep Documentation"),
-                    Map.of("name", "Binary Trees & Recursion Traversal", "priority", "critical", "reason", "Core live interview topic at Tier-1 tech companies.", "source", "Tier 1 Company Interview Topics"),
-                    Map.of("name", "Binary Search & Sorting Invariants", "priority", "core", "reason", "Essential for logarithmic time optimization problems.", "source", "Tier 2 Algorithmic Standards"),
-                    Map.of("name", "Algorithm Complexity Analysis (Big-O)", "priority", "critical", "reason", "Explicitly evaluated in every live interview response.", "source", "Tier 1 Interview Prep Guides"),
-                    Map.of("name", "Core Computer Science Fundamentals (OS & DBMS)", "priority", "core", "reason", "Standard campus interview round questioning topic.", "source", "Tier 3 Candidate Experiences"),
-                    Map.of("name", "Dynamic Programming Foundations", "priority", "supporting", "reason", "Featured in advanced OA problems and final loop rounds.", "source", "Tier 2 Reputable Practice Resources")
-            );
-            report.diagnosticTopics = List.of("Arrays & Strings", "Hashing & Maps", "Binary Trees", "Binary Search", "Complexity Analysis", "CS Fundamentals (OS/DBMS)");
-        }
-
-        report.evidenceSummary.put("officialRequirementsCount", report.sources.stream().filter(s -> s.confidence.contains("Official")).count());
+        boolean hasOfficial = report.sources.stream().anyMatch(s -> s.confidence != null && s.confidence.contains("Official"));
+        report.evidenceSummary.put("officialRequirementsCount", report.sources.stream().filter(s -> s.confidence != null && s.confidence.contains("Official")).count());
         report.evidenceSummary.put("totalSourcesAnalyzed", report.sources.size());
         report.evidenceSummary.put("verifiedPrimaryEntryUrl", report.sources.isEmpty() ? null : report.sources.get(0).url);
-        report.evidenceSummary.put("researchConfidence", report.sources.stream().anyMatch(s -> s.confidence.equals("Official requirement")) ? "high" : "provisional");
-        report.evidenceSummary.put("limitationsNotice", "Evidence synthesized from official public careers documentation, verified curricula, and candidate patterns. Always confirm specific requirements with your assigned campus recruiter.");
+        if (!report.evidenceSummary.containsKey("limitationsNotice")) {
+            report.evidenceSummary.put("limitationsNotice", "Evidence synthesized from official public careers documentation, verified curricula, and candidate patterns. Always confirm specific requirements with your assigned recruiter.");
+        }
 
         return report;
+    }
+
+    private CompanyBlueprint fallbackDefaultBlueprint() {
+        return new CompanyBlueprint(
+                "standard_sde",
+                "Standard SDE / General Tech",
+                List.of("general", "standard", "generic", "sde"),
+                "Standard Tech Assessment (HackerRank / CodeSignal / LeetCode / Live Editor)",
+                List.of(
+                        new CompanyBlueprint.InterviewStage(
+                                "std-screening",
+                                "Technical Screening & Online Assessment",
+                                30,
+                                "Timed online algorithmic challenge",
+                                List.of("Inefficient Big-O time complexity", "Edge case blindspots"),
+                                List.of("Arrays & Strings", "Hash Maps & Sets", "Binary Search"),
+                                List.of("https://github.com/jwasham/coding-interview-university")
+                        ),
+                        new CompanyBlueprint.InterviewStage(
+                                "std-core-dsa",
+                                "Core Algorithms & Data Structures",
+                                40,
+                                "Live interactive technical interview",
+                                List.of("Coding before verbally verifying approach", "Silent thinking without sharing trade-offs"),
+                                List.of("Trees & BST", "Graphs (BFS/DFS)", "Dynamic Programming"),
+                                List.of("https://github.com/jwasham/coding-interview-university")
+                        ),
+                        new CompanyBlueprint.InterviewStage(
+                                "std-systems-behavioral",
+                                "System Fundamentals & Behavioral Competency",
+                                30,
+                                "System design discussion and STAR method behavioral evaluation",
+                                List.of("Buzzwords without throughput requirements", "Vague behavioral answers"),
+                                List.of("API Design", "Database Indexing & Caching", "STAR Stories"),
+                                List.of("https://github.com/jwasham/coding-interview-university")
+                        )
+                ),
+                List.of(1, 15, 20, 21, 53, 121, 141, 200, 206, 226, 238, 704),
+                List.of(
+                        "Data Structures & Algorithms",
+                        "Object-Oriented Design & Clean Code",
+                        "System Design & Web Architecture Fundamentals",
+                        "Testing, Debugging & Performance Profiling",
+                        "Technical Communication & Collaboration"
+                ),
+                new CompanyBlueprint.BehavioralFramework(
+                        "STAR Behavioral Framework",
+                        List.of("Situation & Task Clarity", "Action Ownership", "Quantifiable Results", "Constructive Collaboration"),
+                        List.of("Describe a technically difficult bug you resolved.", "Tell me about a technical disagreement with a teammate.")
+                ),
+                List.of(
+                        new CompanyBlueprint.VerifiedDoc(
+                                "General SDE Reference",
+                                "https://github.com/jwasham/coding-interview-university",
+                                "Standard Software Engineering Preparation",
+                                "GENERAL_REFERENCE"
+                        )
+                ),
+                List.of(
+                        new CompanyBlueprint.SourceEvidence(
+                                "Industry Standard Technical Interview Rubrics",
+                                "https://github.com/jwasham/coding-interview-university",
+                                "Open Source Tech Prep",
+                                "TIER_2_TECHNICAL",
+                                List.of("Core expectations for time and space complexity", "Data structure mastery"),
+                                "HIGH",
+                                "2026-03-01"
+                        )
+                )
+        );
     }
 
     private List<String> extractStatedSkillsFromJobDescription(String jd) {

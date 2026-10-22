@@ -1,0 +1,137 @@
+{
+  "companyId": "standard_sde",
+  "displayName": "Standard SDE / General Tech",
+  "aliases": [
+    "general",
+    "standard",
+    "generic",
+    "software engineer",
+    "sde",
+    "software developer",
+    "backend engineer",
+    "fullstack engineer"
+  ],
+  "assessmentPlatform": "Standard Tech Assessment (HackerRank / CodeSignal / LeetCode / Live Editor)",
+  "stages": [
+    {
+      "stageId": "std-screening-oa",
+      "name": "Technical Screening & Online Assessment",
+      "studyAllocationPercent": 30,
+      "format": "Timed online algorithmic challenge (typically 2 problems in 60-90 minutes)",
+      "rubricTraps": [
+        "Inefficient Big-O time complexity causing timeout on large test sets",
+        "Edge case blindspots (boundary numbers, nulls, empty collections)",
+        "Overcomplicating the solution when a direct two-pointer or hash map approach suffices"
+      ],
+      "coreTopics": [
+        "Arrays & Strings",
+        "Hash Maps & Sets",
+        "Binary Search",
+        "Sliding Window"
+      ],
+      "evidenceRefs": [
+        "https://github.com/jwasham/coding-interview-university"
+      ]
+    },
+    {
+      "stageId": "std-core-dsa",
+      "name": "Core Algorithms & Data Structures",
+      "studyAllocationPercent": 40,
+      "format": "Live interactive technical interview (45-60 minutes) with whiteboard or shared IDE",
+      "rubricTraps": [
+        "Coding before verbally verifying the approach with the interviewer",
+        "Silent thinking without sharing reasoning or trade-offs",
+        "Messy variable naming and lack of modular helper decomposition",
+        "Failing to analyze time and space complexity with exact Big-O justification"
+      ],
+      "coreTopics": [
+        "Trees & Binary Search Trees",
+        "Graphs (BFS, DFS, Topological Sort)",
+        "Dynamic Programming & Recursion with Memoization",
+        "Heaps, Stacks & Queues"
+      ],
+      "evidenceRefs": [
+        "https://github.com/jwasham/coding-interview-university"
+      ]
+    },
+    {
+      "stageId": "std-systems-behavioral",
+      "name": "System Fundamentals & Behavioral Competency",
+      "studyAllocationPercent": 30,
+      "format": "System design / architecture discussion and STAR method behavioral evaluation (45-60 minutes)",
+      "rubricTraps": [
+        "Diving into microservices buzzwords without establishing clear throughput or capacity requirements",
+        "Ignoring database trade-offs (SQL vs NoSQL, consistency vs availability)",
+        "Vague answers to behavioral questions lacking concrete actions or measurable impact",
+        "Inability to reflect honestly on mistakes or technical friction"
+      ],
+      "coreTopics": [
+        "API Design & Web Protocols (REST, HTTP status codes)",
+        "Database Indexing & Caching Strategies",
+        "Scalability & Load Balancing Fundamentals",
+        "STAR Behavioral Stories (Ownership, Conflict, Learning)"
+      ],
+      "evidenceRefs": [
+        "https://github.com/jwasham/coding-interview-university"
+      ]
+    }
+  ],
+  "highFrequencyLeetCodeIds": [
+    1,
+    15,
+    20,
+    21,
+    53,
+    121,
+    141,
+    200,
+    206,
+    226,
+    238,
+    704
+  ],
+  "roleSkills": [
+    "Data Structures & Algorithms",
+    "Object-Oriented Design & Clean Code",
+    "System Design & Web Architecture Fundamentals",
+    "Testing, Debugging & Performance Profiling",
+    "Technical Communication & Collaboration"
+  ],
+  "behavioralFramework": {
+    "name": "STAR Behavioral Framework",
+    "principles": [
+      "Situation & Task Clarity",
+      "Action Ownership & Personal Contribution",
+      "Quantifiable Results & Reflection",
+      "Constructive Collaboration & Communication"
+    ],
+    "sampleQuestions": [
+      "Describe a technically difficult bug or outage you diagnosed and resolved under pressure.",
+      "Tell me about a time you had a technical disagreement with a teammate and how you reached consensus.",
+      "Walk me through a project where requirements shifted mid-stream and how you managed the changes.",
+      "What is an engineering decision you made that you would do differently in hindsight?"
+    ]
+  },
+  "verifiedDocs": [
+    {
+      "title": "General Software Engineering Interview Preparation Reference",
+      "url": "https://github.com/jwasham/coding-interview-university",
+      "topic": "Industry Standard Technical Interview Curriculum",
+      "category": "GENERAL_REFERENCE"
+    }
+  ],
+  "sourceEvidence": [
+    {
+      "title": "Industry Standard Technical Interview Rubrics & Curriculum",
+      "url": "https://github.com/jwasham/coding-interview-university",
+      "organization": "Open Source Tech Preparation Standards",
+      "category": "TIER_2_TECHNICAL",
+      "supportedClaims": [
+        "Core expectations for time and space complexity analysis across Big-O categories",
+        "Fundamental requirements for tree, graph, and linear data structure mastery"
+      ],
+      "confidence": "HIGH",
+      "dateChecked": "2026-03-01"
+    }
+  ]
+}
