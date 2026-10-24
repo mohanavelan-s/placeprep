@@ -10,6 +10,7 @@ import com.placeprep.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -361,7 +362,41 @@ public class CoachService {
         return Map.of("success", true, "deletedCount", count);
     }
 
+    @Transactional
     public Map<String, Object> removeStudent(User adminUser, UUID studentUserId) {
+        if (adminUser == null || adminUser.getRole() == null || !"admin".equalsIgnoreCase(adminUser.getRole())) {
+            throw new AppException("Administrator privileges required to remove student members.", HttpStatus.FORBIDDEN);
+        }
+        if (studentUserId == null) {
+            throw new AppException("Target student user ID is required.", HttpStatus.BAD_REQUEST);
+        }
+        if (studentUserId.equals(adminUser.getId())) {
+            throw new AppException("Cannot remove your own administrator account.", HttpStatus.BAD_REQUEST);
+        }
+
+        // Verify target exists and is not an admin
+        List<String> roles = jdbcTemplate.query(
+                "SELECT role FROM users WHERE id = ?",
+                (rs, rowNum) -> rs.getString("role"),
+                studentUserId
+        );
+        if (roles.isEmpty()) {
+            return Map.of("success", true, "deletedCount", 0, "studentUserId", studentUserId.toString(), "reason", "User not found");
+        }
+        if ("admin".equalsIgnoreCase(roles.get(0))) {
+            throw new AppException("Cannot remove an administrator account (" + studentUserId + ").", HttpStatus.BAD_REQUEST);
+        }
+
+        // Clean up references where foreign keys might restrict or set null
+        jdbcTemplate.update("UPDATE invites SET created_by = NULL WHERE created_by = ?", studentUserId);
+        jdbcTemplate.update("UPDATE invites SET used_by = NULL WHERE used_by = ?", studentUserId);
+        jdbcTemplate.update("UPDATE coach_groups SET created_by = NULL WHERE created_by = ?", studentUserId);
+        jdbcTemplate.update("UPDATE coach_group_members SET added_by = NULL WHERE added_by = ?", studentUserId);
+        try {
+            jdbcTemplate.update("UPDATE apk_versions SET uploaded_by = NULL WHERE uploaded_by = ?", studentUserId);
+        } catch (Exception ignored) {}
+
+        // Remove user row and dependent records
         jdbcTemplate.update("DELETE FROM coach_group_members WHERE user_id = ?", studentUserId);
         jdbcTemplate.update("DELETE FROM tasks WHERE user_id = ?", studentUserId);
         jdbcTemplate.update("DELETE FROM prep_plans WHERE user_id = ?", studentUserId);
@@ -370,6 +405,8 @@ public class CoachService {
         jdbcTemplate.update("DELETE FROM images WHERE user_id = ?", studentUserId);
         jdbcTemplate.update("DELETE FROM progress_stats WHERE user_id = ?", studentUserId);
         jdbcTemplate.update("DELETE FROM user_profiles WHERE user_id = ?", studentUserId);
+        jdbcTemplate.update("DELETE FROM notifications WHERE user_id = ?", studentUserId);
+
         int deleted = jdbcTemplate.update("DELETE FROM users WHERE id = ? AND role != 'admin'", studentUserId);
 
         return Map.of(
@@ -379,14 +416,35 @@ public class CoachService {
         );
     }
 
+    @Transactional
     public Map<String, Object> removeStudentsBulk(User adminUser, List<UUID> studentUserIds) {
+        if (adminUser == null || adminUser.getRole() == null || !"admin".equalsIgnoreCase(adminUser.getRole())) {
+            throw new AppException("Administrator privileges required to remove student members.", HttpStatus.FORBIDDEN);
+        }
         if (studentUserIds == null || studentUserIds.isEmpty()) {
             return Map.of("success", true, "deletedCount", 0, "studentUserIds", List.of());
         }
 
+        Set<UUID> uniqueIds = new LinkedHashSet<>(studentUserIds);
+        if (uniqueIds.contains(adminUser.getId())) {
+            throw new AppException("Cannot remove your own administrator account in bulk operations.", HttpStatus.BAD_REQUEST);
+        }
+
+        // Verify none of target IDs is an administrator
+        for (UUID sId : uniqueIds) {
+            List<String> roles = jdbcTemplate.query(
+                    "SELECT role FROM users WHERE id = ?",
+                    (rs, rowNum) -> rs.getString("role"),
+                    sId
+            );
+            if (!roles.isEmpty() && "admin".equalsIgnoreCase(roles.get(0))) {
+                throw new AppException("Batch contains an administrator account (" + sId + "). Removal aborted.", HttpStatus.BAD_REQUEST);
+            }
+        }
+
         int totalDeleted = 0;
         List<String> removedIds = new ArrayList<>();
-        for (UUID sId : studentUserIds) {
+        for (UUID sId : uniqueIds) {
             Map<String, Object> res = removeStudent(adminUser, sId);
             if (((Number) res.getOrDefault("deletedCount", 0)).intValue() > 0) {
                 totalDeleted++;

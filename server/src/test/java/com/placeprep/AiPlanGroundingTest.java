@@ -2,6 +2,7 @@ package com.placeprep;
 
 import com.placeprep.model.blueprint.CompanyBlueprint;
 import com.placeprep.service.AiService;
+import com.placeprep.service.AssessmentService;
 import com.placeprep.service.LeetCodeCatalogService;
 import com.placeprep.service.RoleResearchService;
 import org.junit.jupiter.api.BeforeEach;
@@ -471,5 +472,270 @@ public class AiPlanGroundingTest {
         assertEquals("provisional", report.evidenceSummary.get("researchConfidence"));
         assertNotEquals("Official requirement", report.sources.get(0).confidence);
         assertTrue(report.evidenceSummary.get("limitationsNotice").toString().contains("No verified company-specific blueprint"));
+    }
+
+    @Test
+    @DisplayName("Role archetype differentiation: Daily tasks and topics tailored to AI, Backend, Frontend, and SDE Intern")
+    void testRoleArchetypeDifferentiation() {
+        CompanyBlueprint msft = roleResearchService.findBlueprint("microsoft").orElseThrow();
+        RoleResearchService.ResearchReport report = roleResearchService.conductResearch(Map.of("companyKey", "msft"));
+
+        // 1. AI Engineer
+        Map<String, Object> aiPlan = aiService.generateDeterministicCurriculum(msft, report, 90, 1, "AI Engineer");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> aiTasks = (List<Map<String, Object>>) aiPlan.get("tasks");
+        assertFalse(aiTasks.isEmpty());
+        @SuppressWarnings("unchecked")
+        String aiDay1Title = ((List<Map<String, Object>>) aiTasks.get(0).get("items")).get(0).get("title").toString();
+        assertTrue(aiDay1Title.toLowerCase().contains("matrix") || aiDay1Title.toLowerCase().contains("image") || aiDay1Title.toLowerCase().contains("ml") || aiDay1Title.toLowerCase().contains("python") || aiDay1Title.contains("74") || aiDay1Title.contains("48"),
+                "AI Engineer task should focus on ML/Matrix/Image/Python: " + aiDay1Title);
+
+        // 2. Backend Engineer
+        Map<String, Object> backendPlan = aiService.generateDeterministicCurriculum(msft, report, 90, 1, "Backend Engineer");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> backendTasks = (List<Map<String, Object>>) backendPlan.get("tasks");
+        @SuppressWarnings("unchecked")
+        String backendDay1Title = ((List<Map<String, Object>>) backendTasks.get(0).get("items")).get(0).get("title").toString();
+        assertTrue(backendDay1Title.toLowerCase().contains("interval") || backendDay1Title.toLowerCase().contains("cache") || backendDay1Title.toLowerCase().contains("lru") || backendDay1Title.toLowerCase().contains("system") || backendDay1Title.contains("56") || backendDay1Title.contains("146"),
+                "Backend Engineer task should focus on intervals/caching/distributed systems: " + backendDay1Title);
+
+        // 3. Frontend Engineer
+        Map<String, Object> frontendPlan = aiService.generateDeterministicCurriculum(msft, report, 90, 1, "Frontend Engineer");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> frontendTasks = (List<Map<String, Object>>) frontendPlan.get("tasks");
+        @SuppressWarnings("unchecked")
+        String frontendDay1Title = ((List<Map<String, Object>>) frontendTasks.get(0).get("items")).get(0).get("title").toString();
+        assertTrue(frontendDay1Title.toLowerCase().contains("parentheses") || frontendDay1Title.toLowerCase().contains("string") || frontendDay1Title.toLowerCase().contains("compression") || frontendDay1Title.toLowerCase().contains("dom") || frontendDay1Title.contains("20") || frontendDay1Title.contains("443"),
+                "Frontend Engineer task should focus on UI/DOM/Strings: " + frontendDay1Title);
+
+        // 4. SDE Intern
+        Map<String, Object> internPlan = aiService.generateDeterministicCurriculum(msft, report, 90, 1, "SDE Intern");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> internTasks = (List<Map<String, Object>>) internPlan.get("tasks");
+        @SuppressWarnings("unchecked")
+        String internDay1Title = ((List<Map<String, Object>>) internTasks.get(0).get("items")).get(0).get("title").toString();
+        assertTrue(internDay1Title.toLowerCase().contains("search") || internDay1Title.toLowerCase().contains("interval") || internDay1Title.toLowerCase().contains("array") || internDay1Title.contains("704") || internDay1Title.contains("56"),
+                "SDE Intern task should focus on core fundamentals/binary search/intervals: " + internDay1Title);
+    }
+
+    @Test
+    @DisplayName("Plan-specific baseline diagnostic: 4 MCQs (Section A) + 1 DSA Coding (Section B) tailored by role")
+    void testBaselineQuestionsTailoringAndSections() {
+        AssessmentService assessmentService = new AssessmentService(null, null, null, leetCodeCatalogService);
+
+        // Test Generic AI Engineer Baseline
+        RoleResearchService.ResearchReport aiReport = new RoleResearchService.ResearchReport();
+        aiReport.companyKey = "google";
+        aiReport.companyName = "Google";
+        aiReport.targetRole = "AI Engineer";
+        aiReport.seniority = "Senior";
+        aiReport.blueprint = roleResearchService.getBlueprintOrDefault("standard_sde");
+        aiReport.evidenceSummary = Map.of("isGeneralGuidance", true);
+
+        List<Map<String, Object>> aiQuestions = assessmentService.buildBaselineQuestions(aiReport);
+        assertEquals(5, aiQuestions.size(), "Must contain 4 MCQs + 1 Coding question");
+        assertEquals("A", aiQuestions.get(0).get("section"));
+        assertEquals("B", aiQuestions.get(4).get("section"));
+        assertEquals("coding", aiQuestions.get(4).get("type"));
+        assertEquals(74, aiQuestions.get(4).get("leetcodeNumber"));
+        assertTrue((Boolean) aiQuestions.get(0).get("isGeneralGuidance"));
+
+        // Test Backend Engineer Baseline (Generic)
+        RoleResearchService.ResearchReport backendReport = new RoleResearchService.ResearchReport();
+        backendReport.companyKey = "generic";
+        backendReport.companyName = "Generic Corp";
+        backendReport.targetRole = "Backend Systems Engineer";
+        backendReport.seniority = "Mid-Level";
+        backendReport.blueprint = roleResearchService.getBlueprintOrDefault("standard_sde");
+        backendReport.evidenceSummary = Map.of("isGeneralGuidance", true);
+
+        List<Map<String, Object>> backendQuestions = assessmentService.buildBaselineQuestions(backendReport);
+        assertEquals(5, backendQuestions.size());
+        assertEquals(56, backendQuestions.get(4).get("leetcodeNumber"));
+
+        // Test Frontend Engineer Baseline (Generic)
+        RoleResearchService.ResearchReport frontendReport = new RoleResearchService.ResearchReport();
+        frontendReport.companyKey = "generic";
+        frontendReport.companyName = "Generic Corp";
+        frontendReport.targetRole = "Frontend UI Engineer";
+        frontendReport.seniority = "Junior";
+        frontendReport.blueprint = roleResearchService.getBlueprintOrDefault("standard_sde");
+        frontendReport.evidenceSummary = Map.of("isGeneralGuidance", true);
+
+        List<Map<String, Object>> frontendQuestions = assessmentService.buildBaselineQuestions(frontendReport);
+        assertEquals(5, frontendQuestions.size());
+        assertEquals(20, frontendQuestions.get(4).get("leetcodeNumber"));
+
+        // Test SDE Intern Baseline (Generic)
+        RoleResearchService.ResearchReport internReport = new RoleResearchService.ResearchReport();
+        internReport.companyKey = "startup";
+        internReport.companyName = "Generic Inc";
+        internReport.targetRole = "SDE Intern";
+        internReport.seniority = "internship";
+        internReport.blueprint = null;
+        internReport.evidenceSummary = Map.of("isGeneralGuidance", true);
+
+        List<Map<String, Object>> internQuestions = assessmentService.buildBaselineQuestions(internReport);
+        assertEquals(5, internQuestions.size());
+        assertEquals(704, internQuestions.get(4).get("leetcodeNumber"));
+        assertTrue((Boolean) internQuestions.get(0).get("isGeneralGuidance"), "General guidance flag must propagate to questions");
+    }
+
+    @Test
+    @DisplayName("Company-specific baseline evidence grounding: Microsoft AI Engineer vs Generic AI Engineer with deterministic stability")
+    void testCompanySpecificBaselineEvidenceGroundingAiEngineer() {
+        AssessmentService assessmentService = new AssessmentService(null, null, null, leetCodeCatalogService);
+
+        // 1. Microsoft AI Engineer (Company-Verified Blueprint)
+        RoleResearchService.ResearchReport msftAiReport = roleResearchService.conductResearch(Map.of(
+                "companyKey", "msft",
+                "targetRole", "AI Engineer",
+                "seniority", "Mid-Level"
+        ));
+        assertNotNull(msftAiReport.blueprint);
+        assertEquals("microsoft", msftAiReport.blueprint.companyId());
+
+        List<Map<String, Object>> msftQuestions1 = assessmentService.buildBaselineQuestions(msftAiReport);
+        List<Map<String, Object>> msftQuestions2 = assessmentService.buildBaselineQuestions(msftAiReport);
+
+        // Deterministic stability check
+        assertEquals(msftQuestions1, msftQuestions2, "Repeat baseline generation must be completely deterministic and stable");
+
+        assertEquals(5, msftQuestions1.size());
+        assertFalse((Boolean) msftQuestions1.get(0).get("isGeneralGuidance"), "Microsoft verified blueprint must not be general guidance");
+        assertEquals("Microsoft-aligned preparation based on public sources", msftQuestions1.get(0).get("guidanceClassification"));
+        assertFalse(msftQuestions1.get(0).get("guidanceClassification").toString().contains("Company-Verified"),
+                "Guidance label must not misrepresent community/practice questions as Company-Verified");
+
+        // Section A Q4 grounded in Tier 2 DirectML tensor strides & memory layout documentation
+        Map<String, Object> msftQ4 = msftQuestions1.get(3);
+        assertEquals("diag_q4", msftQ4.get("id"));
+        assertEquals("Engineering Fundamentals & Tensor Memory Layout", msftQ4.get("topic"));
+        assertTrue(msftQ4.get("prompt").toString().contains("packed row-major DirectML tensor"));
+        assertTrue(msftQ4.get("prompt").toString().contains("width stride of 1"));
+        assertEquals("b", msftQ4.get("correctAnswer"));
+        assertTrue(msftQ4.get("options").toString().contains("adjacent positions in linear memory"));
+        assertEquals("Source-informed technical practice", msftQ4.get("evidenceType"));
+        assertTrue(msftQ4.get("provenanceNote").toString().contains("dml-strides"),
+                "Provenance must cite DirectML tensor-strides documentation");
+        assertTrue(msftQ4.get("provenanceNote").toString().contains("learn.microsoft.com/en-us/windows/ai/directml/dml-strides"),
+                "Provenance must reference full DirectML strides documentation path");
+        assertTrue(msftQ4.get("provenanceNote").toString().contains("not an official Microsoft interview question"),
+                "Must explicitly disclaim being an official Microsoft interview question");
+        assertFalse(msftQ4.get("provenanceNote").toString().contains("Company-Verified"),
+                "Must not claim Company-Verified");
+
+        // Section B Coding grounded in Microsoft high-frequency LeetCode #48 (Rotate Image)
+        Map<String, Object> msftCoding = msftQuestions1.get(4);
+        assertEquals("B", msftCoding.get("section"));
+        assertEquals("coding", msftCoding.get("type"));
+        assertEquals(48, msftCoding.get("leetcodeNumber"));
+        assertEquals("Rotate Image", msftCoding.get("taskTitle"));
+        assertTrue(msftCoding.get("prompt").toString().contains("rotate the image by 90 degrees"));
+        assertEquals("Community-reported candidate problems", msftCoding.get("evidenceType"));
+        assertTrue(msftCoding.get("provenanceNote").toString().contains("Community-reported candidate practice problem"));
+        assertFalse(msftCoding.get("provenanceNote").toString().contains("Company-Verified"));
+
+        // 2. Generic AI Engineer (e.g. Google - unverified company blueprint)
+        RoleResearchService.ResearchReport googleAiReport = roleResearchService.conductResearch(Map.of(
+                "companyKey", "google",
+                "targetRole", "AI Engineer",
+                "seniority", "Mid-Level"
+        ));
+        assertEquals("standard_sde", googleAiReport.blueprint.companyId(), "Unverified company must fall back to standard_sde blueprint");
+        assertTrue((Boolean) googleAiReport.evidenceSummary.get("isGeneralGuidance"));
+
+        List<Map<String, Object>> googleQuestions = assessmentService.buildBaselineQuestions(googleAiReport);
+        assertEquals(5, googleQuestions.size());
+        assertTrue((Boolean) googleQuestions.get(0).get("isGeneralGuidance"), "Unverified company must have isGeneralGuidance = true");
+        assertEquals("General Role Guidance (Unverified Company Specifics)", googleQuestions.get(0).get("guidanceClassification"));
+
+        // Section A Q4 is generic ML metric evaluation
+        Map<String, Object> googleQ4 = googleQuestions.get(3);
+        assertEquals("ML System Design & Evaluation Metrics", googleQ4.get("topic"));
+        assertTrue(googleQ4.get("prompt").toString().contains("false negatives"));
+
+        // Section B Coding is generic LeetCode #74 (Search a 2D Matrix)
+        Map<String, Object> googleCoding = googleQuestions.get(4);
+        assertEquals(74, googleCoding.get("leetcodeNumber"));
+        assertEquals("Search a 2D Matrix", googleCoding.get("taskTitle"));
+
+        // Meaningful differences asserted:
+        assertNotEquals(msftQ4.get("topic"), googleQ4.get("topic"), "Section A Q4 must reflect verified company engineering rubric vs generic");
+        assertNotEquals(msftCoding.get("leetcodeNumber"), googleCoding.get("leetcodeNumber"), "Section B must select company high-frequency problem vs generic");
+    }
+
+    @Test
+    @DisplayName("Company-specific baseline evidence grounding: Microsoft SDE Intern vs Generic SDE Intern with deterministic stability")
+    void testCompanySpecificBaselineEvidenceGroundingSdeIntern() {
+        AssessmentService assessmentService = new AssessmentService(null, null, null, leetCodeCatalogService);
+
+        // 1. Microsoft SDE Intern (Company-Verified Blueprint)
+        RoleResearchService.ResearchReport msftInternReport = roleResearchService.conductResearch(Map.of(
+                "companyKey", "microsoft",
+                "targetRole", "SDE Intern",
+                "seniority", "internship"
+        ));
+        assertNotNull(msftInternReport.blueprint);
+        assertEquals("microsoft", msftInternReport.blueprint.companyId());
+
+        List<Map<String, Object>> msftQuestions1 = assessmentService.buildBaselineQuestions(msftInternReport);
+        List<Map<String, Object>> msftQuestions2 = assessmentService.buildBaselineQuestions(msftInternReport);
+
+        // Deterministic stability check
+        assertEquals(msftQuestions1, msftQuestions2, "Repeat baseline generation must be completely deterministic and stable");
+
+        assertEquals(5, msftQuestions1.size());
+        assertFalse((Boolean) msftQuestions1.get(0).get("isGeneralGuidance"));
+        assertEquals("Microsoft-aligned preparation based on public sources", msftQuestions1.get(0).get("guidanceClassification"));
+        assertFalse(msftQuestions1.get(0).get("guidanceClassification").toString().contains("Company-Verified"),
+                "Guidance label must not misrepresent community/practice questions as Company-Verified");
+
+        // Section A Q4 grounded in Microsoft official careers rubric guidance (clarifying constraints and edge cases)
+        Map<String, Object> msftQ4 = msftQuestions1.get(3);
+        assertEquals("diag_q4", msftQ4.get("id"));
+        assertEquals("Technical Problem Solving & Edge Case Invariants", msftQ4.get("topic"));
+        assertTrue(msftQ4.get("prompt").toString().contains("Microsoft's official technical interview guidance"));
+        assertEquals("Official employer interview guidance", msftQ4.get("evidenceType"));
+        assertTrue(msftQ4.get("provenanceNote").toString().contains("careers.microsoft.com"));
+
+        // Section B Coding grounded in Microsoft high-frequency LeetCode #56 (Merge Intervals)
+        Map<String, Object> msftCoding = msftQuestions1.get(4);
+        assertEquals(56, msftCoding.get("leetcodeNumber"));
+        assertEquals("Merge Intervals", msftCoding.get("taskTitle"));
+        assertEquals("Community-reported candidate problems", msftCoding.get("evidenceType"));
+        assertTrue(msftCoding.get("provenanceNote").toString().contains("Community-reported candidate practice problem"));
+        assertFalse(msftCoding.get("provenanceNote").toString().contains("Company-Verified"));
+
+        // 2. Generic SDE Intern (e.g. Google SDE Intern - unverified company blueprint)
+        RoleResearchService.ResearchReport googleInternReport = roleResearchService.conductResearch(Map.of(
+                "companyKey", "google",
+                "targetRole", "SDE Intern",
+                "seniority", "internship"
+        ));
+        assertEquals("standard_sde", googleInternReport.blueprint.companyId());
+        assertTrue((Boolean) googleInternReport.evidenceSummary.get("isGeneralGuidance"));
+
+        List<Map<String, Object>> googleQuestions = assessmentService.buildBaselineQuestions(googleInternReport);
+        assertEquals(5, googleQuestions.size());
+        assertTrue((Boolean) googleQuestions.get(0).get("isGeneralGuidance"));
+        assertEquals("General Role Guidance (Unverified Company Specifics)", googleQuestions.get(0).get("guidanceClassification"));
+        assertEquals("General role guidance", googleQuestions.get(0).get("evidenceType"));
+
+        // Section A Q4 is generic Operating Systems Coffman deadlock conditions
+        Map<String, Object> googleQ4 = googleQuestions.get(3);
+        assertEquals("Operating Systems & Concurrency", googleQ4.get("topic"));
+        assertTrue(googleQ4.get("prompt").toString().contains("Coffman's four necessary conditions"));
+        assertEquals("General role guidance", googleQ4.get("evidenceType"));
+
+        // Section B Coding is generic LeetCode #704 (Binary Search)
+        Map<String, Object> googleCoding = googleQuestions.get(4);
+        assertEquals(704, googleCoding.get("leetcodeNumber"));
+        assertEquals("Binary Search", googleCoding.get("taskTitle"));
+        assertEquals("General role guidance", googleCoding.get("evidenceType"));
+
+        // Meaningful differences asserted:
+        assertNotEquals(msftQ4.get("topic"), googleQ4.get("topic"));
+        assertNotEquals(msftCoding.get("leetcodeNumber"), googleCoding.get("leetcodeNumber"));
     }
 }

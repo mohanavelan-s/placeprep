@@ -701,10 +701,21 @@ export interface PendingBaselineSummary {
   id?: string;
   session?: AssessmentSession | null;
   planId?: string | null;
+  status?: string;
+  durationMinutes?: number;
   targetRole?: string;
   companyName?: string;
   seniority?: string;
   diagnosticTopics?: string[];
+  isGeneralGuidance?: boolean;
+  guidanceClassification?: string;
+  sections?: Array<{
+    id: string;
+    title: string;
+    type: string;
+    questionCount: number;
+    timeMinutes: number;
+  }>;
   startedAt?: string | null;
 }
 
@@ -2659,6 +2670,12 @@ export async function updatePrepPlan(payload: {
 
 export async function fetchPendingBaseline(): Promise<PendingBaselineSummary> {
   return request<PendingBaselineSummary>("/assessments/pending-baseline");
+}
+
+export async function startAssessmentSession(assessmentId: string) {
+  return request<{ success: boolean; data: AssessmentSession }>(`/assessments/${assessmentId}/start`, {
+    method: "POST",
+  });
 }
 
 export async function registerMobileDevice(payload: {

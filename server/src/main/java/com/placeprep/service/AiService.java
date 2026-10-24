@@ -1093,24 +1093,151 @@ public class AiService {
         int totalWeeks = safeMonths * 4;
         double weeklyEstimatedHours = Math.round(((5.0 * safeTimePerDay) / 60.0) * 10.0) / 10.0;
 
+        String roleLower = targetRole != null ? targetRole.toLowerCase().trim() : "";
+        boolean isAi = roleLower.contains("ai") || roleLower.contains("machine learning") || roleLower.contains("ml") || roleLower.contains("deep learning") || roleLower.contains("data scientist") || roleLower.contains("nlp");
+        boolean isBackend = roleLower.contains("backend") || roleLower.contains("cloud") || roleLower.contains("systems") || roleLower.contains("distributed") || roleLower.contains("platform") || roleLower.contains("devops") || roleLower.contains("sre");
+        boolean isFrontend = roleLower.contains("front") || roleLower.contains("react") || roleLower.contains("ui") || roleLower.contains("web") || roleLower.contains("mobile") || roleLower.contains("ios") || roleLower.contains("android");
+        boolean isIntern = roleLower.contains("intern") || roleLower.contains("student") || roleLower.contains("junior") || roleLower.contains("entry") || roleLower.contains("graduate");
+
         List<CompanyBlueprint.InterviewStage> stages = (bp != null && !bp.stages().isEmpty())
                 ? bp.stages()
                 : List.of(new CompanyBlueprint.InterviewStage("core-round", "Technical Interview Round", 100, "Live coding", List.of("Edge cases", "Time complexity"), List.of("Data Structures", "Algorithms"), List.of()));
 
-        List<Integer> leetCodeIds = (bp != null && !bp.highFrequencyLeetCodeIds().isEmpty())
-                ? bp.highFrequencyLeetCodeIds()
-                : List.of(1, 15, 20, 21, 53, 121, 141, 200, 206, 226, 238, 704);
+        boolean isVerifiedBlueprint = (bp != null && !"standard_sde".equalsIgnoreCase(bp.companyId()) && !bp.highFrequencyLeetCodeIds().isEmpty());
+
+        List<String> dailyTopics;
+        List<Integer> roleLeetCodeIds;
+        List<String> roleRoadmapThemes;
+        List<List<String>> roleRoadmapFocus;
+
+        if (isAi) {
+            dailyTopics = List.of(
+                    "Python Vectorization & NumPy Memory Layout",
+                    "Loss Functions, Gradient Descent & Backpropagation",
+                    "Feature Engineering & Data Pipeline Preprocessing",
+                    "Model Evaluation: Precision-Recall, ROC-AUC & Calibration",
+                    "Transformer Architecture & Attention Complexity"
+            );
+            roleLeetCodeIds = isVerifiedBlueprint
+                    ? List.of(48, 1, 56, 74, 200)
+                    : List.of(74, 1, 48, 53, 238);
+            roleRoadmapThemes = List.of(
+                    "Machine Learning Foundations & Matrix Algorithms",
+                    "Deep Learning Architectures & Loss Optimization",
+                    "ML Systems Design & Scalable Data Pipelines",
+                    "Production ML, Model Evaluation & Interview Simulation"
+            );
+            roleRoadmapFocus = List.of(
+                    List.of("NumPy Vectorization", "Feature Normalization", "Matrix Operations"),
+                    List.of("Backpropagation", "Regularization", "Transformer Attention"),
+                    List.of("Data Ingestion", "Feature Stores", "Distributed Training"),
+                    List.of("Model Serving", "Latency Optimization", "A/B Testing Metrics")
+            );
+        } else if (isBackend) {
+            dailyTopics = List.of(
+                    "Relational ACID, MVCC & Transaction Isolation Anomalies",
+                    "Distributed Caching (Cache-Aside & Redis Mutex Locking)",
+                    "B+ Tree Indexing & Query Plan Optimization",
+                    "Idempotency & Message Queues (Kafka / RabbitMQ)",
+                    "REST / gRPC Contract Design & Resilience Patterns"
+            );
+            roleLeetCodeIds = isVerifiedBlueprint
+                    ? List.of(146, 56, 200, 207, 1)
+                    : List.of(56, 1, 20, 15, 33);
+            roleRoadmapThemes = List.of(
+                    "Database Internals, ACID & Query Optimization",
+                    "Distributed Systems, Caching & Concurrency",
+                    "Microservices Resiliency, Idempotency & API Design",
+                    "System Design Mock Simulations & Production Troubleshooting"
+            );
+            roleRoadmapFocus = List.of(
+                    List.of("B+ Trees", "MVCC", "Index Scans", "Interval Processing"),
+                    List.of("Cache-Aside", "Redis Locks", "Sharding", "Message Brokers"),
+                    List.of("Idempotency Keys", "gRPC", "Circuit Breakers", "Rate Limiting"),
+                    List.of("Scalability", "Failover", "Distributed Logging", "Final Polish")
+            );
+        } else if (isFrontend) {
+            dailyTopics = List.of(
+                    "Browser Event Loop: Microtasks, Macrotasks & Rendering",
+                    "DOM Manipulation, Layout Thrashing & Virtual DOM Reconciliation",
+                    "Core Web Vitals Optimization (LCP, CLS, INP)",
+                    "React State Architecture, Hook Lifecycles & Memoization",
+                    "CSS Box Model, Flexbox/Grid Layout Engine & Paint Pipeline"
+            );
+            roleLeetCodeIds = isVerifiedBlueprint
+                    ? List.of(443, 20, 1, 226, 3)
+                    : List.of(20, 3, 125, 226, 1);
+            roleRoadmapThemes = List.of(
+                    "Browser Engine, Event Loop & DOM Internals",
+                    "Virtual DOM, React Reconciliation & State Patterns",
+                    "Web Performance, Core Web Vitals & Asset Delivery",
+                    "Advanced Web Systems, Accessibility & Frontend Architecture"
+            );
+            roleRoadmapFocus = List.of(
+                    List.of("Microtask Queue", "Reflow/Repaint", "Stack Operations", "String Parsing"),
+                    List.of("Fiber Architecture", "Hook Dependencies", "Memoization", "Trees"),
+                    List.of("LCP", "CLS", "INP", "Code Splitting", "Bundle Optimization"),
+                    List.of("State Machines", "WCAG A11y", "Design Systems", "Live Polish")
+            );
+        } else if (isIntern) {
+            dailyTopics = List.of(
+                    "Monotonic Binary Search & Array Invariants",
+                    "Two Pointers & Hash Map Invariants",
+                    "Linked List Operations & Fast-Slow Pointers",
+                    "Recursion Trees, 1D DP & Memoization",
+                    "Binary Tree Traversals & Depth Calculation"
+            );
+            roleLeetCodeIds = isVerifiedBlueprint
+                    ? List.of(56, 1, 200, 704, 146)
+                    : List.of(704, 1, 21, 70, 104);
+            roleRoadmapThemes = List.of(
+                    "Core Data Structures & Algorithmic Invariants",
+                    "Recursion, Search & Dynamic Programming Foundations",
+                    "Trees, Graphs & Fundamental Complexity Analysis",
+                    "Intern Technical Screening Loops & Mock Coding"
+            );
+            roleRoadmapFocus = List.of(
+                    List.of("Arrays", "Binary Search", "Two Pointers", "Hashing"),
+                    List.of("1D DP", "Recursion Trees", "Memoization", "Stack/Queue"),
+                    List.of("Binary Trees", "BFS/DFS", "Big-O Analysis", "Testing"),
+                    List.of("Intern Loops", "Whiteboarding", "Communication", "Mock Polish")
+            );
+        } else {
+            dailyTopics = List.of(
+                    "Array Invariants, Two Pointers & Space-Time Analysis",
+                    "Monotonic Binary Search & Midpoint Boundary Conditions",
+                    "Recursion Trees, Memoization & Dynamic Programming Subproblems",
+                    "Graph Traversal (BFS / DFS) & Cycle Detection",
+                    "Operating Systems: Process vs Thread Concurrency & Deadlocks"
+            );
+            roleLeetCodeIds = (bp != null && !bp.highFrequencyLeetCodeIds().isEmpty())
+                    ? bp.highFrequencyLeetCodeIds()
+                    : List.of(704, 1, 21, 70, 104);
+            roleRoadmapThemes = List.of(
+                    "Core Algorithmic Invariants & Data Structures",
+                    "Dynamic Programming & Advanced Recursion",
+                    "Graph Theory, Search & Systems Concurrency",
+                    "Technical Screening Loops & Full Mock Interview Simulation"
+            );
+            roleRoadmapFocus = List.of(
+                    List.of("Arrays", "Two Pointers", "Hashing", "Sorting"),
+                    List.of("1D DP", "2D DP", "Knapsack", "Intervals"),
+                    List.of("BFS/DFS", "Cycle Detection", "Concurrency", "Locks"),
+                    List.of("Full Loop Simulation", "Edge Cases", "Whiteboard Synthesis")
+            );
+        }
 
         // 1. Generate Roadmap (N = durationMonths * 4)
         List<Map<String, Object>> roadmap = new ArrayList<>();
         for (int w = 1; w <= totalWeeks; w++) {
+            int themeIdx = (w - 1) % roleRoadmapThemes.size();
+            String theme = roleRoadmapThemes.get(themeIdx);
+            List<String> focusTopics = new ArrayList<>(roleRoadmapFocus.get(themeIdx));
             int stageIndex = (w - 1) * stages.size() / totalWeeks;
             CompanyBlueprint.InterviewStage stage = stages.get(Math.min(stageIndex, stages.size() - 1));
-            String weekTitle = "Week " + w + ": " + stage.name() + " & Core Focus";
-            List<String> focusTopics = new ArrayList<>(stage.coreTopics());
-            if (focusTopics.isEmpty()) focusTopics.add("Data Structures & Algorithms");
 
-            String primaryGoal = "Master " + String.join(", ", focusTopics) + " under interview time pressure.";
+            String weekTitle = "Week " + w + ": " + theme + " (" + stage.name() + ")";
+            String primaryGoal = "Master " + String.join(", ", focusTopics) + " under " + (bp != null ? bp.displayName() : "interview") + " screening pressure.";
             String milestone = "Pass weekly timed diagnostic simulation with 0 syntax or runtime errors.";
 
             Map<String, Object> weekMap = new LinkedHashMap<>();
@@ -1136,7 +1263,7 @@ public class AiService {
 
         for (int d = 1; d <= 5; d++) {
             CompanyBlueprint.InterviewStage currentStage = stages.get((d - 1) % stages.size());
-            int lcId = leetCodeIds.get((d - 1) % leetCodeIds.size());
+            int lcId = roleLeetCodeIds.get((d - 1) % roleLeetCodeIds.size());
             Optional<LeetCodeCatalogService.CanonicalProblemMeta> metaOpt = leetCodeCatalogService.findByNumber(lcId);
 
             String probTitle = metaOpt.map(LeetCodeCatalogService.CanonicalProblemMeta::title).orElse("Problem #" + lcId);
@@ -1144,7 +1271,7 @@ public class AiService {
             String probDiff = metaOpt.map(LeetCodeCatalogService.CanonicalProblemMeta::difficulty).orElse("Medium");
             String probUrl = metaOpt.map(LeetCodeCatalogService.CanonicalProblemMeta::url).orElse("https://leetcode.com/problems/" + probSlug + "/");
             List<String> probTopics = metaOpt.map(LeetCodeCatalogService.CanonicalProblemMeta::topics).orElse(List.of("Algorithms"));
-            String coreTopic = !currentStage.coreTopics().isEmpty() ? currentStage.coreTopics().get((d - 1) % currentStage.coreTopics().size()) : "Core Engineering Fundamentals";
+            String coreTopic = dailyTopics.get((d - 1) % dailyTopics.size());
 
             List<Map<String, Object>> items = new ArrayList<>();
 
@@ -1155,13 +1282,13 @@ public class AiService {
                     item.put("type", "dsa");
                     item.put("difficulty", probDiff);
                     item.put("estimatedMinutes", block.minutes());
-                    item.put("summary", "LeetCode #" + lcId + ": " + probTitle + " (" + String.join(", ", probTopics) + "). " + block.blockLabel() + " for " + (bp != null ? bp.displayName() : "interview prep") + ".");
+                    item.put("summary", "LeetCode #" + lcId + ": " + probTitle + " (" + String.join(", ", probTopics) + "). " + block.blockLabel() + " for " + targetRole + " at " + (bp != null ? bp.displayName() : "interview prep") + ".");
                     item.put("referenceLabel", "LeetCode #" + lcId);
                     item.put("referenceUrl", probUrl);
                     item.put("leetcodeId", lcId);
                     item.put("codingLabUrl", "/coding-lab?problem=" + lcId + "&url=" + URLEncoder.encode(probUrl, StandardCharsets.UTF_8) + "&title=" + URLEncoder.encode(probTitle, StandardCharsets.UTF_8));
                     item.put("rubricInsight", !currentStage.rubricTraps().isEmpty() ? currentStage.rubricTraps().get((d - 1) % currentStage.rubricTraps().size()) : "Clarify constraints and dry-run boundary edge cases.");
-                    item.put("whyMattersForRole", "Tested frequently in " + (bp != null ? bp.displayName() : "target") + " technical screening loops to evaluate optimal complexity trade-offs.");
+                    item.put("whyMattersForRole", "Tested frequently in " + (bp != null ? bp.displayName() : "target") + " technical screening loops to evaluate optimal complexity trade-offs for " + targetRole + ".");
                     item.put("evidenceRefs", currentStage.evidenceRefs());
                     items.add(item);
                 } else if ("core_cs".equalsIgnoreCase(block.roleType())) {
@@ -1170,11 +1297,11 @@ public class AiService {
                     item.put("type", "core_cs");
                     item.put("difficulty", "Medium");
                     item.put("estimatedMinutes", block.minutes());
-                    item.put("summary", "Deliberate " + block.minutes() + "-minute focus on " + coreTopic + " invariants, failure modes, and architectural trade-offs.");
+                    item.put("summary", "Deliberate " + block.minutes() + "-minute focus on " + coreTopic + " principles, invariants, and architectural trade-offs.");
                     item.put("referenceLabel", coreTopic);
                     item.put("referenceUrl", "https://github.com/jwasham/coding-interview-university");
                     item.put("rubricInsight", "Be prepared to explain memory trade-offs and runtime invariants clearly.");
-                    item.put("whyMattersForRole", "Directly evaluated in " + currentStage.name() + " at " + (bp != null ? bp.displayName() : "interviews") + ".");
+                    item.put("whyMattersForRole", "Directly evaluated in " + currentStage.name() + " for " + targetRole + " at " + (bp != null ? bp.displayName() : "interviews") + ".");
                     item.put("evidenceRefs", currentStage.evidenceRefs());
                     items.add(item);
                 } else {
@@ -1251,6 +1378,17 @@ public class AiService {
             int timePerDay,
             int durationMonths
     ) {
+        normalizeAndValidatePlan(roadmap, tasks, bp, timePerDay, durationMonths, "Software Development Engineer");
+    }
+
+    public void normalizeAndValidatePlan(
+            List<Map<String, Object>> roadmap,
+            List<Map<String, Object>> tasks,
+            CompanyBlueprint bp,
+            int timePerDay,
+            int durationMonths,
+            String targetRole
+    ) {
         int safeTimePerDay = sanitizeTimePerDay(timePerDay);
         int safeMonths = Math.max(1, durationMonths);
         int totalWeeks = safeMonths * 4;
@@ -1271,10 +1409,25 @@ public class AiService {
             week.put("estimatedHours", weeklyHours);
         }
 
-        // Validate task days
-        List<Integer> highFreq = (bp != null && !bp.highFrequencyLeetCodeIds().isEmpty())
-                ? bp.highFrequencyLeetCodeIds()
-                : List.of(1, 15, 20, 21, 53, 121, 141, 200);
+        // Validate task days using role-specific high frequency problems
+        String roleLower = targetRole != null ? targetRole.toLowerCase().trim() : "";
+        boolean isAi = roleLower.contains("ai") || roleLower.contains("machine learning") || roleLower.contains("ml") || roleLower.contains("deep learning") || roleLower.contains("data scientist") || roleLower.contains("nlp");
+        boolean isBackend = roleLower.contains("backend") || roleLower.contains("cloud") || roleLower.contains("systems") || roleLower.contains("distributed") || roleLower.contains("platform") || roleLower.contains("devops") || roleLower.contains("sre");
+        boolean isFrontend = roleLower.contains("front") || roleLower.contains("react") || roleLower.contains("ui") || roleLower.contains("web") || roleLower.contains("mobile") || roleLower.contains("ios") || roleLower.contains("android");
+        boolean isIntern = roleLower.contains("intern") || roleLower.contains("student") || roleLower.contains("junior") || roleLower.contains("entry") || roleLower.contains("graduate");
+
+        List<Integer> highFreq;
+        if (isAi) {
+            highFreq = List.of(74, 1, 48, 53, 238);
+        } else if (isBackend) {
+            highFreq = List.of(56, 1, 20, 15, 33);
+        } else if (isFrontend) {
+            highFreq = List.of(20, 3, 125, 226, 1);
+        } else {
+            highFreq = (bp != null && !bp.highFrequencyLeetCodeIds().isEmpty())
+                    ? bp.highFrequencyLeetCodeIds()
+                    : List.of(704, 1, 21, 70, 104);
+        }
         int itemCounter = 0;
         List<PlanTimeBlock> deliberateBlocks = computeDeliberateBlocks(safeTimePerDay);
 
@@ -1443,7 +1596,7 @@ public class AiService {
 
         // Validate and normalize if AI returned data, or fallback to deterministic curriculum
         if (roadmap != null && tasks != null && !roadmap.isEmpty() && !tasks.isEmpty()) {
-            normalizeAndValidatePlan(roadmap, tasks, bp, timePerDay, durationMonths);
+            normalizeAndValidatePlan(roadmap, tasks, bp, timePerDay, durationMonths, targetRole);
         } else {
             Map<String, Object> deterministic = generateDeterministicCurriculum(bp, researchReport, timePerDay, durationMonths, targetRole);
             roadmap = (List<Map<String, Object>>) deterministic.get("roadmap");
@@ -1671,7 +1824,14 @@ public class AiService {
         t1.setMetadata(t1Meta);
         generatedTasks.add(t1);
 
-        String focusTopic2 = confirmedWeak.size() > 1 ? confirmedWeak.get(1) : "DBMS & System Concurrency";
+        String roleLower = targetRole != null ? targetRole.toLowerCase() : "";
+        boolean isAi = roleLower.contains("ai") || roleLower.contains("machine learning") || roleLower.contains("ml") || roleLower.contains("deep learning") || roleLower.contains("data scientist") || roleLower.contains("nlp");
+        boolean isBackend = roleLower.contains("backend") || roleLower.contains("cloud") || roleLower.contains("systems") || roleLower.contains("distributed") || roleLower.contains("platform") || roleLower.contains("devops") || roleLower.contains("sre");
+        boolean isFrontend = roleLower.contains("front") || roleLower.contains("react") || roleLower.contains("ui") || roleLower.contains("web") || roleLower.contains("mobile") || roleLower.contains("ios") || roleLower.contains("android");
+        boolean isIntern = roleLower.contains("intern") || roleLower.contains("student") || roleLower.contains("junior") || roleLower.contains("entry") || roleLower.contains("graduate");
+
+        String defaultTopic2 = isAi ? "NumPy Vectorization & Feature Pipelines" : (isBackend ? "DBMS & System Concurrency" : (isFrontend ? "Browser Event Loop & Web Vitals" : "Operating Systems & Concurrency"));
+        String focusTopic2 = confirmedWeak.size() > 1 ? confirmedWeak.get(1) : defaultTopic2;
         Task t2 = new Task();
         t2.setUserId(user.getId());
         t2.setTitle(focusTopic2 + " Mechanics & Production Patterns");
