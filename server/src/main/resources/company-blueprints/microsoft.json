@@ -75,6 +75,7 @@
   ],
   "highFrequencyLeetCodeIds": [
     1,
+    48,
     146,
     253,
     200,
@@ -118,6 +119,12 @@
       "url": "https://careers.microsoft.com/v2/global/en/hiring-tips/technical-interviewing.html",
       "topic": "Official Hiring Guidance & Technical Evaluation Rubric",
       "category": "OFFICIAL_CAREERS"
+    },
+    {
+      "title": "DirectML Tensor Strides and Memory Layout",
+      "url": "https://learn.microsoft.com/en-us/windows/ai/directml/dml-strides",
+      "topic": "Tensor strides, buffer layout, and row-major memory representations",
+      "category": "TECHNICAL_DOCS"
     }
   ],
   "sourceEvidence": [
@@ -147,12 +154,34 @@
       "dateChecked": "2026-03-01"
     },
     {
+      "title": "DirectML Tensor Strides and Memory Layout",
+      "url": "https://learn.microsoft.com/en-us/windows/ai/directml/dml-strides",
+      "organization": "Microsoft Windows AI Documentation",
+      "category": "TIER_2_TECHNICAL",
+      "supportedClaims": [
+        "Tensor strides, memory buffer offsets, row-major versus column-major layout, and contiguous versus strided traversal in hardware acceleration"
+      ],
+      "confidence": "HIGH",
+      "dateChecked": "2026-03-01"
+    },
+    {
+      "title": "ONNX Runtime High-Performance Inference & Tensor Memory Architecture",
+      "url": "https://onnxruntime.ai/docs/performance/",
+      "organization": "Microsoft ONNX Runtime Team",
+      "category": "TIER_2_TECHNICAL",
+      "supportedClaims": [
+        "Tensor memory layout, contiguous array traversal, and cache spatial locality for high-throughput inference"
+      ],
+      "confidence": "HIGH",
+      "dateChecked": "2026-03-01"
+    },
+    {
       "title": "Aggregated Candidate Reports & Historical Problem Distributions",
       "url": "https://leetcode.com/company/microsoft/",
       "organization": "Community Assessment Data",
       "category": "TIER_3_COMMUNITY",
       "supportedClaims": [
-        "High recurrence of LRU Cache, Graph traversals, and Interval merging problems",
+        "High recurrence of LRU Cache, Graph traversals, Matrix transformations, and Interval merging problems reported in candidate submissions",
         "Assessment platform variations between Codility and internal Teams coding platforms across business divisions"
       ],
       "confidence": "MEDIUM",

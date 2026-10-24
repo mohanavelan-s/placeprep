@@ -109,6 +109,7 @@ public class CoachController {
     }
 
     @DeleteMapping("/students/{studentUserId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> removeStudent(
             @CurrentUser User user,
             @PathVariable UUID studentUserId
@@ -118,11 +119,12 @@ public class CoachController {
     }
 
     @DeleteMapping("/students")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> removeStudentsBulk(
             @CurrentUser User user,
             @RequestBody Map<String, List<UUID>> payload
     ) {
-        List<UUID> ids = payload.getOrDefault("studentUserIds", List.of());
+        List<UUID> ids = payload != null ? payload.getOrDefault("studentUserIds", List.of()) : List.of();
         Map<String, Object> result = coachService.removeStudentsBulk(user, ids);
         return ResponseEntity.ok(result);
     }

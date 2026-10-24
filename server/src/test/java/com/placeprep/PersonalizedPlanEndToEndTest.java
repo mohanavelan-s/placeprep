@@ -129,8 +129,14 @@ public class PersonalizedPlanEndToEndTest {
 
         AssessmentSession baselineSession = assessmentRepository.findById(baselineSessionId, testUser.getId())
                 .orElseThrow(() -> new AssertionError("Session not found in DB"));
+        assertEquals("draft", baselineSession.getStatus());
+        assertNull(baselineSession.getStartedAt(), "Baseline should not be started before activation");
+        assertEquals(5, baselineSession.getQuestions().size(), "Diagnostic must contain 5 questions (4 MCQs + 1 Coding)");
+
+        // Activate session via AssessmentService
+        baselineSession = assessmentService.activateAssessment(testUser, baselineSessionId);
         assertEquals("started", baselineSession.getStatus());
-        assertTrue(baselineSession.getQuestions().size() >= 7, "Diagnostic must contain at least 7 questions");
+        assertNotNull(baselineSession.getStartedAt(), "StartedAt should be recorded upon activation");
 
         // ---------------------------------------------------------------------
         // STEP 5: Complete the MCQ and coding questions

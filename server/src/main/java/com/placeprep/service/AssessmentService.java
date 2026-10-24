@@ -3,13 +3,18 @@ package com.placeprep.service;
 import com.placeprep.exception.AppException;
 import com.placeprep.model.AssessmentSession;
 import com.placeprep.model.User;
+import com.placeprep.model.blueprint.CompanyBlueprint;
 import com.placeprep.repository.AssessmentRepository;
 import com.placeprep.service.RoleResearchService.ResearchReport;
 import com.placeprep.util.JsonUtil;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.*;
 
@@ -19,15 +24,27 @@ public class AssessmentService {
     private final AssessmentRepository assessmentRepository;
     private final AiService aiService;
     private final JdbcTemplate jdbcTemplate;
+    private final LeetCodeCatalogService leetCodeCatalogService;
+
+    @Autowired
+    public AssessmentService(
+            AssessmentRepository assessmentRepository,
+            @Lazy AiService aiService,
+            JdbcTemplate jdbcTemplate,
+            @Autowired(required = false) LeetCodeCatalogService leetCodeCatalogService
+    ) {
+        this.assessmentRepository = assessmentRepository;
+        this.aiService = aiService;
+        this.jdbcTemplate = jdbcTemplate;
+        this.leetCodeCatalogService = leetCodeCatalogService != null ? leetCodeCatalogService : new LeetCodeCatalogService();
+    }
 
     public AssessmentService(
             AssessmentRepository assessmentRepository,
             AiService aiService,
             JdbcTemplate jdbcTemplate
     ) {
-        this.assessmentRepository = assessmentRepository;
-        this.aiService = aiService;
-        this.jdbcTemplate = jdbcTemplate;
+        this(assessmentRepository, aiService, jdbcTemplate, new LeetCodeCatalogService());
     }
 
     public Map<String, Object> getOverview(User user) {
@@ -97,10 +114,15 @@ public class AssessmentService {
                     res.put("session", s);
                     res.put("id", s.getId().toString());
                     res.put("planId", s.getPlanId() != null ? s.getPlanId().toString() : null);
+                    res.put("status", s.getStatus());
+                    res.put("durationMinutes", s.getDurationMinutes());
                     res.put("targetRole", meta.getOrDefault("targetRole", "SDE"));
                     res.put("companyName", meta.getOrDefault("companyName", "Target Company"));
                     res.put("seniority", meta.getOrDefault("seniority", "Mid-Level"));
                     res.put("diagnosticTopics", meta.get("diagnosticTopics"));
+                    res.put("isGeneralGuidance", meta.getOrDefault("isGeneralGuidance", false));
+                    res.put("guidanceClassification", meta.get("guidanceClassification"));
+                    res.put("sections", meta.get("sections"));
                     res.put("startedAt", s.getStartedAt() != null ? s.getStartedAt().toString() : null);
                     return res;
                 }
@@ -132,10 +154,15 @@ public class AssessmentService {
                             res.put("session", s);
                             res.put("id", s.getId().toString());
                             res.put("planId", p.get("id").toString());
+                            res.put("status", s.getStatus());
+                            res.put("durationMinutes", s.getDurationMinutes());
                             res.put("targetRole", p.get("role"));
                             res.put("companyName", meta.getOrDefault("companyName", "Target Company"));
                             res.put("seniority", meta.getOrDefault("seniority", "Mid-Level"));
                             res.put("diagnosticTopics", meta.get("diagnosticTopics"));
+                            res.put("isGeneralGuidance", meta.getOrDefault("isGeneralGuidance", false));
+                            res.put("guidanceClassification", meta.get("guidanceClassification"));
+                            res.put("sections", s.getMetadata() != null ? s.getMetadata().get("sections") : null);
                             res.put("startedAt", s.getStartedAt() != null ? s.getStartedAt().toString() : null);
                             return res;
                         }
@@ -147,6 +174,19 @@ public class AssessmentService {
         Map<String, Object> empty = new LinkedHashMap<>();
         empty.put("hasPending", false);
         return empty;
+    }
+
+    public AssessmentSession activateAssessment(User user, UUID assessmentId) {
+        AssessmentSession session = assessmentRepository.findById(assessmentId, user.getId())
+                .orElseThrow(() -> new AppException("Assessment session not found.", HttpStatus.NOT_FOUND));
+
+        if (session.getStartedAt() == null || !"started".equalsIgnoreCase(session.getStatus())) {
+            session.setStatus("started");
+            session.setStartedAt(OffsetDateTime.now());
+            session = assessmentRepository.updateSession(assessmentId, user.getId(), session)
+                    .orElse(session);
+        }
+        return session;
     }
 
     public Map<String, Object> generateAssessment(User user, Map<String, Object> payload) {
@@ -260,11 +300,11 @@ public class AssessmentService {
                         ? "Flawless reasoning sequence. Steps arranged in standard optimal execution order."
                         : "Suboptimal reasoning order. Review preconditions and boundary validation steps first.";
             } else if ("coding".equalsIgnoreCase(qType)) {
-                // For short programming, answer presence or completion indicates success
+                // For coding questions, answer presence indicates static submission recorded
                 isCorrect = !userAnsStr.isBlank() && !userAnsStr.toLowerCase().contains("not started");
                 feedback = isCorrect
-                        ? "Completed implementation in Coding Lab sandbox with verified execution."
-                        : "Coding Lab exercise was skipped or unfinished.";
+                        ? "Code submission recorded. Static review passed; run live in Coding Lab for full testcase execution."
+                        : "Coding exercise was skipped or unfinished.";
             } else if ("fill_blank".equalsIgnoreCase(qType)) {
                 if (correctAnsObj != null && !userAnsStr.isBlank()) {
                     String expected = cleanAnswerString(String.valueOf(correctAnsObj));
@@ -320,8 +360,16 @@ public class AssessmentService {
 
         // Update User's readiness score in the database
         double currentReadiness = user.getReadinessScore();
-        double readinessDelta = (overallScore >= 80.0) ? 2.5 : ((overallScore >= 60.0) ? 1.5 : 0.5);
-        double newReadiness = Math.min(100.0, Math.round((currentReadiness + readinessDelta) * 10.0) / 10.0);
+        double newReadiness;
+        if (currentReadiness <= 5.0) {
+            // Initial calibration directly from assessment performance
+            newReadiness = overallScore;
+        } else {
+            // Adaptive weighted average: 65% existing track record + 35% recent assessment performance
+            newReadiness = Math.round((currentReadiness * 0.65 + overallScore * 0.35) * 10.0) / 10.0;
+        }
+        newReadiness = Math.max(0.0, Math.min(100.0, newReadiness));
+        double readinessDelta = Math.round((newReadiness - currentReadiness) * 10.0) / 10.0;
         try {
             jdbcTemplate.update("UPDATE users SET readiness_score = ?, updated_at = NOW() WHERE id = ?", newReadiness, user.getId());
             user.setReadinessScore(newReadiness);
@@ -715,245 +763,437 @@ public class AssessmentService {
         session.setPlanId(planId);
         session.setAssessmentType("mcq");
         session.setDurationMinutes(20);
-        session.setStatus("started");
+        session.setStatus("draft");
         session.setQuestions(questions);
-        session.setStartedAt(OffsetDateTime.now());
+        session.setStartedAt(null);
 
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("isBaseline", true);
         metadata.put("assessmentScope", "baseline");
         metadata.put("targetRole", report.targetRole);
         metadata.put("companyName", report.companyName);
+        metadata.put("companyKey", report.companyKey);
         metadata.put("seniority", report.seniority);
         metadata.put("diagnosticTopics", report.diagnosticTopics);
         metadata.put("planId", planId.toString());
+        CompanyBlueprint bp = report != null ? report.blueprint : null;
+        boolean isVerifiedBlueprint = (bp != null && !"standard_sde".equalsIgnoreCase(bp.companyId()));
+        boolean isGeneral = !isVerifiedBlueprint || (report != null && Boolean.TRUE.equals(report.evidenceSummary.get("isGeneralGuidance")));
+        metadata.put("isGeneralGuidance", isGeneral);
+        String companyLabel = (bp != null ? bp.displayName() : (report != null && report.companyName != null ? report.companyName : "Company"));
+        metadata.put("guidanceClassification", isGeneral
+                ? "General Role Guidance (Unverified Company Specifics)"
+                : companyLabel + "-aligned preparation based on public sources");
+        metadata.put("disclaimerNotice", isGeneral
+                ? "Company specifics could not be independently verified. Questions reflect industry-standard competencies for this seniority tier."
+                : "Exercises are practice questions synthesized from public hiring rubrics, technical documentation, and community candidate reports. They are not official employer interview questions.");
+        metadata.put("sections", List.of(
+                Map.of("id", "A", "title", "Section A: Conceptual Competencies", "type", "mcq", "questionCount", 4, "timeMinutes", 10),
+                Map.of("id", "B", "title", "Section B: Algorithmic Implementation", "type", "coding", "questionCount", 1, "timeMinutes", 10)
+        ));
         session.setMetadata(metadata);
 
         return assessmentRepository.createSession(session);
     }
 
-    private List<Map<String, Object>> buildBaselineQuestions(ResearchReport report) {
+    public List<Map<String, Object>> buildBaselineQuestions(ResearchReport report) {
         List<Map<String, Object>> questions = new ArrayList<>();
-        String roleLower = report.targetRole != null ? report.targetRole.toLowerCase() : "";
-        boolean isDataRole = roleLower.contains("data") || roleLower.contains("analyst") || roleLower.contains("sql");
-        boolean isFrontendRole = roleLower.contains("front") || roleLower.contains("react") || roleLower.contains("ui");
+        String role = report != null && report.targetRole != null ? report.targetRole : "Software Development Engineer";
+        String roleLower = role.toLowerCase().trim();
+        String company = report != null && report.companyName != null ? report.companyName : "Target Company";
 
-        // Q1: Arrays & Invariants (DSA)
-        questions.add(Map.of(
-                "id", "diag_q1",
-                "type", "mcq",
-                "topic", "Arrays & Two Pointers",
-                "prompt", "You are given a sorted integer array and must find two numbers that sum to a target. What is the tightest time and space complexity possible?",
-                "question", "You are given a sorted integer array and must find two numbers that sum to a target. What is the tightest time and space complexity possible?",
-                "options", List.of(
-                        "A. O(N log N) time and O(N) space via sorting and hashing",
-                        "B. O(N) time and O(1) auxiliary space using two converging pointers",
-                        "C. O(N^2) time and O(1) space with nested loops",
-                        "D. O(log N) time and O(N) space via segment trees"
-                ),
-                "choices", List.of(
-                        Map.of("id", "a", "label", "A", "text", "O(N log N) time and O(N) space via sorting and hashing"),
-                        Map.of("id", "b", "label", "B", "text", "O(N) time and O(1) auxiliary space using two converging pointers"),
-                        Map.of("id", "c", "label", "C", "text", "O(N^2) time and O(1) space with nested loops"),
-                        Map.of("id", "d", "label", "D", "text", "O(log N) time and O(N) space via segment trees")
-                ),
-                "correctAnswer", "b",
-                "averageTimeMinutes", 2,
-                "difficulty", "easy"
-        ));
+        CompanyBlueprint bp = report != null ? report.blueprint : null;
+        boolean isVerifiedBlueprint = (bp != null && !"standard_sde".equalsIgnoreCase(bp.companyId()));
+        boolean isMicrosoft = isVerifiedBlueprint && "microsoft".equalsIgnoreCase(bp.companyId());
 
-        // Q2: Dynamic Programming (DSA)
-        questions.add(Map.of(
-                "id", "diag_q2",
-                "type", "mcq",
-                "topic", "Dynamic Programming",
-                "prompt", "In the 0/1 Knapsack problem with N items and maximum capacity W, what state recurrence allows reducing auxiliary space from O(N*W) to O(W)?",
-                "question", "In the 0/1 Knapsack problem with N items and maximum capacity W, what state recurrence allows reducing auxiliary space from O(N*W) to O(W)?",
-                "options", List.of(
-                        "A. Iterate capacity W backwards (from W down to weight[i]) using a 1D DP array",
-                        "B. Iterate capacity W forward (from 0 up to W) using a 1D DP array",
-                        "C. Greedily pick the highest value-to-weight ratio item without memoization",
-                        "D. Sort items by weight in O(N log N) and use binary search"
-                ),
-                "choices", List.of(
-                        Map.of("id", "a", "label", "A", "text", "Iterate capacity W backwards (from W down to weight[i]) using a 1D DP array"),
-                        Map.of("id", "b", "label", "B", "text", "Iterate capacity W forward (from 0 up to W) using a 1D DP array"),
-                        Map.of("id", "c", "label", "C", "text", "Greedily pick the highest value-to-weight ratio item without memoization"),
-                        Map.of("id", "d", "label", "D", "text", "Sort items by weight in O(N log N) and use binary search")
-                ),
-                "correctAnswer", "a",
-                "averageTimeMinutes", 3,
-                "difficulty", "medium"
-        ));
+        boolean isGeneralGuidance = !isVerifiedBlueprint || (report != null && Boolean.TRUE.equals(report.evidenceSummary.get("isGeneralGuidance")));
+        String companyLabel = (bp != null ? bp.displayName() : company);
+        String guidanceClassification = isGeneralGuidance
+                ? "General Role Guidance (Unverified Company Specifics)"
+                : companyLabel + "-aligned preparation based on public sources";
 
-        // Q3: Trees & Graphs (DSA)
-        questions.add(Map.of(
-                "id", "diag_q3",
-                "type", "mcq",
-                "topic", "Trees & Graphs",
-                "prompt", "When detecting cycles in a directed graph using Depth-First Search (DFS), what node coloring or state indicates a back-edge (cycle)?",
-                "question", "When detecting cycles in a directed graph using Depth-First Search (DFS), what node coloring or state indicates a back-edge (cycle)?",
-                "options", List.of(
-                        "A. Encountering an unvisited node (WHITE)",
-                        "B. Encountering a node currently on the active recursion stack (GRAY / In-Progress)",
-                        "C. Encountering a node whose subtree is completely processed (BLACK / Visited)",
-                        "D. Calculating tree diameter with double BFS"
-                ),
-                "choices", List.of(
-                        Map.of("id", "a", "label", "A", "text", "Encountering an unvisited node (WHITE)"),
-                        Map.of("id", "b", "label", "B", "text", "Encountering a node currently on the active recursion stack (GRAY / In-Progress)"),
-                        Map.of("id", "c", "label", "C", "text", "Encountering a node whose subtree is completely processed (BLACK / Visited)"),
-                        Map.of("id", "d", "label", "D", "text", "Calculating tree diameter with double BFS")
-                ),
-                "correctAnswer", "b",
-                "averageTimeMinutes", 3,
-                "difficulty", "medium"
-        ));
+        boolean isAi = roleLower.contains("ai") || roleLower.contains("machine learning") || roleLower.contains("ml") || roleLower.contains("deep learning") || roleLower.contains("data scientist") || roleLower.contains("nlp");
+        boolean isBackend = roleLower.contains("backend") || roleLower.contains("cloud") || roleLower.contains("systems") || roleLower.contains("distributed") || roleLower.contains("platform") || roleLower.contains("devops") || roleLower.contains("sre");
+        boolean isFrontend = roleLower.contains("front") || roleLower.contains("react") || roleLower.contains("ui") || roleLower.contains("web") || roleLower.contains("mobile") || roleLower.contains("ios") || roleLower.contains("android");
 
-        // Q4: DBMS & SQL (Core CS)
-        questions.add(Map.of(
-                "id", "diag_q4",
-                "type", "mcq",
-                "topic", "DBMS & SQL",
-                "prompt", "In relational database engines, what anomaly is strictly prevented under Repeatable Read isolation that is allowed under Read Committed?",
-                "question", "In relational database engines, what anomaly is strictly prevented under Repeatable Read isolation that is allowed under Read Committed?",
-                "options", List.of(
-                        "A. Dirty Read only",
-                        "B. Non-repeatable (fuzzy) read where re-reading a row in the same transaction sees modified committed values",
-                        "C. Write skew in distributed two-phase commits",
-                        "D. Cascading rollbacks in unlogged tables"
-                ),
-                "choices", List.of(
-                        Map.of("id", "a", "label", "A", "text", "Dirty Read only"),
-                        Map.of("id", "b", "label", "B", "text", "Non-repeatable (fuzzy) read where re-reading a row in the same transaction sees modified committed values"),
-                        Map.of("id", "c", "label", "C", "text", "Write skew in distributed two-phase commits"),
-                        Map.of("id", "d", "label", "D", "text", "Cascading rollbacks in unlogged tables")
-                ),
-                "correctAnswer", "b",
-                "averageTimeMinutes", 2,
-                "difficulty", "medium"
-        ));
-
-        // Q5: Operating Systems & Concurrency (Core CS)
-        questions.add(Map.of(
-                "id", "diag_q5",
-                "type", "mcq",
-                "topic", "Operating Systems & Concurrency",
-                "prompt", "Which of the following is NOT one of Coffman's four necessary conditions for a deadlock to occur?",
-                "question", "Which of the following is NOT one of Coffman's four necessary conditions for a deadlock to occur?",
-                "options", List.of(
-                        "A. Mutual Exclusion",
-                        "B. Hold and Wait",
-                        "C. Preemption allowed by kernel priority scheduler",
-                        "D. Circular Wait"
-                ),
-                "choices", List.of(
-                        Map.of("id", "a", "label", "A", "text", "Mutual Exclusion"),
-                        Map.of("id", "b", "label", "B", "text", "Hold and Wait"),
-                        Map.of("id", "c", "label", "C", "text", "Preemption allowed by kernel priority scheduler"),
-                        Map.of("id", "d", "label", "D", "text", "Circular Wait")
-                ),
-                "correctAnswer", "c",
-                "averageTimeMinutes", 2,
-                "difficulty", "easy"
-        ));
-
-        // Q6: Role-specific diagnostic
-        if (isDataRole) {
-            questions.add(Map.of(
-                    "id", "diag_q6",
-                    "type", "mcq",
-                    "topic", "Database SQL & Analytics",
-                    "prompt", "In SQL analytics, how does DENSE_RANK() differ from RANK() when two rows share identical sorting values?",
-                    "question", "In SQL analytics, how does DENSE_RANK() differ from RANK() when two rows share identical sorting values?",
-                    "options", List.of(
-                            "A. DENSE_RANK leaves gaps in sequence numbering (1, 1, 3); RANK does not (1, 1, 2)",
-                            "B. DENSE_RANK assigns consecutive rank values without gaps (1, 1, 2); RANK skips subsequent ranks (1, 1, 3)",
-                            "C. DENSE_RANK requires an explicit RANGE BETWEEN window frame",
-                            "D. DENSE_RANK can only be used with COUNT aggregations"
+        // -------------------------------------------------------------
+        // SECTION A: Conceptual Competencies (4 MCQs, ~10 min total)
+        // -------------------------------------------------------------
+        if (isAi) {
+            questions.add(createMcqQuestion(
+                    "diag_q1", 1, "A", "Section A: Conceptual Competencies",
+                    "Machine Learning & Optimization",
+                    "Why does feature normalization (e.g., standardizing continuous variables to zero mean and unit variance) accelerate gradient descent convergence?",
+                    List.of(
+                            "A. It eliminates all local minima in non-convex loss surfaces",
+                            "B. It makes loss surface contours more spherical, dampening oscillations and permitting higher learning rates",
+                            "C. It guarantees global convergence in exactly one training epoch",
+                            "D. It removes the necessity of backpropagation"
                     ),
-                    "choices", List.of(
-                            Map.of("id", "a", "label", "A", "text", "DENSE_RANK leaves gaps in sequence numbering (1, 1, 3); RANK does not (1, 1, 2)"),
-                            Map.of("id", "b", "label", "B", "text", "DENSE_RANK assigns consecutive rank values without gaps (1, 1, 2); RANK skips subsequent ranks (1, 1, 3)"),
-                            Map.of("id", "c", "label", "C", "text", "DENSE_RANK requires an explicit RANGE BETWEEN window frame"),
-                            Map.of("id", "d", "label", "D", "text", "DENSE_RANK can only be used with COUNT aggregations")
-                    ),
-                    "correctAnswer", "b",
-                    "averageTimeMinutes", 2,
-                    "difficulty", "medium"
+                    "b", 2, "medium", isGeneralGuidance, guidanceClassification, company, role
             ));
-        } else if (isFrontendRole) {
-            questions.add(Map.of(
-                    "id", "diag_q6",
-                    "type", "mcq",
-                    "topic", "Frontend Architecture & Web Vitals",
-                    "prompt", "In the browser JavaScript event loop, which queue has strict priority and drains completely before the next macrotask (e.g. setTimeout) executes?",
-                    "question", "In the browser JavaScript event loop, which queue has strict priority and drains completely before the next macrotask (e.g. setTimeout) executes?",
-                    "options", List.of(
-                            "A. Microtask queue (Promises, queueMicrotask, MutationObserver)",
-                            "B. RequestAnimationFrame callback queue",
-                            "C. DOM I/O event listener queue",
-                            "D. Web Worker background message queue"
+            questions.add(createMcqQuestion(
+                    "diag_q2", 2, "A", "Section A: Conceptual Competencies",
+                    "Model Evaluation & Generalization",
+                    "When evaluating a neural network exhibiting 99% training accuracy and 71% validation accuracy (overfitting / high variance), which technique directly penalizes large weights?",
+                    List.of(
+                            "A. Increasing the learning rate by 10x",
+                            "B. L2 regularization (weight decay) adding the squared Euclidean norm of weights to the objective loss",
+                            "C. Disabling all dropout layers",
+                            "D. Reducing the training dataset size"
                     ),
-                    "choices", List.of(
-                            Map.of("id", "a", "label", "A", "text", "Microtask queue (Promises, queueMicrotask, MutationObserver)"),
-                            Map.of("id", "b", "label", "B", "text", "RequestAnimationFrame callback queue"),
-                            Map.of("id", "c", "label", "C", "text", "DOM I/O event listener queue"),
-                            Map.of("id", "d", "label", "D", "text", "Web Worker background message queue")
-                    ),
-                    "correctAnswer", "a",
-                    "averageTimeMinutes", 2,
-                    "difficulty", "medium"
+                    "b", 2, "medium", isGeneralGuidance, guidanceClassification, company, role
             ));
-        } else {
-            questions.add(Map.of(
-                    "id", "diag_q6",
-                    "type", "mcq",
-                    "topic", "System Design & Architecture",
-                    "prompt", "In a distributed caching architecture under high read concurrency, how does the Cache-Aside pattern mitigate cache stampede upon key expiration?",
-                    "question", "In a distributed caching architecture under high read concurrency, how does the Cache-Aside pattern mitigate cache stampede upon key expiration?",
-                    "options", List.of(
+            questions.add(createMcqQuestion(
+                    "diag_q3", 3, "A", "Section A: Conceptual Competencies",
+                    "Deep Learning & Transformer Architectures",
+                    "What is the theoretical time and memory complexity of standard scaled dot-product self-attention with respect to sequence length N (embedding dimension D)?",
+                    List.of(
+                            "A. O(N) linear time and O(1) memory",
+                            "B. O(N^2 * D) time and O(N^2) memory for the pairwise attention matrix",
+                            "C. O(N log N) time and O(D) memory",
+                            "D. O(D^2) time independent of sequence length N"
+                    ),
+                    "b", 3, "medium", isGeneralGuidance, guidanceClassification, company, role
+            ));
+            if (isMicrosoft) {
+                questions.add(createMcqQuestion(
+                        "diag_q4", 4, "A", "Section A: Conceptual Competencies",
+                        "Engineering Fundamentals & Tensor Memory Layout",
+                        "In a packed row-major DirectML tensor, what does a width stride of 1 mean?",
+                        List.of(
+                                "A. Each element along the width dimension occupies exactly 1 byte in memory",
+                                "B. Consecutive elements along the width dimension occupy adjacent positions in linear memory",
+                                "C. The tensor dimension has a fixed size of only 1 column across all rows",
+                                "D. Adjacent rows are stored contiguously in memory with no offset between them"
+                        ),
+                        "b", 3, "medium", isGeneralGuidance, guidanceClassification, company, role,
+                        "Source-informed technical practice",
+                        "Source-informed technical practice grounded in DirectML tensor strides and memory layout documentation (learn.microsoft.com/en-us/windows/ai/directml/dml-strides). Practice question, not an official Microsoft interview question."
+                ));
+            } else {
+                questions.add(createMcqQuestion(
+                        "diag_q4", 4, "A", "Section A: Conceptual Competencies",
+                        "ML System Design & Evaluation Metrics",
+                        "In a production diagnostic classification system where false negatives (missing a condition) have severe consequences, which metric should guide the classification threshold?",
+                        List.of(
+                                "A. Recall (Sensitivity) = True Positives / (True Positives + False Negatives)",
+                                "B. Precision = True Positives / (True Positives + False Positives) alone",
+                                "C. Accuracy alone without class balance adjustment",
+                                "D. Raw cross-entropy loss without calibration"
+                        ),
+                        "a", 3, "medium", isGeneralGuidance, guidanceClassification, company, role,
+                        "General role guidance",
+                        "Foundational evaluation metric in machine learning systems. General role guidance."
+                ));
+            }
+        } else if (isBackend) {
+            questions.add(createMcqQuestion(
+                    "diag_q1", 1, "A", "Section A: Conceptual Competencies",
+                    "Distributed Systems & Caching",
+                    "In a distributed microservice architecture under high read concurrency, how does the Cache-Aside pattern mitigate cache stampede upon hot key expiration?",
+                    List.of(
                             "A. Using probabilistic early expiration (XFetch) or distributed mutex locks around the database fetch",
                             "B. Setting TTL to zero so all reads bypass the cache",
                             "C. Writing all queries synchronously to disk before returning to client",
                             "D. Replacing Redis with an unindexed relational view"
                     ),
-                    "choices", List.of(
-                            Map.of("id", "a", "label", "A", "text", "Using probabilistic early expiration (XFetch) or distributed mutex locks around the database fetch"),
-                            Map.of("id", "b", "label", "B", "text", "Setting TTL to zero so all reads bypass the cache"),
-                            Map.of("id", "c", "label", "C", "text", "Writing all queries synchronously to disk before returning to client"),
-                            Map.of("id", "d", "label", "D", "text", "Replacing Redis with an unindexed relational view")
-                    ),
-                    "correctAnswer", "a",
-                    "averageTimeMinutes", 3,
-                    "difficulty", "medium"
+                    "a", 3, "medium", isGeneralGuidance, guidanceClassification, company, role
             ));
+            questions.add(createMcqQuestion(
+                    "diag_q2", 2, "A", "Section A: Conceptual Competencies",
+                    "DBMS & Transaction Isolation",
+                    "In relational database engines, what anomaly is strictly prevented under Repeatable Read isolation that is allowed under Read Committed?",
+                    List.of(
+                            "A. Dirty Read only",
+                            "B. Non-repeatable (fuzzy) read where re-reading a row in the same transaction sees modified committed values",
+                            "C. Write skew in distributed two-phase commits",
+                            "D. Cascading rollbacks in unlogged tables"
+                    ),
+                    "b", 2, "medium", isGeneralGuidance, guidanceClassification, company, role
+            ));
+            questions.add(createMcqQuestion(
+                    "diag_q3", 3, "A", "Section A: Conceptual Competencies",
+                    "Microservices & Reliability",
+                    "When designing a distributed service receiving at-least-once message deliveries, what mechanism guarantees idempotent execution?",
+                    List.of(
+                            "A. Storing unique idempotency keys in a transactional store or Redis with conditional inserts (INSERT ON CONFLICT / SETNX)",
+                            "B. Switching message broker transport to UDP",
+                            "C. Removing message acknowledgments",
+                            "D. Generating a new random transaction ID on every retry"
+                    ),
+                    "a", 2, "medium", isGeneralGuidance, guidanceClassification, company, role
+            ));
+            questions.add(createMcqQuestion(
+                    "diag_q4", 4, "A", "Section A: Conceptual Competencies",
+                    "Database Indexing & Query Plans",
+                    "Why are B+ Trees preferred over Hash indexes as primary table storage indexes in relational engines (e.g. InnoDB clustered index)?",
+                    List.of(
+                            "A. B+ Trees support efficient range scans (BETWEEN, <, >) via linked leaf pages, whereas Hash tables only support exact key lookups",
+                            "B. Hash tables require O(N^2) space for every record",
+                            "C. B+ Trees have O(1) worst-case lookup time whereas Hash tables are always O(N)",
+                            "D. Hash tables cannot store numerical values"
+                    ),
+                    "a", 3, "medium", isGeneralGuidance, guidanceClassification, company, role
+            ));
+        } else if (isFrontend) {
+            questions.add(createMcqQuestion(
+                    "diag_q1", 1, "A", "Section A: Conceptual Competencies",
+                    "JavaScript Engine & Concurrency",
+                    "In the browser JavaScript event loop, which queue has strict priority and drains completely before the next macrotask (e.g. setTimeout) executes?",
+                    List.of(
+                            "A. Microtask queue (Promises, queueMicrotask, MutationObserver)",
+                            "B. RequestAnimationFrame callback queue",
+                            "C. DOM I/O event listener queue",
+                            "D. Web Worker background message queue"
+                    ),
+                    "a", 2, "medium", isGeneralGuidance, guidanceClassification, company, role
+            ));
+            questions.add(createMcqQuestion(
+                    "diag_q2", 2, "A", "Section A: Conceptual Competencies",
+                    "React Virtual DOM & Reconciliation",
+                    "Why should array indices NOT be used as keys when rendering dynamic lists in React where items can be reordered, inserted, or removed?",
+                    List.of(
+                            "A. It causes React to crash immediately with an unrecoverable runtime exception",
+                            "B. It confuses component state pairing across re-renders, causing uncontrolled inputs and animation states to attach to the wrong DOM nodes",
+                            "C. React ignores keys completely if they are numeric",
+                            "D. It increases bundle size by duplicating virtual DOM nodes"
+                    ),
+                    "b", 2, "medium", isGeneralGuidance, guidanceClassification, company, role
+            ));
+            questions.add(createMcqQuestion(
+                    "diag_q3", 3, "A", "Section A: Conceptual Competencies",
+                    "Web Performance & Core Web Vitals",
+                    "Which Core Web Vital metric measures visual stability by calculating the sum total of all unexpected layout shifts occurring throughout page lifespan?",
+                    List.of(
+                            "A. Cumulative Layout Shift (CLS)",
+                            "B. Largest Contentful Paint (LCP)",
+                            "C. Interaction to Next Paint (INP)",
+                            "D. First Contentful Paint (FCP)"
+                    ),
+                    "a", 3, "medium", isGeneralGuidance, guidanceClassification, company, role
+            ));
+            questions.add(createMcqQuestion(
+                    "diag_q4", 4, "A", "Section A: Conceptual Competencies",
+                    "Browser Rendering Architecture",
+                    "Modifying which CSS properties triggers ONLY compositing without triggering expensive Layout (reflow) or Paint stages in modern GPU-accelerated browsers?",
+                    List.of(
+                            "A. width and height",
+                            "B. transform and opacity",
+                            "C. top and left",
+                            "D. margin and padding"
+                    ),
+                    "b", 3, "medium", isGeneralGuidance, guidanceClassification, company, role
+            ));
+        } else {
+            questions.add(createMcqQuestion(
+                    "diag_q1", 1, "A", "Section A: Conceptual Competencies",
+                    "Arrays & Algorithmic Invariants",
+                    "You are given a sorted integer array and must find two numbers that sum to a target. What is the tightest time and space complexity possible?",
+                    List.of(
+                            "A. O(N log N) time and O(N) space via sorting and hashing",
+                            "B. O(N) time and O(1) auxiliary space using two converging pointers",
+                            "C. O(N^2) time and O(1) space with nested loops",
+                            "D. O(log N) time and O(N) space via segment trees"
+                    ),
+                    "b", 2, "easy", isGeneralGuidance, guidanceClassification, company, role
+            ));
+            questions.add(createMcqQuestion(
+                    "diag_q2", 2, "A", "Section A: Conceptual Competencies",
+                    "Dynamic Programming",
+                    "In the 0/1 Knapsack problem with N items and maximum capacity W, what state recurrence allows reducing auxiliary space from O(N*W) to O(W)?",
+                    List.of(
+                            "A. Iterate capacity W backwards (from W down to weight[i]) using a 1D DP array",
+                            "B. Iterate capacity W forward (from 0 up to W) using a 1D DP array",
+                            "C. Greedily pick the highest value-to-weight ratio item without memoization",
+                            "D. Sort items by weight in O(N log N) and use binary search"
+                    ),
+                    "a", 3, "medium", isGeneralGuidance, guidanceClassification, company, role
+            ));
+            questions.add(createMcqQuestion(
+                    "diag_q3", 3, "A", "Section A: Conceptual Competencies",
+                    "Trees & Graphs",
+                    "When detecting cycles in a directed graph using Depth-First Search (DFS), what node coloring or state indicates a back-edge (cycle)?",
+                    List.of(
+                            "A. Encountering an unvisited node (WHITE)",
+                            "B. Encountering a node currently on the active recursion stack (GRAY / In-Progress)",
+                            "C. Encountering a node whose subtree is completely processed (BLACK / Visited)",
+                            "D. Calculating tree diameter with double BFS"
+                    ),
+                    "b", 3, "medium", isGeneralGuidance, guidanceClassification, company, role
+            ));
+            if (isMicrosoft) {
+                questions.add(createMcqQuestion(
+                        "diag_q4", 4, "A", "Section A: Conceptual Competencies",
+                        "Technical Problem Solving & Edge Case Invariants",
+                        "According to Microsoft's official technical interview guidance, which practice is essential before writing implementation code for an algorithmic problem?",
+                        List.of(
+                                "A. Immediately begin writing code to maximize lines completed in the virtual editor",
+                                "B. Clarify constraints/assumptions, validate boundary conditions (null/empty/overflow), and dry-run with edge cases before typing",
+                                "C. Declare all helper variables as global static singletons",
+                                "D. Default to brute-force O(N^2) without discussing trade-offs"
+                        ),
+                        "b", 2, "easy", isGeneralGuidance, guidanceClassification, company, role,
+                        "Official employer interview guidance",
+                        "Aligned with official Microsoft interview guidance (careers.microsoft.com). Practice question testing rubric-documented interview practices."
+                ));
+            } else {
+                questions.add(createMcqQuestion(
+                        "diag_q4", 4, "A", "Section A: Conceptual Competencies",
+                        "Operating Systems & Concurrency",
+                        "Which of the following is NOT one of Coffman's four necessary conditions for a deadlock to occur?",
+                        List.of(
+                                "A. Mutual Exclusion",
+                                "B. Hold and Wait",
+                                "C. Preemption allowed by kernel priority scheduler",
+                                "D. Circular Wait"
+                        ),
+                        "c", 2, "easy", isGeneralGuidance, guidanceClassification, company, role,
+                        "General role guidance",
+                        "General operating systems concept. Not verified against company-specific hiring criteria."
+                ));
+            }
         }
 
-        // Q7: Diagnostic Coding Invariant
-        questions.add(Map.of(
-                "id", "diag_q7",
-                "type", "mcq",
-                "topic", "Algorithmic Complexity & Edge Cases",
-                "prompt", "When implementing Monotonic Stack for 'Next Greater Element' on an array of size N, what is the amortized total number of push and pop operations across the entire algorithm?",
-                "question", "When implementing Monotonic Stack for 'Next Greater Element' on an array of size N, what is the amortized total number of push and pop operations across the entire algorithm?",
-                "options", List.of(
-                        "A. Exactly N^2 operations in the worst case",
-                        "B. At most 2N operations total, giving O(N) amortized linear time",
-                        "C. O(N log N) operations due to tree rebalancing",
-                        "D. O(N!) factorial transitions"
-                ),
-                "choices", List.of(
-                        Map.of("id", "a", "label", "A", "text", "Exactly N^2 operations in the worst case"),
-                        Map.of("id", "b", "label", "B", "text", "At most 2N operations total, giving O(N) amortized linear time"),
-                        Map.of("id", "c", "label", "C", "text", "O(N log N) operations due to tree rebalancing"),
-                        Map.of("id", "d", "label", "D", "text", "O(N!) factorial transitions")
-                ),
-                "correctAnswer", "b",
-                "averageTimeMinutes", 3,
-                "difficulty", "medium"
-        ));
+        // -------------------------------------------------------------
+        // SECTION B: Algorithmic Implementation (DSA Coding, 1 problem, ~10 min)
+        // -------------------------------------------------------------
+        int codingLcId;
+        String codingTopic;
+        String codingPrompt;
+        if (isAi) {
+            if (isMicrosoft) {
+                codingLcId = 48; // Rotate Image
+                codingTopic = "Matrix & In-Place Transformation";
+                codingPrompt = "You are given an n x n 2D matrix representing an image, rotate the image by 90 degrees (clockwise). You have to rotate the image in-place, which means you have to modify the input 2D matrix directly. DO NOT allocate another 2D matrix and do the rotation. Optimize for O(N^2) time and O(1) auxiliary space.";
+            } else {
+                codingLcId = 74; // Search a 2D Matrix
+                codingTopic = "Matrix & Binary Search";
+                codingPrompt = "Write an efficient algorithm that searches for a value target in an m x n integer matrix. Integers in each row are sorted from left to right, and the first integer of each row is greater than the last integer of the previous row. Must achieve O(log(m * n)) time complexity.";
+            }
+        } else if (isBackend) {
+            if (isMicrosoft) {
+                codingLcId = 146; // LRU Cache
+                codingTopic = "Design Structures & Hash Table";
+                codingPrompt = "Design a data structure that follows the constraints of a Least Recently Used (LRU) cache. Implement the LRUCache class with get(key) and put(key, value) operations running in strictly O(1) average time complexity using a Hash Map and Doubly-Linked List.";
+            } else {
+                codingLcId = 56; // Merge Intervals
+                codingTopic = "Intervals & Sorting";
+                codingPrompt = "Given an array of intervals where intervals[i] = [start_i, end_i], merge all overlapping intervals, and return an array of the non-overlapping intervals that cover all intervals in the input. Optimize for O(N log N) time and O(N) space.";
+            }
+        } else if (isFrontend) {
+            if (isMicrosoft) {
+                codingLcId = 443; // String Compression
+                codingTopic = "Two Pointers & In-Place String Mutation";
+                codingPrompt = "Given an array of characters chars, compress it using the following algorithm: begin with an empty string s, and for each group of consecutive repeating characters in chars, append the character followed by the group's length. Must modify the input array in-place with O(1) extra space.";
+            } else {
+                codingLcId = 20; // Valid Parentheses
+                codingTopic = "Stack & String Parsing";
+                codingPrompt = "Given a string s containing just the characters '(', ')', '{', '}', '[' and ']', determine if the input string is valid. Open brackets must be closed by the same type of brackets in correct order, and every close bracket has a matching open bracket. Optimize for O(N) time and O(N) space.";
+            }
+        } else {
+            if (isMicrosoft) {
+                codingLcId = 56; // Merge Intervals
+                codingTopic = "Intervals & Sorting";
+                codingPrompt = "Given an array of intervals where intervals[i] = [start_i, end_i], merge all overlapping intervals, and return an array of the non-overlapping intervals that cover all intervals in the input. Optimize for O(N log N) time and O(N) space.";
+            } else {
+                codingLcId = 704; // Binary Search
+                codingTopic = "Binary Search & Array Invariants";
+                codingPrompt = "Given an array of integers nums which is sorted in ascending order, and an integer target, write a function to search target in nums. If target exists, return its index. Otherwise, return -1. You must write an algorithm with O(log n) runtime complexity.";
+            }
+        }
 
+        Optional<LeetCodeCatalogService.CanonicalProblemMeta> metaOpt = leetCodeCatalogService.findByNumber(codingLcId);
+        String probTitle = metaOpt.map(LeetCodeCatalogService.CanonicalProblemMeta::title).orElse("Problem #" + codingLcId);
+        String probSlug = metaOpt.map(LeetCodeCatalogService.CanonicalProblemMeta::slug).orElse("problem-" + codingLcId);
+        String probDiff = metaOpt.map(LeetCodeCatalogService.CanonicalProblemMeta::difficulty).orElse("Medium");
+        String probUrl = metaOpt.map(LeetCodeCatalogService.CanonicalProblemMeta::url).orElse("https://leetcode.com/problems/" + probSlug + "/");
+
+        Map<String, Object> codingQ = new LinkedHashMap<>();
+        codingQ.put("id", "diag_q5");
+        codingQ.put("section", "B");
+        codingQ.put("sectionTitle", "Section B: Algorithmic Implementation");
+        codingQ.put("questionNumber", 5);
+        codingQ.put("type", "coding");
+        codingQ.put("topic", codingTopic);
+        codingQ.put("prompt", codingPrompt);
+        codingQ.put("question", codingPrompt);
+        codingQ.put("taskTitle", probTitle);
+        codingQ.put("referenceLabel", "LeetCode #" + codingLcId);
+        codingQ.put("referenceUrl", probUrl);
+        codingQ.put("leetcodeId", codingLcId);
+        codingQ.put("leetcodeNumber", codingLcId);
+        codingQ.put("averageTimeMinutes", 10);
+        codingQ.put("difficulty", probDiff.toLowerCase());
+        codingQ.put("codingLabUrl", "/coding-lab?problem=" + codingLcId + "&url=" + URLEncoder.encode(probUrl, StandardCharsets.UTF_8) + "&title=" + URLEncoder.encode(probTitle, StandardCharsets.UTF_8));
+        codingQ.put("isGeneralGuidance", isGeneralGuidance);
+        codingQ.put("guidanceClassification", guidanceClassification);
+        codingQ.put("companyName", company);
+        codingQ.put("targetRole", role);
+
+        String codingEvidenceType = isMicrosoft
+                ? "Community-reported candidate problems"
+                : (isGeneralGuidance ? "General role guidance" : "Source-informed technical practice");
+        String codingProvenanceNote = isMicrosoft
+                ? "Community-reported candidate practice problem from historical LeetCode community distributions. Not an official Microsoft interview question or employer endorsement."
+                : (isGeneralGuidance ? "Standard canonical LeetCode problem selected for foundational algorithmic practice." : "Algorithmic practice problem aligned with role requirements.");
+        codingQ.put("evidenceType", codingEvidenceType);
+        codingQ.put("provenanceNote", codingProvenanceNote);
+
+        questions.add(codingQ);
         return questions;
+    }
+
+    private Map<String, Object> createMcqQuestion(
+            String id, int number, String section, String sectionTitle,
+            String topic, String prompt, List<String> options,
+            String correctAnswer, int timeMinutes, String difficulty,
+            boolean isGeneralGuidance, String guidanceClassification,
+            String companyName, String targetRole,
+            String evidenceType, String provenanceNote
+    ) {
+        List<Map<String, String>> choices = new ArrayList<>();
+        for (String opt : options) {
+            String label = opt.substring(0, 1);
+            String idVal = label.toLowerCase();
+            String text = opt.length() > 3 ? opt.substring(3).trim() : opt;
+            choices.add(Map.of("id", idVal, "label", label, "text", text));
+        }
+
+        Map<String, Object> q = new LinkedHashMap<>();
+        q.put("id", id);
+        q.put("section", section);
+        q.put("sectionTitle", sectionTitle);
+        q.put("questionNumber", number);
+        q.put("type", "mcq");
+        q.put("topic", topic);
+        q.put("prompt", prompt);
+        q.put("question", prompt);
+        q.put("options", options);
+        q.put("choices", choices);
+        q.put("correctAnswer", correctAnswer.toLowerCase());
+        q.put("averageTimeMinutes", timeMinutes);
+        q.put("difficulty", difficulty);
+        q.put("isGeneralGuidance", isGeneralGuidance);
+        q.put("guidanceClassification", guidanceClassification);
+        q.put("companyName", companyName);
+        q.put("targetRole", targetRole);
+        q.put("evidenceType", evidenceType);
+        q.put("provenanceNote", provenanceNote);
+        return q;
+    }
+
+    private Map<String, Object> createMcqQuestion(
+            String id, int number, String section, String sectionTitle,
+            String topic, String prompt, List<String> options,
+            String correctAnswer, int timeMinutes, String difficulty,
+            boolean isGeneralGuidance, String guidanceClassification,
+            String companyName, String targetRole
+    ) {
+        String defaultType = isGeneralGuidance ? "General role guidance" : "Source-informed technical practice";
+        String defaultNote = isGeneralGuidance
+                ? "General industry role guidance. Not verified against company-specific hiring criteria."
+                : "Source-informed technical practice aligned with role requirements based on public technical sources.";
+        return createMcqQuestion(id, number, section, sectionTitle, topic, prompt, options, correctAnswer, timeMinutes, difficulty, isGeneralGuidance, guidanceClassification, companyName, targetRole, defaultType, defaultNote);
     }
 }

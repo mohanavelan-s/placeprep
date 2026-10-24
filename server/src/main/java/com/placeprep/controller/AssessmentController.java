@@ -43,6 +43,15 @@ public class AssessmentController {
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("success", true, "data", result));
     }
 
+    @PostMapping("/{assessmentId}/start")
+    public ResponseEntity<Map<String, Object>> startAssessment(
+            @CurrentUser User user,
+            @PathVariable UUID assessmentId
+    ) {
+        AssessmentSession session = assessmentService.activateAssessment(user, assessmentId);
+        return ResponseEntity.ok(Map.of("success", true, "data", session));
+    }
+
     @PostMapping("/{assessmentId}/submit")
     public ResponseEntity<Map<String, Object>> submitAssessment(
             @CurrentUser User user,
