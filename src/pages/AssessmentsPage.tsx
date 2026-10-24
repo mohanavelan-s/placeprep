@@ -24,6 +24,7 @@ import { toast } from "sonner";
 
 import SoftSyncNotice from "@/components/SoftSyncNotice";
 import { AssessmentsSkeleton } from "@/components/WorkspaceSkeletons";
+import { DiagnosticPreStartDialog } from "@/components/DiagnosticPreStartDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -435,6 +436,7 @@ export default function AssessmentsPage() {
   const [missingPlanDialogOpen, setMissingPlanDialogOpen] = useState(false);
   const [planChoiceState, setPlanChoiceState] = useState<"pending" | "accepted" | "declined">("pending");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [preStartDialogOpen, setPreStartDialogOpen] = useState(false);
 
   const overviewQuery = useQuery({
     queryKey: ["assessments", "overview"],
@@ -655,7 +657,7 @@ export default function AssessmentsPage() {
 
   return (
     <div className="grid gap-6">
-      <section className="surface-panel-strong p-6 md:p-7">
+      <section className="tactile-card-editorial p-6 md:p-7">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <p className="section-label">Assessments</p>
@@ -706,7 +708,7 @@ export default function AssessmentsPage() {
                   {pendingBaseline.seniority || "Mid-Level"}
                 </span>
                 <span className="rounded-full border border-border/80 bg-background/60 px-2.5 py-0.5 text-xs text-muted-foreground">
-                  15–20 min • 7 questions
+                  20 min • 5 questions (2 Sections)
                 </span>
               </div>
               <h3 className="font-heading text-2xl text-foreground md:text-3xl">
@@ -718,7 +720,7 @@ export default function AssessmentsPage() {
             </div>
 
             <div className="shrink-0 flex items-center gap-3">
-              {currentSession?.id === pendingBaseline.id && currentSession?.status !== "completed" ? (
+              {currentSession?.id === pendingBaseline.id && currentSession?.status === "started" && currentSession?.startedAt ? (
                 <span className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/20 px-4 py-2.5 text-sm font-medium text-primary">
                   <CheckCircle2 className="h-4 w-4" />
                   Diagnostic in progress below
@@ -728,15 +730,21 @@ export default function AssessmentsPage() {
                   type="button"
                   className="h-11 gap-2 bg-primary px-5 font-semibold text-primary-foreground shadow-md transition hover:bg-primary/90"
                   onClick={() => {
-                    if (pendingBaseline.id) {
-                      setSelectedSessionId(pendingBaseline.id);
+                    if (!pendingBaseline.startedAt || pendingBaseline.status === "draft") {
+                      setPreStartDialogOpen(true);
+                    } else {
+                      if (pendingBaseline.id) {
+                        setSelectedSessionId(pendingBaseline.id);
+                      }
+                      const elem = document.getElementById("active-assessment-section");
+                      elem?.scrollIntoView({ behavior: "smooth" });
                     }
-                    const elem = document.getElementById("active-assessment-section");
-                    elem?.scrollIntoView({ behavior: "smooth" });
                   }}
                 >
                   <Brain className="h-4 w-4" />
-                  Take Diagnostic Assessment
+                  {pendingBaseline.startedAt && pendingBaseline.status === "started"
+                    ? "Resume Diagnostic Assessment"
+                    : "Take Diagnostic Assessment"}
                 </Button>
               )}
             </div>
@@ -744,11 +752,25 @@ export default function AssessmentsPage() {
         </section>
       )}
 
+      <DiagnosticPreStartDialog
+        open={preStartDialogOpen}
+        onOpenChange={setPreStartDialogOpen}
+        pendingBaseline={pendingBaseline}
+        onActivated={async (session) => {
+          await queryClient.invalidateQueries({ queryKey: ["assessments", "overview"] });
+          if (session?.id) {
+            setSelectedSessionId(session.id);
+          }
+          const elem = document.getElementById("active-assessment-section");
+          elem?.scrollIntoView({ behavior: "smooth" });
+        }}
+      />
+
       <div id="active-assessment-section" className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-        <section className="surface-panel p-6 md:p-7">
+        <section className="tactile-card-editorial p-6 md:p-7">
           <div className="flex items-center gap-2 text-foreground">
             <Brain className="h-4 w-4 text-primary" />
-            <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">Assessment builder</p>
+            <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground font-mono font-semibold">Assessment builder</p>
           </div>
 
           <div className="mt-5 grid gap-3">
@@ -763,7 +785,7 @@ export default function AssessmentsPage() {
                   onClick={() => setSelectedType(option.type)}
                   className={`rounded-[1.15rem] border px-4 py-4 text-left transition ${
                     isActive
-                      ? "border-primary/35 bg-primary/10 shadow-[0_0_24px_hsl(0_55%_33%_/_0.08)]"
+                      ? "border-primary/40 bg-gradient-to-r from-primary/10 via-card to-card shadow-[0_0_24px_rgba(201,42,54,0.1)]"
                       : "border-border/80 bg-background/45 hover:border-border hover:bg-background/60"
                   }`}
                 >
@@ -772,8 +794,8 @@ export default function AssessmentsPage() {
                       <Icon className="h-4 w-4 text-primary" />
                     </div>
                     <div>
-                      <p className="text-base text-foreground">{option.title}</p>
-                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{option.description}</p>
+                      <p className="text-base text-foreground font-medium">{option.title}</p>
+                      <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{option.description}</p>
                     </div>
                   </div>
                 </button>
@@ -782,7 +804,7 @@ export default function AssessmentsPage() {
           </div>
 
           <div className="mt-6 rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
-            <Label htmlFor="assessment-duration" className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+            <Label htmlFor="assessment-duration" className="text-xs uppercase tracking-[0.16em] text-muted-foreground font-mono">
               Assessment duration
             </Label>
             <Input
@@ -793,15 +815,15 @@ export default function AssessmentsPage() {
               step={5}
               value={durationMinutes}
               onChange={(event) => setDurationMinutes(event.target.value)}
-              className="mt-3 h-11 border-border/80 bg-background/70"
+              className="mt-3 h-11 border-border/80 bg-background/70 font-mono"
             />
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
               The average time per question adapts to this window. Coding assessments automatically reserve more time per prompt.
             </p>
           </div>
 
           <div className="mt-6 rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Assessment scope</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground font-mono">Assessment scope</p>
             <div className="mt-4 grid gap-3">
               {ASSESSMENT_SCOPES.map((scope) => (
                 <button
@@ -810,20 +832,20 @@ export default function AssessmentsPage() {
                   onClick={() => setAssessmentScope(scope.value)}
                   className={`rounded-[1rem] border px-4 py-4 text-left transition ${
                     assessmentScope === scope.value
-                      ? "border-primary/35 bg-primary/10"
+                      ? "border-primary/40 bg-primary/10"
                       : "border-border/80 bg-card/50 hover:border-border hover:bg-background/60"
                   }`}
                 >
-                  <p className="text-sm text-foreground">{scope.title}</p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{scope.description}</p>
+                  <p className="text-sm text-foreground font-medium">{scope.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{scope.description}</p>
                 </button>
               ))}
             </div>
           </div>
 
-          <Button
+          <button
             type="button"
-            className="mt-6 h-11 gap-2"
+            className="tactile-btn-primary mt-6 w-full py-3 text-xs font-semibold inline-flex items-center justify-center gap-2"
             onClick={() => startAssessmentMutation.mutate()}
             disabled={startAssessmentMutation.isPending || !activePlan}
           >
@@ -832,15 +854,15 @@ export default function AssessmentsPage() {
             ) : (
               <Sparkles className="h-4 w-4" />
             )}
-            {startAssessmentMutation.isPending ? "Building assessment..." : "Start assessment"}
-          </Button>
+            {startAssessmentMutation.isPending ? "Synthesizing test..." : "Start Sprint Assessment"}
+          </button>
 
-          <div className="mt-6 rounded-[1.15rem] border border-border/80 bg-card/60 p-4 text-sm leading-6 text-muted-foreground">
-            Assessments stay role-aware. A Data Analyst plan leans into SQL, analysis, dashboards, and metrics. A Data Engineer plan leans into pipelines, warehousing, orchestration, and implementation. Software roles keep leaning into DSA, core CS, and systems.
+          <div className="mt-5 rounded-[1.15rem] border border-border/70 bg-card/40 p-3.5 text-xs leading-5 text-muted-foreground">
+            Assessments adapt to your chosen track. Data Analyst emphasizes SQL & metric calculation; Data Engineer emphasizes warehousing & ETL; Software emphasizes DSA & distributed invariants.
           </div>
         </section>
 
-        <section className="surface-panel p-6 md:p-7">
+        <section className="tactile-card-editorial p-6 md:p-7">
           {currentSession && currentSession.status !== "completed" ? (
             <>
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -871,67 +893,91 @@ export default function AssessmentsPage() {
                 </div>
               </div>
 
-              {timeLeftSeconds !== null && (
-                <div className="mt-5 rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
-                  <div className="flex items-center justify-between gap-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                    <span>Pressure clock</span>
-                    <span>{isTimeExpired ? "Time expired" : formatTime(timeLeftSeconds)}</span>
+              {!currentSession.startedAt || currentSession.status === "draft" ? (
+                <div className="mt-5 rounded-[1.15rem] border border-primary/40 bg-primary/10 p-6 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/20 text-primary">
+                    <Brain className="h-6 w-6" />
                   </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted/45">
-                    <div
-                      className={`h-full rounded-full transition-all ${pressureTone}`}
-                      style={{ width: `${pressurePercent}%` }}
-                    />
-                  </div>
+                  <h4 className="mt-3 font-heading text-xl text-foreground">
+                    Diagnostic Session Not Started
+                  </h4>
+                  <p className="mt-1.5 text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
+                    This diagnostic benchmark has not been activated. Review the session parameters and launch your 20-minute timed sprint when you are ready.
+                  </p>
+                  <Button
+                    type="button"
+                    className="mt-4 h-11 gap-2 bg-primary px-6 font-semibold text-primary-foreground shadow-md transition hover:bg-primary/90"
+                    onClick={() => setPreStartDialogOpen(true)}
+                  >
+                    <Brain className="h-4 w-4" />
+                    Begin Diagnostic Session
+                  </Button>
                 </div>
-              )}
-
-              <div className="mt-6 space-y-4">
-                {currentSession.questions.map((question) => (
-                  <QuestionCard
-                    key={question.id}
-                    question={question}
-                    value={answers[question.id] || ""}
-                    onChange={(next) => updateAnswer(question, next)}
-                    disabled={isTimeExpired}
-                    onHint={() =>
-                      setApproachHints((current) => ({
-                        ...current,
-                        [question.id]: current[question.id] || buildApproachHint(question),
-                      }))
-                    }
-                    hint={approachHints[question.id]}
-                    onOpenCodingLab={() => openCodingAssessment(question)}
-                  />
-                ))}
-              </div>
-
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Button
-                  type="button"
-                  className="h-11 gap-2"
-                  onClick={() => submitAssessmentMutation.mutate()}
-                  disabled={submitAssessmentMutation.isPending}
-                >
-                  {submitAssessmentMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <>
+                  {timeLeftSeconds !== null && (
+                    <div className="mt-5 rounded-[1.15rem] border border-border/80 bg-background/45 p-4">
+                      <div className="flex items-center justify-between gap-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                        <span>Pressure clock</span>
+                        <span>{isTimeExpired ? "Time expired" : formatTime(timeLeftSeconds)}</span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted/45">
+                        <div
+                          className={`h-full rounded-full transition-all ${pressureTone}`}
+                          style={{ width: `${pressurePercent}%` }}
+                        />
+                      </div>
+                    </div>
                   )}
-                  {submitAssessmentMutation.isPending ? "Submitting..." : "Submit assessment"}
-                </Button>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 gap-2 border-border/80 bg-background/70"
-                  onClick={() => startAssessmentMutation.mutate()}
-                  disabled={startAssessmentMutation.isPending}
-                >
-                  <RefreshCcw className="h-4 w-4" />
-                  Regenerate
-                </Button>
-              </div>
+                  <div className="mt-6 space-y-4">
+                    {currentSession.questions.map((question) => (
+                      <QuestionCard
+                        key={question.id}
+                        question={question}
+                        value={answers[question.id] || ""}
+                        onChange={(next) => updateAnswer(question, next)}
+                        disabled={isTimeExpired}
+                        onHint={() =>
+                          setApproachHints((current) => ({
+                            ...current,
+                            [question.id]: current[question.id] || buildApproachHint(question),
+                          }))
+                        }
+                        hint={approachHints[question.id]}
+                        onOpenCodingLab={() => openCodingAssessment(question)}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    <Button
+                      type="button"
+                      className="h-11 gap-2"
+                      onClick={() => submitAssessmentMutation.mutate()}
+                      disabled={submitAssessmentMutation.isPending}
+                    >
+                      {submitAssessmentMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4" />
+                      )}
+                      {submitAssessmentMutation.isPending ? "Submitting..." : "Submit assessment"}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 gap-2 border-border/80 bg-background/70"
+                      onClick={() => startAssessmentMutation.mutate()}
+                      disabled={startAssessmentMutation.isPending}
+                    >
+                      <RefreshCcw className="h-4 w-4" />
+                      Regenerate
+                    </Button>
+                  </div>
+                </>
+              )}
             </>
           ) : currentSession ? (
             <>

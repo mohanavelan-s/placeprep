@@ -4,9 +4,11 @@ import com.placeprep.exception.AppException;
 import com.placeprep.model.AssessmentSession;
 import com.placeprep.model.Task;
 import com.placeprep.model.User;
+import com.placeprep.model.blueprint.CompanyBlueprint;
 import com.placeprep.repository.TaskRepository;
 import com.placeprep.service.RoleResearchService.ResearchReport;
 import com.placeprep.util.JsonUtil;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
@@ -30,6 +32,7 @@ public class AiService {
     private final TaskRepository taskRepository;
     private final JdbcTemplate jdbcTemplate;
     private final RoleResearchService roleResearchService;
+    private final LeetCodeCatalogService leetCodeCatalogService;
     private final AssessmentService assessmentService;
     private final RestClient restClient;
     private final RestClient geminiClient;
@@ -48,6 +51,7 @@ public class AiService {
             TaskRepository taskRepository,
             JdbcTemplate jdbcTemplate,
             RoleResearchService roleResearchService,
+            @Autowired(required = false) LeetCodeCatalogService leetCodeCatalogService,
             @Lazy AssessmentService assessmentService,
             @Value("${placeprep.ai.api-key:}") String apiKey,
             @Value("${placeprep.ai.base-url:https://openrouter.ai/api/v1}") String baseUrl,
@@ -60,12 +64,13 @@ public class AiService {
         this.taskRepository = taskRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.roleResearchService = roleResearchService;
+        this.leetCodeCatalogService = leetCodeCatalogService != null ? leetCodeCatalogService : new LeetCodeCatalogService();
         this.assessmentService = assessmentService;
         this.apiKey = apiKey != null ? apiKey.trim() : "";
         this.baseUrl = baseUrl != null ? baseUrl.trim().replaceAll("/$", "") : "https://openrouter.ai/api/v1";
         this.model = model != null ? model.trim() : "openai/gpt-5.1";
         this.provider = provider != null ? provider.trim() : "openrouter";
-        
+
         org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(java.time.Duration.ofSeconds(3));
         factory.setReadTimeout(java.time.Duration.ofSeconds(6));
@@ -903,6 +908,615 @@ public class AiService {
         );
     }
 
+    public static int sanitizeTimePerDay(Object rawTimePerDay) {
+        if (rawTimePerDay instanceof Number n) {
+            int val = n.intValue();
+            return val > 0 ? val : 120;
+        }
+        return 120;
+    }
+
+    public record PlanTimeBlock(int minutes, String roleType, String blockLabel) {}
+
+    public static List<PlanTimeBlock> computeDeliberateBlocks(int totalMinutes) {
+        if (totalMinutes <= 0) {
+            throw new IllegalArgumentException("Daily study budget must be positive (> 0 minutes), got: " + totalMinutes);
+        }
+        if (totalMinutes <= 45) {
+            return List.of(new PlanTimeBlock(totalMinutes, "dsa", "Targeted Algorithmic Sprint"));
+        }
+        if (totalMinutes == 60) {
+            return List.of(new PlanTimeBlock(60, "dsa", "Core Algorithmic Focus Block"));
+        }
+        if (totalMinutes == 75) {
+            return List.of(
+                    new PlanTimeBlock(60, "dsa", "Core Algorithmic Focus Block"),
+                    new PlanTimeBlock(15, "revision", "Spaced Repetition & Daily Wrap-Up")
+            );
+        }
+        if (totalMinutes == 90) {
+            return List.of(
+                    new PlanTimeBlock(45, "dsa", "Algorithmic Problem-Solving Block"),
+                    new PlanTimeBlock(45, "core_cs", "Core CS & Systems Engineering Block")
+            );
+        }
+        if (totalMinutes == 105) {
+            return List.of(
+                    new PlanTimeBlock(60, "dsa", "Core Algorithmic Focus Block"),
+                    new PlanTimeBlock(45, "core_cs", "Core CS & Systems Engineering Block")
+            );
+        }
+        if (totalMinutes == 120) {
+            return List.of(
+                    new PlanTimeBlock(60, "dsa", "Algorithmic Problem-Solving Block"),
+                    new PlanTimeBlock(60, "core_cs", "Systems Engineering & Architectural Block")
+            );
+        }
+        if (totalMinutes == 135) {
+            return List.of(
+                    new PlanTimeBlock(90, "dsa", "Deep Algorithmic Focus Block"),
+                    new PlanTimeBlock(45, "core_cs", "Core CS & Systems Engineering Block")
+            );
+        }
+        if (totalMinutes == 150) {
+            return List.of(
+                    new PlanTimeBlock(90, "dsa", "Deep Algorithmic Focus Block"),
+                    new PlanTimeBlock(60, "core_cs", "Systems Engineering & Architectural Block")
+            );
+        }
+        if (totalMinutes == 180) {
+            return List.of(
+                    new PlanTimeBlock(90, "dsa", "Deep Algorithmic Focus Block"),
+                    new PlanTimeBlock(90, "core_cs", "System Architecture & Mock Simulation Block")
+            );
+        }
+
+        // Deliberate allocation for arbitrary / non-preset capacities:
+        List<Integer> durations = new ArrayList<>();
+        int remaining = totalMinutes;
+
+        if (totalMinutes < 60) {
+            durations.add(45);
+            remaining -= 45;
+        } else if (totalMinutes < 90) {
+            durations.add(60);
+            remaining -= 60;
+        } else if (totalMinutes < 105) {
+            // e.g. 91..104: 45m DSA + 45m Core CS (90m total) + remainder <= 14m
+            durations.add(45);
+            durations.add(45);
+            remaining -= 90;
+        } else if (totalMinutes < 120) {
+            // e.g. 106..119: 60m DSA + 45m Core CS (105m total) + remainder <= 14m
+            durations.add(60);
+            durations.add(45);
+            remaining -= 105;
+        } else if (totalMinutes < 135) {
+            // e.g. 121..134: 60m DSA + 60m Core CS (120m total) + remainder <= 14m
+            durations.add(60);
+            durations.add(60);
+            remaining -= 120;
+        } else if (totalMinutes < 150) {
+            // e.g. 136..149: 90m DSA + 45m Core CS (135m total) + remainder <= 14m
+            durations.add(90);
+            durations.add(45);
+            remaining -= 135;
+        } else if (totalMinutes < 180) {
+            // e.g. 151..179: 90m DSA + 60m Core CS (150m total) + remainder <= 29m
+            durations.add(90);
+            durations.add(60);
+            remaining -= 150;
+        } else if (totalMinutes < 210) {
+            // e.g. 181..209: 90m DSA + 90m Core CS (180m total) + remainder <= 29m
+            durations.add(90);
+            durations.add(90);
+            remaining -= 180;
+        } else if (totalMinutes < 225) {
+            // e.g. 210..224: 90m DSA + 60m Core CS + 60m DSA (210m total) + remainder <= 14m
+            durations.add(90);
+            durations.add(60);
+            durations.add(60);
+            remaining -= 210;
+        } else if (totalMinutes < 240) {
+            // e.g. 225..239: 90m DSA + 90m Core CS + 45m DSA (225m total) + remainder <= 14m
+            durations.add(90);
+            durations.add(90);
+            durations.add(45);
+            remaining -= 225;
+        } else if (totalMinutes < 270) {
+            // e.g. 240..269: 90m DSA + 90m Core CS + 60m DSA (240m total) + remainder <= 29m
+            durations.add(90);
+            durations.add(90);
+            durations.add(60);
+            remaining -= 240;
+        } else {
+            // General modular decomposition for large budgets (>= 270)
+            while (remaining >= 270) {
+                durations.add(90);
+                remaining -= 90;
+            }
+            if (remaining < 210) {
+                durations.add(90);
+                durations.add(90);
+                remaining -= 180;
+            } else if (remaining < 225) {
+                durations.add(90);
+                durations.add(60);
+                durations.add(60);
+                remaining -= 210;
+            } else if (remaining < 240) {
+                durations.add(90);
+                durations.add(90);
+                durations.add(45);
+                remaining -= 225;
+            } else {
+                durations.add(90);
+                durations.add(90);
+                durations.add(60);
+                remaining -= 240;
+            }
+        }
+
+        // Build focus blocks with strictly alternating roles: DSA -> Core CS -> DSA -> Core CS ...
+        List<PlanTimeBlock> blocks = new ArrayList<>();
+        for (int i = 0; i < durations.size(); i++) {
+            int d = durations.get(i);
+            boolean isDsa = (i % 2 == 0);
+            String role = isDsa ? "dsa" : "core_cs";
+            String label;
+            if (d == 90) {
+                label = isDsa ? "Deep Algorithmic Focus Block" : "System Architecture & Mock Simulation Block";
+            } else if (d == 60) {
+                label = isDsa ? "Core Algorithmic Focus Block" : "Systems Engineering & Architectural Block";
+            } else {
+                label = isDsa ? "Algorithmic Problem-Solving Block" : "Core CS & Systems Engineering Block";
+            }
+            blocks.add(new PlanTimeBlock(d, role, label));
+        }
+
+        if (remaining > 0) {
+            blocks.add(new PlanTimeBlock(remaining, "revision", "Spaced Repetition & Daily Wrap-Up"));
+        }
+
+        return blocks;
+    }
+
+    public Map<String, Object> generateDeterministicCurriculum(
+            CompanyBlueprint bp,
+            ResearchReport report,
+            int timePerDay,
+            int durationMonths,
+            String targetRole
+    ) {
+        int safeTimePerDay = sanitizeTimePerDay(timePerDay);
+        int safeMonths = Math.max(1, durationMonths);
+        int totalWeeks = safeMonths * 4;
+        double weeklyEstimatedHours = Math.round(((5.0 * safeTimePerDay) / 60.0) * 10.0) / 10.0;
+
+        String roleLower = targetRole != null ? targetRole.toLowerCase().trim() : "";
+        boolean isAi = roleLower.contains("ai") || roleLower.contains("machine learning") || roleLower.contains("ml") || roleLower.contains("deep learning") || roleLower.contains("data scientist") || roleLower.contains("nlp");
+        boolean isBackend = roleLower.contains("backend") || roleLower.contains("cloud") || roleLower.contains("systems") || roleLower.contains("distributed") || roleLower.contains("platform") || roleLower.contains("devops") || roleLower.contains("sre");
+        boolean isFrontend = roleLower.contains("front") || roleLower.contains("react") || roleLower.contains("ui") || roleLower.contains("web") || roleLower.contains("mobile") || roleLower.contains("ios") || roleLower.contains("android");
+        boolean isIntern = roleLower.contains("intern") || roleLower.contains("student") || roleLower.contains("junior") || roleLower.contains("entry") || roleLower.contains("graduate");
+
+        List<CompanyBlueprint.InterviewStage> stages = (bp != null && !bp.stages().isEmpty())
+                ? bp.stages()
+                : List.of(new CompanyBlueprint.InterviewStage("core-round", "Technical Interview Round", 100, "Live coding", List.of("Edge cases", "Time complexity"), List.of("Data Structures", "Algorithms"), List.of()));
+
+        boolean isVerifiedBlueprint = (bp != null && !"standard_sde".equalsIgnoreCase(bp.companyId()) && !bp.highFrequencyLeetCodeIds().isEmpty());
+
+        List<String> dailyTopics;
+        List<Integer> roleLeetCodeIds;
+        List<String> roleRoadmapThemes;
+        List<List<String>> roleRoadmapFocus;
+
+        if (isAi) {
+            dailyTopics = List.of(
+                    "Python Vectorization & NumPy Memory Layout",
+                    "Loss Functions, Gradient Descent & Backpropagation",
+                    "Feature Engineering & Data Pipeline Preprocessing",
+                    "Model Evaluation: Precision-Recall, ROC-AUC & Calibration",
+                    "Transformer Architecture & Attention Complexity"
+            );
+            roleLeetCodeIds = isVerifiedBlueprint
+                    ? List.of(48, 1, 56, 74, 200)
+                    : List.of(74, 1, 48, 53, 238);
+            roleRoadmapThemes = List.of(
+                    "Machine Learning Foundations & Matrix Algorithms",
+                    "Deep Learning Architectures & Loss Optimization",
+                    "ML Systems Design & Scalable Data Pipelines",
+                    "Production ML, Model Evaluation & Interview Simulation"
+            );
+            roleRoadmapFocus = List.of(
+                    List.of("NumPy Vectorization", "Feature Normalization", "Matrix Operations"),
+                    List.of("Backpropagation", "Regularization", "Transformer Attention"),
+                    List.of("Data Ingestion", "Feature Stores", "Distributed Training"),
+                    List.of("Model Serving", "Latency Optimization", "A/B Testing Metrics")
+            );
+        } else if (isBackend) {
+            dailyTopics = List.of(
+                    "Relational ACID, MVCC & Transaction Isolation Anomalies",
+                    "Distributed Caching (Cache-Aside & Redis Mutex Locking)",
+                    "B+ Tree Indexing & Query Plan Optimization",
+                    "Idempotency & Message Queues (Kafka / RabbitMQ)",
+                    "REST / gRPC Contract Design & Resilience Patterns"
+            );
+            roleLeetCodeIds = isVerifiedBlueprint
+                    ? List.of(146, 56, 200, 207, 1)
+                    : List.of(56, 1, 20, 15, 33);
+            roleRoadmapThemes = List.of(
+                    "Database Internals, ACID & Query Optimization",
+                    "Distributed Systems, Caching & Concurrency",
+                    "Microservices Resiliency, Idempotency & API Design",
+                    "System Design Mock Simulations & Production Troubleshooting"
+            );
+            roleRoadmapFocus = List.of(
+                    List.of("B+ Trees", "MVCC", "Index Scans", "Interval Processing"),
+                    List.of("Cache-Aside", "Redis Locks", "Sharding", "Message Brokers"),
+                    List.of("Idempotency Keys", "gRPC", "Circuit Breakers", "Rate Limiting"),
+                    List.of("Scalability", "Failover", "Distributed Logging", "Final Polish")
+            );
+        } else if (isFrontend) {
+            dailyTopics = List.of(
+                    "Browser Event Loop: Microtasks, Macrotasks & Rendering",
+                    "DOM Manipulation, Layout Thrashing & Virtual DOM Reconciliation",
+                    "Core Web Vitals Optimization (LCP, CLS, INP)",
+                    "React State Architecture, Hook Lifecycles & Memoization",
+                    "CSS Box Model, Flexbox/Grid Layout Engine & Paint Pipeline"
+            );
+            roleLeetCodeIds = isVerifiedBlueprint
+                    ? List.of(443, 20, 1, 226, 3)
+                    : List.of(20, 3, 125, 226, 1);
+            roleRoadmapThemes = List.of(
+                    "Browser Engine, Event Loop & DOM Internals",
+                    "Virtual DOM, React Reconciliation & State Patterns",
+                    "Web Performance, Core Web Vitals & Asset Delivery",
+                    "Advanced Web Systems, Accessibility & Frontend Architecture"
+            );
+            roleRoadmapFocus = List.of(
+                    List.of("Microtask Queue", "Reflow/Repaint", "Stack Operations", "String Parsing"),
+                    List.of("Fiber Architecture", "Hook Dependencies", "Memoization", "Trees"),
+                    List.of("LCP", "CLS", "INP", "Code Splitting", "Bundle Optimization"),
+                    List.of("State Machines", "WCAG A11y", "Design Systems", "Live Polish")
+            );
+        } else if (isIntern) {
+            dailyTopics = List.of(
+                    "Monotonic Binary Search & Array Invariants",
+                    "Two Pointers & Hash Map Invariants",
+                    "Linked List Operations & Fast-Slow Pointers",
+                    "Recursion Trees, 1D DP & Memoization",
+                    "Binary Tree Traversals & Depth Calculation"
+            );
+            roleLeetCodeIds = isVerifiedBlueprint
+                    ? List.of(56, 1, 200, 704, 146)
+                    : List.of(704, 1, 21, 70, 104);
+            roleRoadmapThemes = List.of(
+                    "Core Data Structures & Algorithmic Invariants",
+                    "Recursion, Search & Dynamic Programming Foundations",
+                    "Trees, Graphs & Fundamental Complexity Analysis",
+                    "Intern Technical Screening Loops & Mock Coding"
+            );
+            roleRoadmapFocus = List.of(
+                    List.of("Arrays", "Binary Search", "Two Pointers", "Hashing"),
+                    List.of("1D DP", "Recursion Trees", "Memoization", "Stack/Queue"),
+                    List.of("Binary Trees", "BFS/DFS", "Big-O Analysis", "Testing"),
+                    List.of("Intern Loops", "Whiteboarding", "Communication", "Mock Polish")
+            );
+        } else {
+            dailyTopics = List.of(
+                    "Array Invariants, Two Pointers & Space-Time Analysis",
+                    "Monotonic Binary Search & Midpoint Boundary Conditions",
+                    "Recursion Trees, Memoization & Dynamic Programming Subproblems",
+                    "Graph Traversal (BFS / DFS) & Cycle Detection",
+                    "Operating Systems: Process vs Thread Concurrency & Deadlocks"
+            );
+            roleLeetCodeIds = (bp != null && !bp.highFrequencyLeetCodeIds().isEmpty())
+                    ? bp.highFrequencyLeetCodeIds()
+                    : List.of(704, 1, 21, 70, 104);
+            roleRoadmapThemes = List.of(
+                    "Core Algorithmic Invariants & Data Structures",
+                    "Dynamic Programming & Advanced Recursion",
+                    "Graph Theory, Search & Systems Concurrency",
+                    "Technical Screening Loops & Full Mock Interview Simulation"
+            );
+            roleRoadmapFocus = List.of(
+                    List.of("Arrays", "Two Pointers", "Hashing", "Sorting"),
+                    List.of("1D DP", "2D DP", "Knapsack", "Intervals"),
+                    List.of("BFS/DFS", "Cycle Detection", "Concurrency", "Locks"),
+                    List.of("Full Loop Simulation", "Edge Cases", "Whiteboard Synthesis")
+            );
+        }
+
+        // 1. Generate Roadmap (N = durationMonths * 4)
+        List<Map<String, Object>> roadmap = new ArrayList<>();
+        for (int w = 1; w <= totalWeeks; w++) {
+            int themeIdx = (w - 1) % roleRoadmapThemes.size();
+            String theme = roleRoadmapThemes.get(themeIdx);
+            List<String> focusTopics = new ArrayList<>(roleRoadmapFocus.get(themeIdx));
+            int stageIndex = (w - 1) * stages.size() / totalWeeks;
+            CompanyBlueprint.InterviewStage stage = stages.get(Math.min(stageIndex, stages.size() - 1));
+
+            String weekTitle = "Week " + w + ": " + theme + " (" + stage.name() + ")";
+            String primaryGoal = "Master " + String.join(", ", focusTopics) + " under " + (bp != null ? bp.displayName() : "interview") + " screening pressure.";
+            String milestone = "Pass weekly timed diagnostic simulation with 0 syntax or runtime errors.";
+
+            Map<String, Object> weekMap = new LinkedHashMap<>();
+            weekMap.put("week", w);
+            weekMap.put("title", weekTitle);
+            weekMap.put("theme", weekTitle);
+            weekMap.put("focusTopics", focusTopics);
+            weekMap.put("topics", focusTopics);
+            weekMap.put("estimatedHours", weeklyEstimatedHours);
+            weekMap.put("goals", List.of(primaryGoal, milestone));
+            weekMap.put("goal", primaryGoal);
+            weekMap.put("milestone", milestone);
+            weekMap.put("stageId", stage.stageId());
+            weekMap.put("stageName", stage.name());
+            weekMap.put("rubricTraps", stage.rubricTraps());
+            weekMap.put("evidenceRefs", stage.evidenceRefs());
+            roadmap.add(weekMap);
+        }
+
+        // 2. Generate 5-Day Tasks (totalMinutes strictly equal to timePerDay using deliberate focus blocks)
+        List<Map<String, Object>> tasks = new ArrayList<>();
+        List<PlanTimeBlock> deliberateBlocks = computeDeliberateBlocks(safeTimePerDay);
+
+        for (int d = 1; d <= 5; d++) {
+            CompanyBlueprint.InterviewStage currentStage = stages.get((d - 1) % stages.size());
+            int lcId = roleLeetCodeIds.get((d - 1) % roleLeetCodeIds.size());
+            Optional<LeetCodeCatalogService.CanonicalProblemMeta> metaOpt = leetCodeCatalogService.findByNumber(lcId);
+
+            String probTitle = metaOpt.map(LeetCodeCatalogService.CanonicalProblemMeta::title).orElse("Problem #" + lcId);
+            String probSlug = metaOpt.map(LeetCodeCatalogService.CanonicalProblemMeta::slug).orElse("problem-" + lcId);
+            String probDiff = metaOpt.map(LeetCodeCatalogService.CanonicalProblemMeta::difficulty).orElse("Medium");
+            String probUrl = metaOpt.map(LeetCodeCatalogService.CanonicalProblemMeta::url).orElse("https://leetcode.com/problems/" + probSlug + "/");
+            List<String> probTopics = metaOpt.map(LeetCodeCatalogService.CanonicalProblemMeta::topics).orElse(List.of("Algorithms"));
+            String coreTopic = dailyTopics.get((d - 1) % dailyTopics.size());
+
+            List<Map<String, Object>> items = new ArrayList<>();
+
+            for (PlanTimeBlock block : deliberateBlocks) {
+                if ("dsa".equalsIgnoreCase(block.roleType())) {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("title", probTitle);
+                    item.put("type", "dsa");
+                    item.put("difficulty", probDiff);
+                    item.put("estimatedMinutes", block.minutes());
+                    item.put("summary", "LeetCode #" + lcId + ": " + probTitle + " (" + String.join(", ", probTopics) + "). " + block.blockLabel() + " for " + targetRole + " at " + (bp != null ? bp.displayName() : "interview prep") + ".");
+                    item.put("referenceLabel", "LeetCode #" + lcId);
+                    item.put("referenceUrl", probUrl);
+                    item.put("leetcodeId", lcId);
+                    item.put("codingLabUrl", "/coding-lab?problem=" + lcId + "&url=" + URLEncoder.encode(probUrl, StandardCharsets.UTF_8) + "&title=" + URLEncoder.encode(probTitle, StandardCharsets.UTF_8));
+                    item.put("rubricInsight", !currentStage.rubricTraps().isEmpty() ? currentStage.rubricTraps().get((d - 1) % currentStage.rubricTraps().size()) : "Clarify constraints and dry-run boundary edge cases.");
+                    item.put("whyMattersForRole", "Tested frequently in " + (bp != null ? bp.displayName() : "target") + " technical screening loops to evaluate optimal complexity trade-offs for " + targetRole + ".");
+                    item.put("evidenceRefs", currentStage.evidenceRefs());
+                    items.add(item);
+                } else if ("core_cs".equalsIgnoreCase(block.roleType())) {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("title", coreTopic + " Deep Dive & Architecture");
+                    item.put("type", "core_cs");
+                    item.put("difficulty", "Medium");
+                    item.put("estimatedMinutes", block.minutes());
+                    item.put("summary", "Deliberate " + block.minutes() + "-minute focus on " + coreTopic + " principles, invariants, and architectural trade-offs.");
+                    item.put("referenceLabel", coreTopic);
+                    item.put("referenceUrl", "https://github.com/jwasham/coding-interview-university");
+                    item.put("rubricInsight", "Be prepared to explain memory trade-offs and runtime invariants clearly.");
+                    item.put("whyMattersForRole", "Directly evaluated in " + currentStage.name() + " for " + targetRole + " at " + (bp != null ? bp.displayName() : "interviews") + ".");
+                    item.put("evidenceRefs", currentStage.evidenceRefs());
+                    items.add(item);
+                } else {
+                    CompanyBlueprint.BehavioralFramework bh = bp != null ? bp.behavioralFramework() : null;
+                    String bhQuestion = (bh != null && !bh.sampleQuestions().isEmpty())
+                            ? bh.sampleQuestions().get((d - 1) % bh.sampleQuestions().size())
+                            : "Describe a complex technical challenge you solved and the trade-offs involved.";
+                    String bhPrinciple = (bh != null && !bh.principles().isEmpty())
+                            ? bh.principles().get((d - 1) % bh.principles().size())
+                            : "Technical Communication & Ownership";
+
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("title", "Wrap-Up & Review: " + bhPrinciple);
+                    item.put("type", "revision");
+                    item.put("difficulty", "Easy");
+                    item.put("estimatedMinutes", block.minutes());
+                    item.put("summary", "Identified " + block.minutes() + "-minute wrap-up block: Spaced repetition and STAR reflection on: " + bhQuestion);
+                    item.put("referenceLabel", (bh != null ? bh.name() : "Daily Review & Spaced Repetition"));
+                    item.put("referenceUrl", "");
+                    item.put("rubricInsight", "Structure answer with Situation, Task, Action, and Quantifiable Impact.");
+                    item.put("whyMattersForRole", "Assesses collaborative alignment and engineering values for " + (bp != null ? bp.displayName() : "interviews") + ".");
+                    items.add(item);
+                }
+            }
+
+            Map<String, Object> dayMap = new LinkedHashMap<>();
+            dayMap.put("day", "Day " + d);
+            dayMap.put("theme", currentStage.name() + " Focus: " + coreTopic);
+            dayMap.put("totalEstimatedMinutes", safeTimePerDay);
+            dayMap.put("items", items);
+            tasks.add(dayMap);
+        }
+
+        // 3. Resources
+        List<Map<String, Object>> resources = new ArrayList<>();
+        if (bp != null) {
+            List<Map<String, String>> officialItems = new ArrayList<>();
+            for (CompanyBlueprint.VerifiedDoc doc : bp.verifiedDocs()) {
+                officialItems.add(Map.of("title", doc.title(), "type", "official", "url", doc.url()));
+            }
+            if (!officialItems.isEmpty()) {
+                resources.add(Map.of("topic", "Official " + bp.displayName() + " Preparation Guidance", "items", officialItems));
+            }
+        }
+        resources.add(Map.of("topic", "Data Structures & Core Algorithms", "items", List.of(
+                Map.of("title", "LeetCode Curated Interview Patterns", "type", "practice", "url", "https://leetcode.com/explore/"),
+                Map.of("title", "Coding Interview University Curated Syllabus", "type", "article", "url", "https://github.com/jwasham/coding-interview-university")
+        )));
+        resources.add(Map.of("topic", "System Architecture & Engineering Fundamentals", "items", List.of(
+                Map.of("title", "Operating Systems: Three Easy Pieces (OSTEP)", "type", "book", "url", "https://pages.cs.wisc.edu/~remzi/OSTEP/"),
+                Map.of("title", "Use The Index, Luke! - Database Performance", "type", "article", "url", "https://use-the-index-luke.com/")
+        )));
+
+        // 4. Flashcards
+        List<Map<String, Object>> flashcards = List.of(
+                Map.of("topic", "Data Structures", "question", "What is the worst-case and amortized time complexity of inserting into a Dynamic Array (ArrayList / vector)?", "answer", "Worst-case is O(N) when resizing and copying elements; amortized time complexity is O(1) per insertion."),
+                Map.of("topic", "Graph Algorithms", "question", "When is BFS strictly preferred over DFS on an unweighted graph?", "answer", "BFS guarantees finding the shortest path (minimum number of edges) from the source to any reachable vertex."),
+                Map.of("topic", "System Architecture", "question", "What is the difference between optimistic locking and pessimistic locking in database transactions?", "answer", "Pessimistic locking prevents concurrency anomalies by acquiring explicit row/table locks (e.g. SELECT FOR UPDATE); optimistic locking checks a version counter or timestamp at commit time without holding row locks."),
+                Map.of("topic", "Concurrency", "question", "What are the four necessary conditions for a deadlock to occur in an operating system?", "answer", "1. Mutual Exclusion, 2. Hold and Wait, 3. No Preemption, 4. Circular Wait (Coffman conditions).")
+        );
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("roadmap", roadmap);
+        result.put("tasks", tasks);
+        result.put("resources", resources);
+        result.put("flashcards", flashcards);
+        return result;
+    }
+
+    public void normalizeAndValidatePlan(
+            List<Map<String, Object>> roadmap,
+            List<Map<String, Object>> tasks,
+            CompanyBlueprint bp,
+            int timePerDay,
+            int durationMonths
+    ) {
+        normalizeAndValidatePlan(roadmap, tasks, bp, timePerDay, durationMonths, "Software Development Engineer");
+    }
+
+    public void normalizeAndValidatePlan(
+            List<Map<String, Object>> roadmap,
+            List<Map<String, Object>> tasks,
+            CompanyBlueprint bp,
+            int timePerDay,
+            int durationMonths,
+            String targetRole
+    ) {
+        int safeTimePerDay = sanitizeTimePerDay(timePerDay);
+        int safeMonths = Math.max(1, durationMonths);
+        int totalWeeks = safeMonths * 4;
+        double weeklyHours = Math.round(((5.0 * safeTimePerDay) / 60.0) * 10.0) / 10.0;
+
+        // Ensure roadmap has totalWeeks
+        while (roadmap.size() < totalWeeks) {
+            int w = roadmap.size() + 1;
+            Map<String, Object> copy = new LinkedHashMap<>(roadmap.get((w - 1) % roadmap.size()));
+            copy.put("week", w);
+            copy.put("title", "Week " + w + ": Advanced Polish & Interview Simulation");
+            copy.put("theme", "Week " + w + ": Advanced Polish & Interview Simulation");
+            copy.put("estimatedHours", weeklyHours);
+            roadmap.add(copy);
+        }
+        // Normalize weekly hours across all weeks
+        for (Map<String, Object> week : roadmap) {
+            week.put("estimatedHours", weeklyHours);
+        }
+
+        // Validate task days using role-specific high frequency problems
+        String roleLower = targetRole != null ? targetRole.toLowerCase().trim() : "";
+        boolean isAi = roleLower.contains("ai") || roleLower.contains("machine learning") || roleLower.contains("ml") || roleLower.contains("deep learning") || roleLower.contains("data scientist") || roleLower.contains("nlp");
+        boolean isBackend = roleLower.contains("backend") || roleLower.contains("cloud") || roleLower.contains("systems") || roleLower.contains("distributed") || roleLower.contains("platform") || roleLower.contains("devops") || roleLower.contains("sre");
+        boolean isFrontend = roleLower.contains("front") || roleLower.contains("react") || roleLower.contains("ui") || roleLower.contains("web") || roleLower.contains("mobile") || roleLower.contains("ios") || roleLower.contains("android");
+        boolean isIntern = roleLower.contains("intern") || roleLower.contains("student") || roleLower.contains("junior") || roleLower.contains("entry") || roleLower.contains("graduate");
+
+        List<Integer> highFreq;
+        if (isAi) {
+            highFreq = List.of(74, 1, 48, 53, 238);
+        } else if (isBackend) {
+            highFreq = List.of(56, 1, 20, 15, 33);
+        } else if (isFrontend) {
+            highFreq = List.of(20, 3, 125, 226, 1);
+        } else {
+            highFreq = (bp != null && !bp.highFrequencyLeetCodeIds().isEmpty())
+                    ? bp.highFrequencyLeetCodeIds()
+                    : List.of(704, 1, 21, 70, 104);
+        }
+        int itemCounter = 0;
+        List<PlanTimeBlock> deliberateBlocks = computeDeliberateBlocks(safeTimePerDay);
+
+        for (Map<String, Object> day : tasks) {
+            day.put("totalEstimatedMinutes", safeTimePerDay);
+            Object itemsObj = day.get("items");
+            if (itemsObj instanceof List) {
+                List<Map<String, Object>> items = (List<Map<String, Object>>) itemsObj;
+
+                for (int i = 0; i < items.size(); i++) {
+                    Map<String, Object> item = items.get(i);
+                    itemCounter++;
+                    int targetBlockMin = i < deliberateBlocks.size()
+                            ? deliberateBlocks.get(i).minutes()
+                            : deliberateBlocks.get(deliberateBlocks.size() - 1).minutes();
+                    item.put("estimatedMinutes", targetBlockMin);
+
+                    String type = (String) item.getOrDefault("type", "");
+                    String title = (String) item.getOrDefault("title", "");
+                    String refLabel = (String) item.getOrDefault("referenceLabel", "");
+
+                    if (type.equalsIgnoreCase("dsa") || title.toLowerCase().contains("leetcode") || refLabel.toLowerCase().contains("leetcode")) {
+                        Optional<LeetCodeCatalogService.CanonicalProblemMeta> metaOpt = leetCodeCatalogService.findProblem(refLabel);
+                        if (metaOpt.isEmpty()) {
+                            metaOpt = leetCodeCatalogService.findProblem(title);
+                        }
+
+                        if (metaOpt.isPresent()) {
+                            LeetCodeCatalogService.CanonicalProblemMeta meta = metaOpt.get();
+                            if (!meta.number().isBlank()) {
+                                try {
+                                    item.put("leetcodeId", Integer.parseInt(meta.number()));
+                                } catch (Exception ignored) {}
+                            }
+                            item.put("referenceLabel", "LeetCode #" + meta.number());
+                            item.put("referenceUrl", meta.url());
+                            item.put("codingLabUrl", "/coding-lab?problem=" + meta.number() + "&url=" + URLEncoder.encode(meta.url(), StandardCharsets.UTF_8) + "&title=" + URLEncoder.encode(meta.title(), StandardCharsets.UTF_8));
+                        } else {
+                            int substituteId = highFreq.get(itemCounter % highFreq.size());
+                            Optional<LeetCodeCatalogService.CanonicalProblemMeta> subMeta = leetCodeCatalogService.findByNumber(substituteId);
+                            if (subMeta.isPresent()) {
+                                LeetCodeCatalogService.CanonicalProblemMeta sm = subMeta.get();
+                                item.put("title", sm.title());
+                                item.put("leetcodeId", substituteId);
+                                item.put("referenceLabel", "LeetCode #" + substituteId);
+                                item.put("referenceUrl", sm.url());
+                                item.put("summary", "LeetCode #" + substituteId + ": " + sm.title() + " - Grounded canonical problem for " + (bp != null ? bp.displayName() : "interview prep") + ".");
+                                item.put("codingLabUrl", "/coding-lab?problem=" + substituteId + "&url=" + URLEncoder.encode(sm.url(), StandardCharsets.UTF_8) + "&title=" + URLEncoder.encode(sm.title(), StandardCharsets.UTF_8));
+                            }
+                        }
+                    }
+                }
+
+                // If items list is shorter than deliberate blocks, add remaining deliberate blocks
+                while (items.size() < deliberateBlocks.size()) {
+                    PlanTimeBlock missingBlock = deliberateBlocks.get(items.size());
+                    Map<String, Object> newItem = new LinkedHashMap<>();
+                    if ("core_cs".equalsIgnoreCase(missingBlock.roleType())) {
+                        newItem.put("title", "Core CS & Systems Engineering Block");
+                        newItem.put("type", "core_cs");
+                        newItem.put("difficulty", "Medium");
+                        newItem.put("estimatedMinutes", missingBlock.minutes());
+                        newItem.put("summary", "Deliberate " + missingBlock.minutes() + "-minute focus on systems engineering fundamentals and invariants.");
+                        newItem.put("referenceLabel", "Systems Engineering");
+                        newItem.put("referenceUrl", "https://github.com/jwasham/coding-interview-university");
+                    } else {
+                        newItem.put("title", "Spaced Repetition & Daily Wrap-Up");
+                        newItem.put("type", "revision");
+                        newItem.put("difficulty", "Easy");
+                        newItem.put("estimatedMinutes", missingBlock.minutes());
+                        newItem.put("summary", "Identified " + missingBlock.minutes() + "-minute wrap-up block: Spaced repetition and review.");
+                        newItem.put("referenceLabel", "Daily Review & Spaced Repetition");
+                        newItem.put("referenceUrl", "");
+                    }
+                    items.add(newItem);
+                }
+
+                // Strictly enforce daily total equals safeTimePerDay
+                int currentTotal = items.stream().mapToInt(it -> ((Number) it.get("estimatedMinutes")).intValue()).sum();
+                if (currentTotal != safeTimePerDay && !items.isEmpty()) {
+                    int diff = safeTimePerDay - currentTotal;
+                    Map<String, Object> lastItem = items.get(items.size() - 1);
+                    int lastMin = lastItem.get("estimatedMinutes") instanceof Number ? ((Number) lastItem.get("estimatedMinutes")).intValue() : 30;
+                    lastItem.put("estimatedMinutes", Math.max(15, lastMin + diff));
+                }
+            }
+        }
+    }
+
     public Map<String, Object> createAndPersistPlan(User user, Map<String, Object> req) {
         ResearchReport researchReport = roleResearchService.conductResearch(req);
         String targetRole = researchReport.targetRole;
@@ -912,12 +1526,16 @@ public class AiService {
         String location = researchReport.location;
         String customCompanyName = (String) req.get("customCompanyName");
 
-        int timePerDay = req.get("timePerDay") instanceof Number ? ((Number) req.get("timePerDay")).intValue() : 120;
+        int timePerDay = sanitizeTimePerDay(req.get("timePerDay"));
         int durationMonths = req.get("durationMonths") instanceof Number ? ((Number) req.get("durationMonths")).intValue() : 1;
+        durationMonths = Math.max(1, durationMonths);
+        int totalWeeks = durationMonths * 4;
         String preferredLanguage = (String) req.getOrDefault("preferredLanguage", "english");
 
         List<String> knownTopics = req.get("knownTopics") instanceof List ? (List<String>) req.get("knownTopics") : List.of("Arrays", "Strings");
         List<String> targetTopics = req.get("targetTopics") instanceof List ? (List<String>) req.get("targetTopics") : (researchReport.diagnosticTopics != null && !researchReport.diagnosticTopics.isEmpty() ? researchReport.diagnosticTopics : List.of("Queues", "Binary Trees", "DBMS", "Operating Systems"));
+
+        CompanyBlueprint bp = researchReport.blueprint != null ? researchReport.blueprint : roleResearchService.getBlueprintOrDefault(companyKey);
 
         UUID planId = UUID.randomUUID();
         int version = 1;
@@ -928,144 +1546,63 @@ public class AiService {
         }
 
         String title = targetRole + ": " + companyLabel + " Target Track";
-        String coachLine = "Targeted " + durationMonths + "-month plan for " + targetRole + " at " + companyLabel + " (" + seniority + "). Complete baseline diagnostic to calibrate.";
+        String coachLine = "Targeted " + durationMonths + "-month (" + totalWeeks + "-week) plan for " + targetRole + " at " + companyLabel + " (" + seniority + "). Grounded in verified hiring rubrics.";
 
         List<Map<String, Object>> roadmap = null;
         List<Map<String, Object>> tasks = null;
         List<Map<String, Object>> resources = null;
         List<Map<String, Object>> flashcards = null;
 
-        // Try AI generation first
-        try {
-            String systemPrompt = "You are Prep Architect, PlacePrep's technical curriculum engine. Return ONLY valid, raw JSON with NO markdown fences, no backticks, and no conversation.";
-            String userPrompt = "Build a high-signal, realistic preparation curriculum for a student targeting " + targetRole + " at " + companyLabel + ".\n"
-                    + "Parameters: " + timePerDay + " mins/day, duration: " + durationMonths + " month(s), language: " + preferredLanguage + ".\n\n"
-                    + "Return a JSON object with this EXACT structure:\n"
-                    + "{\n"
-                    + "  \"roadmap\": [\n"
-                    + "    {\"week\": 1, \"title\": \"...\", \"focusTopics\": [\"...\"], \"estimatedHours\": 12, \"goals\": [\"...\"]},\n"
-                    + "    {\"week\": 2, \"title\": \"...\", \"focusTopics\": [\"...\"], \"estimatedHours\": 12, \"goals\": [\"...\"]},\n"
-                    + "    {\"week\": 3, \"title\": \"...\", \"focusTopics\": [\"...\"], \"estimatedHours\": 12, \"goals\": [\"...\"]},\n"
-                    + "    {\"week\": 4, \"title\": \"...\", \"focusTopics\": [\"...\"], \"estimatedHours\": 12, \"goals\": [\"...\"]}\n"
-                    + "  ],\n"
-                    + "  \"tasks\": [\n"
-                    + "    {\"day\": \"Day 1\", \"theme\": \"...\", \"totalEstimatedMinutes\": " + timePerDay + ", \"items\": [\n"
-                    + "      {\"title\": \"...\", \"type\": \"dsa\", \"difficulty\": \"Medium\", \"estimatedMinutes\": 45, \"summary\": \"...\", \"referenceLabel\": \"LeetCode #...\", \"referenceUrl\": \"https://leetcode.com/problems/...\"},\n"
-                    + "      {\"title\": \"...\", \"type\": \"core_cs\", \"difficulty\": \"Medium\", \"estimatedMinutes\": 40, \"summary\": \"...\", \"referenceLabel\": \"Docs\", \"referenceUrl\": \"https://geeksforgeeks.org\"}\n"
-                    + "    ]},\n"
-                    + "    {\"day\": \"Day 2\", \"theme\": \"...\", \"totalEstimatedMinutes\": " + timePerDay + ", \"items\": [...]},\n"
-                    + "    {\"day\": \"Day 3\", \"theme\": \"...\", \"totalEstimatedMinutes\": " + timePerDay + ", \"items\": [...]},\n"
-                    + "    {\"day\": \"Day 4\", \"theme\": \"...\", \"totalEstimatedMinutes\": " + timePerDay + ", \"items\": [...]},\n"
-                    + "    {\"day\": \"Day 5\", \"theme\": \"...\", \"totalEstimatedMinutes\": " + timePerDay + ", \"items\": [...]}\n"
-                    + "  ],\n"
-                    + "  \"resources\": [\n"
-                    + "    {\"topic\": \"...\", \"items\": [{\"title\": \"...\", \"type\": \"practice\", \"url\": \"...\"}]}\n"
-                    + "  ],\n"
-                    + "  \"flashcards\": [\n"
-                    + "    {\"topic\": \"...\", \"question\": \"...\", \"answer\": \"...\"}\n"
-                    + "  ]\n"
-                    + "}";
+        // Try AI generation first if provider credentials exist
+        boolean hasAiCreds = (!this.apiKey.isBlank() && !this.openRouterExhausted) || !this.geminiApiKey.isBlank();
+        if (hasAiCreds) {
+            try {
+                String systemPrompt = "You are Prep Architect, PlacePrep's technical curriculum engine. Return ONLY valid, raw JSON with NO markdown fences, no backticks, and no conversation.";
+                String userPrompt = "Build a high-signal, realistic preparation curriculum for a student targeting " + targetRole + " at " + companyLabel + ".\n"
+                        + "Parameters: " + timePerDay + " mins/day, duration: " + durationMonths + " month(s) (" + totalWeeks + " weeks), language: " + preferredLanguage + ".\n"
+                        + "Company Blueprint: " + (bp != null ? bp.displayName() + ", High Frequency Problem IDs: " + bp.highFrequencyLeetCodeIds() : "Standard SDE") + ".\n\n"
+                        + "Return a JSON object with this EXACT structure:\n"
+                        + "{\n"
+                        + "  \"roadmap\": [\n"
+                        + "    {\"week\": 1, \"title\": \"...\", \"focusTopics\": [\"...\"], \"estimatedHours\": " + ((5.0 * timePerDay) / 60.0) + ", \"goals\": [\"...\"]}\n"
+                        + "  ],\n"
+                        + "  \"tasks\": [\n"
+                        + "    {\"day\": \"Day 1\", \"theme\": \"...\", \"totalEstimatedMinutes\": " + timePerDay + ", \"items\": [\n"
+                        + "      {\"title\": \"...\", \"type\": \"dsa\", \"difficulty\": \"Medium\", \"estimatedMinutes\": " + (int)(timePerDay * 0.45) + ", \"summary\": \"...\", \"referenceLabel\": \"LeetCode #...\", \"referenceUrl\": \"https://leetcode.com/problems/...\"}\n"
+                        + "    ]}\n"
+                        + "  ],\n"
+                        + "  \"resources\": [...],\n"
+                        + "  \"flashcards\": [...]\n"
+                        + "}";
 
-            String raw = completePrompt(systemPrompt, userPrompt);
-            if (raw != null && !raw.isBlank()) {
-                int firstBrace = raw.indexOf('{');
-                int lastBrace = raw.lastIndexOf('}');
-                if (firstBrace >= 0 && lastBrace > firstBrace) {
-                    Map<String, Object> parsed = JsonUtil.toMap(raw.substring(firstBrace, lastBrace + 1));
-                    if (parsed.containsKey("roadmap") && parsed.containsKey("tasks")) {
-                        roadmap = JsonUtil.toListOfMaps(JsonUtil.toJson(parsed.get("roadmap")));
-                        tasks = JsonUtil.toListOfMaps(JsonUtil.toJson(parsed.get("tasks")));
-                        if (parsed.containsKey("resources")) resources = JsonUtil.toListOfMaps(JsonUtil.toJson(parsed.get("resources")));
-                        if (parsed.containsKey("flashcards")) flashcards = JsonUtil.toListOfMaps(JsonUtil.toJson(parsed.get("flashcards")));
+                String raw = completePrompt(systemPrompt, userPrompt);
+                if (raw != null && !raw.isBlank()) {
+                    int firstBrace = raw.indexOf('{');
+                    int lastBrace = raw.lastIndexOf('}');
+                    if (firstBrace >= 0 && lastBrace > firstBrace) {
+                        Map<String, Object> parsed = JsonUtil.toMap(raw.substring(firstBrace, lastBrace + 1));
+                        if (parsed.containsKey("roadmap") && parsed.containsKey("tasks")) {
+                            roadmap = JsonUtil.toListOfMaps(JsonUtil.toJson(parsed.get("roadmap")));
+                            tasks = JsonUtil.toListOfMaps(JsonUtil.toJson(parsed.get("tasks")));
+                            if (parsed.containsKey("resources")) resources = JsonUtil.toListOfMaps(JsonUtil.toJson(parsed.get("resources")));
+                            if (parsed.containsKey("flashcards")) flashcards = JsonUtil.toListOfMaps(JsonUtil.toJson(parsed.get("flashcards")));
+                        }
                     }
                 }
-            }
-        } catch (Exception ex) {
-            System.err.println("[AiService] Dynamic plan generation via AI failed: " + ex.getMessage());
-        }
-
-        // Role-adaptive fallback if AI did not return a complete plan
-        boolean isDataRole = targetRole.toLowerCase().contains("data") || targetRole.toLowerCase().contains("analyst") || targetRole.toLowerCase().contains("sql");
-        boolean isFrontendRole = targetRole.toLowerCase().contains("front") || targetRole.toLowerCase().contains("react") || targetRole.toLowerCase().contains("ui");
-
-        if (roadmap == null || roadmap.isEmpty()) {
-            if (isDataRole) {
-                roadmap = List.of(
-                        Map.of("week", 1, "title", "SQL Schema & Relational Query Foundations", "theme", "SQL Schema & Relational Query Foundations", "focusTopics", List.of("SQL", "Relational Models", "Aggregations"), "topics", List.of("SQL", "Relational Models", "Aggregations"), "estimatedHours", 12, "goals", List.of("Master SELECT, WHERE, GROUP BY, HAVING, and basic joins", "Solve 15 LeetCode Database problems"), "goal", "Master SELECT, WHERE, GROUP BY, HAVING, and basic joins", "milestone", "Solve 15 LeetCode Database problems"),
-                        Map.of("week", 2, "title", "Complex Joins, Window Functions & CTEs", "theme", "Complex Joins, Window Functions & CTEs", "focusTopics", List.of("Window Functions", "CTEs", "Subqueries"), "topics", List.of("Window Functions", "CTEs", "Subqueries"), "estimatedHours", 12, "goals", List.of("Master RANK, DENSE_RANK, ROW_NUMBER, and Recursive CTEs", "Write multi-table financial transaction analytics"), "goal", "Master RANK, DENSE_RANK, ROW_NUMBER, and Recursive CTEs", "milestone", "Write multi-table financial transaction analytics"),
-                        Map.of("week", 3, "title", "Database Internals, Indexing & Query Tuning", "theme", "Database Internals, Indexing & Query Tuning", "focusTopics", List.of("Indexes", "Transactions", "ACID", "Sharding"), "topics", List.of("Indexes", "Transactions", "ACID", "Sharding"), "estimatedHours", 12, "goals", List.of("Understand B-Trees, explain query execution plans, and transactions", "Diagnose and optimize slow SQL queries"), "goal", "Understand B-Trees, explain query execution plans, and transactions", "milestone", "Diagnose and optimize slow SQL queries"),
-                        Map.of("week", 4, "title", "End-to-End Analytics Loop & Business Insights", "theme", "End-to-End Analytics Loop & Business Insights", "focusTopics", List.of("Product Analytics", "A/B Testing", "Mock Interviews"), "topics", List.of("Product Analytics", "A/B Testing", "Mock Interviews"), "estimatedHours", 12, "goals", List.of("Product metrics, retention loops, and mock analytical interviews", "Readiness score > 85%"), "goal", "Product metrics, retention loops, and mock analytical interviews", "milestone", "Readiness score > 85%")
-                );
-            } else if (isFrontendRole) {
-                roadmap = List.of(
-                        Map.of("week", 1, "title", "DOM, CSS Architecture & JavaScript Core", "theme", "DOM, CSS Architecture & JavaScript Core", "focusTopics", List.of("JavaScript", "Event Loop", "DOM Manipulation"), "topics", List.of("JavaScript", "Event Loop", "DOM Manipulation"), "estimatedHours", 12, "goals", List.of("Master closures, event loop, promises, and prototypal inheritance", "Implement vanilla JS components from scratch"), "goal", "Master closures, event loop, promises, and prototypal inheritance", "milestone", "Implement vanilla JS components from scratch"),
-                        Map.of("week", 2, "title", "React Internals & State Management", "theme", "React Internals & State Management", "focusTopics", List.of("React", "Hooks", "State Patterns"), "topics", List.of("React", "Hooks", "State Patterns"), "estimatedHours", 12, "goals", List.of("Deep dive into reconciliation, hooks lifecycle, memoization, and contexts", "Build a high-performance interactive dashboard"), "goal", "Deep dive into reconciliation, hooks lifecycle, memoization, and contexts", "milestone", "Build a high-performance interactive dashboard"),
-                        Map.of("week", 3, "title", "Web Performance, Network & Core Web Vitals", "theme", "Web Performance, Network & Core Web Vitals", "focusTopics", List.of("Web Vitals", "Performance", "Security"), "topics", List.of("Web Vitals", "Performance", "Security"), "estimatedHours", 12, "goals", List.of("Optimize LCP, CLS, INP, code splitting, bundle sizes, and caching", "Pass Lighthouse audit with 95+ score"), "goal", "Optimize LCP, CLS, INP, code splitting, bundle sizes, and caching", "milestone", "Pass Lighthouse audit with 95+ score"),
-                        Map.of("week", 4, "title", "Frontend System Design & Mock Interviews", "theme", "Frontend System Design & Mock Interviews", "focusTopics", List.of("Frontend System Design", "Mock Loops"), "topics", List.of("Frontend System Design", "Mock Loops"), "estimatedHours", 12, "goals", List.of("Architect large-scale web apps, offline sync, and real-time feeds", "Readiness score > 85%"), "goal", "Architect large-scale web apps, offline sync, and real-time feeds", "milestone", "Readiness score > 85%")
-                );
-            } else {
-                roadmap = List.of(
-                        Map.of("week", 1, "title", "Foundations & Linear Structures", "theme", "Foundations & Linear Structures", "focusTopics", List.of("Arrays", "Two Pointers", "Stacks", "Queues"), "topics", List.of("Arrays", "Two Pointers", "Stacks", "Queues"), "estimatedHours", 12, "goals", List.of("Master Arrays, Two Pointers, Sliding Window, and Stacks/Queues", "Solve 15 Easy/Medium questions"), "goal", "Master Arrays, Two Pointers, Sliding Window, and Stacks/Queues", "milestone", "Solve 15 Easy/Medium questions"),
-                        Map.of("week", 2, "title", "Trees, Graphs & Recursion", "theme", "Trees, Graphs & Recursion", "focusTopics", List.of("Binary Trees", "BST", "BFS/DFS", "Graphs"), "topics", List.of("Binary Trees", "BST", "BFS/DFS", "Graphs"), "estimatedHours", 12, "goals", List.of("Build tree traversal intuition and graph search techniques", "Implement BFS/DFS from scratch"), "goal", "Build tree traversal intuition and graph search techniques", "milestone", "Implement BFS/DFS from scratch"),
-                        Map.of("week", 3, "title", "Core Computer Science & Dynamic Programming", "theme", "Core Computer Science & Dynamic Programming", "focusTopics", List.of("DBMS", "OS", "DP Patterns"), "topics", List.of("DBMS", "OS", "DP Patterns"), "estimatedHours", 12, "goals", List.of("Strengthen DBMS transactions, OS concurrency, and DP memoization", "Complete full Core CS mock quiz"), "goal", "Strengthen DBMS transactions, OS concurrency, and DP memoization", "milestone", "Complete full Core CS mock quiz"),
-                        Map.of("week", 4, "title", "System Design & Final Polish for " + companyLabel, "theme", "System Design & Final Polish for " + companyLabel, "focusTopics", List.of("System Design", "Mock Interviews"), "topics", List.of("System Design", "Mock Interviews"), "estimatedHours", 12, "goals", List.of("High-frequency interview simulations and mock loops", "Readiness score > 85%"), "goal", "High-frequency interview simulations and mock loops", "milestone", "Readiness score > 85%")
-                );
+            } catch (Exception ex) {
+                System.err.println("[AiService] Dynamic plan generation via AI failed: " + ex.getMessage());
             }
         }
 
-        if (tasks == null || tasks.isEmpty()) {
-            if (isDataRole) {
-                tasks = List.of(
-                        Map.of("day", "Day 1", "theme", "Basic SQL Aggregations & Grouping", "totalEstimatedMinutes", timePerDay, "items", List.of(
-                                Map.of("title", "Fix Names in a Table", "type", "dsa", "difficulty", "Easy", "estimatedMinutes", 30, "summary", "LeetCode #1667: String manipulation and ordering in SQL.", "referenceLabel", "LeetCode #1667", "referenceUrl", "https://leetcode.com/problems/fix-names-in-a-table/"),
-                                Map.of("title", "Duplicate Emails", "type", "dsa", "difficulty", "Easy", "estimatedMinutes", 25, "summary", "LeetCode #182: GROUP BY and HAVING count filtering.", "referenceLabel", "LeetCode #182", "referenceUrl", "https://leetcode.com/problems/duplicate-emails/"),
-                                Map.of("title", "DBMS: Clustered vs Secondary Indexes", "type", "core_cs", "difficulty", "Medium", "estimatedMinutes", 45, "summary", "B-Tree node traversal and row pointers.", "referenceLabel", "Database Indexing", "referenceUrl", "https://use-the-index-luke.com/")
-                        )),
-                        Map.of("day", "Day 2", "theme", "Conditional Aggregations & Joins", "totalEstimatedMinutes", timePerDay, "items", List.of(
-                                Map.of("title", "Monthly Transactions I", "type", "dsa", "difficulty", "Medium", "estimatedMinutes", 40, "summary", "LeetCode #1193: Multi-column CASE WHEN conditional sums.", "referenceLabel", "LeetCode #1193", "referenceUrl", "https://leetcode.com/problems/monthly-transactions-i/"),
-                                Map.of("title", "Customers Who Never Order", "type", "dsa", "difficulty", "Easy", "estimatedMinutes", 25, "summary", "LeetCode #183: LEFT JOIN null filtering vs NOT IN.", "referenceLabel", "LeetCode #183", "referenceUrl", "https://leetcode.com/problems/customers-who-never-order/"),
-                                Map.of("title", "SQL Query Execution Order", "type", "core_cs", "difficulty", "Easy", "estimatedMinutes", 30, "summary", "FROM -> WHERE -> GROUP BY -> HAVING -> SELECT -> ORDER BY.", "referenceLabel", "SQL Order", "referenceUrl", "https://www.geeksforgeeks.org")
-                        )),
-                        Map.of("day", "Day 3", "theme", "Self-Joins & Manager Hierarchies", "totalEstimatedMinutes", timePerDay, "items", List.of(
-                                Map.of("title", "Employees Earning More Than Managers", "type", "dsa", "difficulty", "Easy", "estimatedMinutes", 30, "summary", "LeetCode #181: Self JOIN comparison logic.", "referenceLabel", "LeetCode #181", "referenceUrl", "https://leetcode.com/problems/employees-earning-more-than-their-managers/"),
-                                Map.of("title", "Combine Two Tables", "type", "dsa", "difficulty", "Easy", "estimatedMinutes", 20, "summary", "LeetCode #175: Basic outer join relationship handling.", "referenceLabel", "LeetCode #175", "referenceUrl", "https://leetcode.com/problems/combine-two-tables/"),
-                                Map.of("title", "Database Transaction Isolation Levels", "type", "core_cs", "difficulty", "Medium", "estimatedMinutes", 45, "summary", "Dirty reads, non-repeatable reads, phantom reads.", "referenceLabel", "ACID Isolation", "referenceUrl", "https://www.geeksforgeeks.org")
-                        )),
-                        Map.of("day", "Day 4", "theme", "Window Functions & Ranking", "totalEstimatedMinutes", timePerDay, "items", List.of(
-                                Map.of("title", "Department Top Three Salaries", "type", "dsa", "difficulty", "Hard", "estimatedMinutes", 50, "summary", "LeetCode #185: DENSE_RANK partition analysis.", "referenceLabel", "LeetCode #185", "referenceUrl", "https://leetcode.com/problems/department-top-three-salaries/"),
-                                Map.of("title", "Consecutive Numbers", "type", "dsa", "difficulty", "Medium", "estimatedMinutes", 40, "summary", "LeetCode #180: LEAD / LAG window offsets.", "referenceLabel", "LeetCode #180", "referenceUrl", "https://leetcode.com/problems/consecutive-numbers/")
-                        )),
-                        Map.of("day", "Day 5", "theme", "Mock Analytical Interview Loop", "totalEstimatedMinutes", timePerDay, "items", List.of(
-                                Map.of("title", "Timed SQL Diagnostic Simulation", "type", "dsa", "difficulty", "Hard", "estimatedMinutes", 60, "summary", "Timed technical coding interview with edge cases in Coding Lab.", "referenceLabel", "Coding Lab", "referenceUrl", "/coding-lab"),
-                                Map.of("title", "A/B Testing Metrics & P-Value Analysis", "type", "core_cs", "difficulty", "Medium", "estimatedMinutes", 40, "summary", "Hypothesis testing, statistical significance, and sample sizing.", "referenceLabel", "Analytics Metrics", "referenceUrl", "https://towardsdatascience.com")
-                        ))
-                );
-            } else {
-                tasks = List.of(
-                        Map.of("day", "Day 1", "theme", "Queue & Stack Interview Patterns", "totalEstimatedMinutes", timePerDay, "items", List.of(
-                                Map.of("title", "Implement Queue using Stacks", "type", "dsa", "difficulty", "Easy", "estimatedMinutes", 30, "summary", "LeetCode #232: Master two-stack amortized O(1) queue simulation.", "referenceLabel", "LeetCode #232", "referenceUrl", "https://leetcode.com/problems/implement-queue-using-stacks/"),
-                                Map.of("title", "DBMS: Transaction Isolation Levels & ACID", "type", "core_cs", "difficulty", "Medium", "estimatedMinutes", 35, "summary", "Deep dive into Read Committed vs Repeatable Read vs Serializable anomalies.", "referenceLabel", "GeeksforGeeks DBMS", "referenceUrl", "https://www.geeksforgeeks.org/acid-properties-in-dbms/"),
-                                Map.of("title", "Mini-Project: Queue-Based Transaction Buffer", "type", "project", "difficulty", "Medium", "estimatedMinutes", 55, "summary", "Build an in-memory batch processing queue with worker concurrency.", "referenceLabel", "Project Specs", "referenceUrl", "https://github.com")
-                        )),
-                        Map.of("day", "Day 2", "theme", "Trees & Recursion Traversal", "totalEstimatedMinutes", timePerDay, "items", List.of(
-                                Map.of("title", "Binary Tree Level Order Traversal", "type", "dsa", "difficulty", "Medium", "estimatedMinutes", 40, "summary", "LeetCode #102: BFS queue traversal level by level.", "referenceLabel", "LeetCode #102", "referenceUrl", "https://leetcode.com/problems/binary-tree-level-order-traversal/"),
-                                Map.of("title", "OS: Process Scheduling & CPU Dispatchers", "type", "core_cs", "difficulty", "Medium", "estimatedMinutes", 35, "summary", "Round Robin vs Priority vs Multi-Level Feedback Queue analysis.", "referenceLabel", "OS Scheduling", "referenceUrl", "https://www.geeksforgeeks.org/cpu-scheduling-in-operating-systems/"),
-                                Map.of("title", "Revision: Queue and Tree Flashcards", "type", "revision", "difficulty", "Easy", "estimatedMinutes", 25, "summary", "Fast recall on queue time complexities and tree traversals.", "referenceLabel", "Flashcards", "referenceUrl", "")
-                        )),
-                        Map.of("day", "Day 3", "theme", "Database Indexing & Query Optimization", "totalEstimatedMinutes", timePerDay, "items", List.of(
-                                Map.of("title", "B-Tree vs Hash Indexing Deep Dive", "type", "core_cs", "difficulty", "Medium", "estimatedMinutes", 45, "summary", "Learn clustered vs non-clustered index structures and explain analyze plans.", "referenceLabel", "Database Indexing", "referenceUrl", "https://use-the-index-luke.com/"),
-                                Map.of("title", "Topological Sort & Dependency Resolution", "type", "dsa", "difficulty", "Medium", "estimatedMinutes", 50, "summary", "Kahn's algorithm using indegree queues for task dependencies.", "referenceLabel", "LeetCode #210", "referenceUrl", "https://leetcode.com/problems/course-schedule-ii/")
-                        )),
-                        Map.of("day", "Day 4", "theme", "OS Concurrency, Mutexes & Semaphores", "totalEstimatedMinutes", timePerDay, "items", List.of(
-                                Map.of("title", "Deadlock Conditions & Prevention", "type", "core_cs", "difficulty", "Medium", "estimatedMinutes", 40, "summary", "Mutual exclusion, hold and wait, no preemption, circular wait.", "referenceLabel", "OS Deadlocks", "referenceUrl", "https://www.geeksforgeeks.org/deadlock-in-operating-system/"),
-                                Map.of("title", "Binary Tree Upside Down / Path Inversion", "type", "dsa", "difficulty", "Medium", "estimatedMinutes", 45, "summary", "Problem #156: Invert binary tree topology cleanly with pointers.", "referenceLabel", "LeetCode #156", "referenceUrl", "https://leetcode.com/problems/binary-tree-upside-down/")
-                        )),
-                        Map.of("day", "Day 5", "theme", "Mock Interview Loop & Diagnostic Check", "totalEstimatedMinutes", timePerDay, "items", List.of(
-                                Map.of("title", "Full 45-Min Mock DSA Simulation", "type", "dsa", "difficulty", "Hard", "estimatedMinutes", 60, "summary", "Timed technical coding interview with edge case testing.", "referenceLabel", "Coding Lab", "referenceUrl", "/coding-lab"),
-                                Map.of("title", "System Design Concept: Cache-Aside vs Write-Through", "type", "system_design", "difficulty", "Medium", "estimatedMinutes", 40, "summary", "Redis caching patterns, cache stampede, and eviction policies.", "referenceLabel", "System Design", "referenceUrl", "https://bytebytego.com/")
-                        ))
-                );
-            }
+        // Validate and normalize if AI returned data, or fallback to deterministic curriculum
+        if (roadmap != null && tasks != null && !roadmap.isEmpty() && !tasks.isEmpty()) {
+            normalizeAndValidatePlan(roadmap, tasks, bp, timePerDay, durationMonths, targetRole);
+        } else {
+            Map<String, Object> deterministic = generateDeterministicCurriculum(bp, researchReport, timePerDay, durationMonths, targetRole);
+            roadmap = (List<Map<String, Object>>) deterministic.get("roadmap");
+            tasks = (List<Map<String, Object>>) deterministic.get("tasks");
+            if (resources == null || resources.isEmpty()) resources = (List<Map<String, Object>>) deterministic.get("resources");
+            if (flashcards == null || flashcards.isEmpty()) flashcards = (List<Map<String, Object>>) deterministic.get("flashcards");
         }
 
         // Attach direct codingLabUrl to all DSA / coding items
@@ -1095,30 +1632,6 @@ public class AiService {
         }
         tasks = mutableTasks;
 
-        if (resources == null || resources.isEmpty()) {
-            resources = List.of(
-                    Map.of("topic", "Data Structures & Algorithms", "items", List.of(
-                            Map.of("title", "LeetCode Curated Interview Patterns", "type", "practice", "url", "https://leetcode.com/explore/"),
-                            Map.of("title", "NeetCode Roadmap & Video Guides", "type", "video", "url", "https://neetcode.io/roadmap"),
-                            Map.of("title", "GeeksforGeeks DSA Mastery Series", "type", "article", "url", "https://www.geeksforgeeks.org/data-structures/")
-                    )),
-                    Map.of("topic", "Core Computer Science & System Architecture", "items", List.of(
-                            Map.of("title", "Operating Systems: Three Easy Pieces (OSTEP)", "type", "book", "url", "https://pages.cs.wisc.edu/~remzi/OSTEP/"),
-                            Map.of("title", "Database System Concepts - Silberschatz", "type", "article", "url", "https://www.db-book.com/"),
-                            Map.of("title", "ByteByteGo System Architecture Essentials", "type", "newsletter", "url", "https://bytebytego.com/")
-                    ))
-            );
-        }
-
-        if (flashcards == null || flashcards.isEmpty()) {
-            flashcards = List.of(
-                    Map.of("topic", "Queues & Stacks", "question", "What is the amortized complexity of enqueue/dequeue in a two-stack queue?", "answer", "O(1) amortized time complexity, because each element is pushed and popped at most twice."),
-                    Map.of("topic", "DBMS", "question", "What is the difference between TRUNCATE and DELETE in SQL?", "answer", "DELETE is a DML statement that removes rows one by one and can be rolled back; TRUNCATE is a DDL statement that deallocates data pages, is faster, and resets auto-increment IDs."),
-                    Map.of("topic", "Operating Systems", "question", "What causes thrashing in virtual memory?", "answer", "Thrashing happens when the CPU spends more time swapping pages in and out of secondary storage than executing actual processes because working sets exceed RAM."),
-                    Map.of("topic", "Binary Trees", "question", "How do you check if a binary tree is height-balanced in O(N)?", "answer", "Use post-order traversal returning the height at each node, returning -1 immediately if left and right child heights differ by more than 1.")
-            );
-        }
-
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("title", title);
         metadata.put("autoTitle", title);
@@ -1131,11 +1644,23 @@ public class AiService {
         metadata.put("location", location);
         metadata.put("timePerDay", timePerDay);
         metadata.put("durationMonths", durationMonths);
+        metadata.put("totalWeeks", totalWeeks);
+        metadata.put("plannedWeeklyHours", Math.round(((5.0 * timePerDay) / 60.0) * 10.0) / 10.0);
+        metadata.put("totalPlannedHours", Math.round(((totalWeeks * 5.0 * timePerDay) / 60.0) * 10.0) / 10.0);
         metadata.put("preferredLanguage", preferredLanguage);
         metadata.put("status", "assessment_pending");
         metadata.put("researchReport", researchReport.toMap());
+        metadata.put("isGeneralGuidance", researchReport.evidenceSummary.get("isGeneralGuidance"));
+        metadata.put("guidanceClassification", researchReport.evidenceSummary.get("guidanceClassification"));
         metadata.put("verifiedSourcesCount", researchReport.sources.size());
         metadata.put("coreCompetencies", researchReport.coreCompetencies);
+        if (bp != null) {
+            metadata.put("blueprintCompanyId", bp.companyId());
+            metadata.put("blueprintDisplayName", bp.displayName());
+            metadata.put("assessmentPlatform", bp.assessmentPlatform());
+            metadata.put("highFrequencyLeetCodeIds", bp.highFrequencyLeetCodeIds());
+            metadata.put("stages", bp.stages());
+        }
         if (req.get("targetDeadline") != null) metadata.put("targetDeadline", req.get("targetDeadline"));
         if (req.get("jobDescription") != null) metadata.put("jobDescription", req.get("jobDescription"));
         if (req.get("jobPostingUrl") != null) metadata.put("jobPostingUrl", req.get("jobPostingUrl"));
@@ -1272,7 +1797,7 @@ public class AiService {
 
         String companyName = (String) metadata.getOrDefault("companyName", "Target Company");
         String targetRole = (String) plan.getOrDefault("targetRole", "SDE");
-        int timePerDay = plan.get("timePerDay") instanceof Number ? ((Number) plan.get("timePerDay")).intValue() : 120;
+        int timePerDay = sanitizeTimePerDay(plan.get("timePerDay"));
 
         List<Task> generatedTasks = new ArrayList<>();
         LocalDate today = LocalDate.now();
@@ -1299,7 +1824,14 @@ public class AiService {
         t1.setMetadata(t1Meta);
         generatedTasks.add(t1);
 
-        String focusTopic2 = confirmedWeak.size() > 1 ? confirmedWeak.get(1) : "DBMS & System Concurrency";
+        String roleLower = targetRole != null ? targetRole.toLowerCase() : "";
+        boolean isAi = roleLower.contains("ai") || roleLower.contains("machine learning") || roleLower.contains("ml") || roleLower.contains("deep learning") || roleLower.contains("data scientist") || roleLower.contains("nlp");
+        boolean isBackend = roleLower.contains("backend") || roleLower.contains("cloud") || roleLower.contains("systems") || roleLower.contains("distributed") || roleLower.contains("platform") || roleLower.contains("devops") || roleLower.contains("sre");
+        boolean isFrontend = roleLower.contains("front") || roleLower.contains("react") || roleLower.contains("ui") || roleLower.contains("web") || roleLower.contains("mobile") || roleLower.contains("ios") || roleLower.contains("android");
+        boolean isIntern = roleLower.contains("intern") || roleLower.contains("student") || roleLower.contains("junior") || roleLower.contains("entry") || roleLower.contains("graduate");
+
+        String defaultTopic2 = isAi ? "NumPy Vectorization & Feature Pipelines" : (isBackend ? "DBMS & System Concurrency" : (isFrontend ? "Browser Event Loop & Web Vitals" : "Operating Systems & Concurrency"));
+        String focusTopic2 = confirmedWeak.size() > 1 ? confirmedWeak.get(1) : defaultTopic2;
         Task t2 = new Task();
         t2.setUserId(user.getId());
         t2.setTitle(focusTopic2 + " Mechanics & Production Patterns");
@@ -1420,6 +1952,8 @@ public class AiService {
         plan.put("seniority", metadata.get("seniority"));
         plan.put("location", metadata.get("location"));
         plan.put("verifiedSourcesCount", metadata.get("verifiedSourcesCount"));
+        plan.put("isGeneralGuidance", metadata.get("isGeneralGuidance"));
+        plan.put("guidanceClassification", metadata.get("guidanceClassification"));
         plan.put("topicScores", metadata.get("topicScores"));
         plan.put("confirmedWeakSpots", metadata.get("confirmedWeakSpots"));
         plan.put("createdAt", rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toInstant().toString() : "");

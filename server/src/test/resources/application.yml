@@ -1,0 +1,53 @@
+server:
+  port: -1
+
+spring:
+  application:
+    name: placeprep-backend-test
+  datasource:
+    # CRITICAL PRODUCTION SAFETY RULE:
+    # Never fall back to production DATABASE_URL in tests.
+    # Tests must run against TEST_DATABASE_URL or the dedicated test database.
+    url: ${TEST_DATABASE_URL:postgresql://postgres:test@localhost:5433/placeprep_test}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      connection-timeout: 10000
+
+placeprep:
+  test:
+    isolation:
+      enforce: true
+  jwt:
+    secret: ${JWT_SECRET:test-jwt-secret-key-must-be-at-least-256-bits-long-for-hmac-sha-tests}
+    expires-in-ms: 604800000
+  cors:
+    allowed-origins: http://localhost:5173
+  app:
+    url: http://localhost:5173
+    upload-dir: ./uploads
+    allow-public-signup: true
+    bootstrap-admin-invite: ""
+    bootstrap-user-invite: ""
+    default-timezone: Asia/Calcutta
+  auth:
+    google-client-id: test-google-client-id
+  ai:
+    provider: test
+    api-key: ""
+    gemini-api-key: ""
+    model: test-model
+    gemini-model: gemini-2.5-flash
+  judge0:
+    base-url: https://ce.judge0.com
+    api-key: ""
+  cloudinary:
+    cloud-name: ""
+    api-key: ""
+    api-secret: ""
+  razorpay:
+    key-id: ""
+    key-secret: ""
+    webhook-secret: ""
+  mcp:
+    public-url: ""

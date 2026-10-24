@@ -29,6 +29,7 @@ public class CodingService {
     private final CodingSubmissionRepository submissionRepository;
     private final TaskRepository taskRepository;
     private final AiService aiService;
+    private final LeetCodeCatalogService catalogService;
 
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
@@ -638,11 +639,13 @@ public class CodingService {
     public CodingService(
             CodingSubmissionRepository submissionRepository,
             TaskRepository taskRepository,
-            AiService aiService
+            AiService aiService,
+            LeetCodeCatalogService catalogService
     ) {
         this.submissionRepository = submissionRepository;
         this.taskRepository = taskRepository;
         this.aiService = aiService;
+        this.catalogService = catalogService;
         CompletableFuture.runAsync(this::ensureLeetCodeIndexLoaded);
     }
 
@@ -1093,24 +1096,40 @@ public class CodingService {
 
         // 4. Resolve via LeetCode Index (covers all 4,000+ problems)
         if (number != null) {
-            if (!LEETCODE_INDEX_BY_NUMBER.containsKey(number) && !indexLoaded) {
-                ensureLeetCodeIndexLoaded();
-            }
-            if (LEETCODE_INDEX_BY_NUMBER.containsKey(number)) {
-                LeetCodeMeta meta = LEETCODE_INDEX_BY_NUMBER.get(number);
+            Optional<LeetCodeCatalogService.CanonicalProblemMeta> metaOpt = catalogService.findByNumber(number);
+            if (metaOpt.isPresent()) {
+                LeetCodeCatalogService.CanonicalProblemMeta meta = metaOpt.get();
                 slug = meta.slug();
                 if (title == null || title.isBlank() || title.matches("(?:(?i)leetcode\\s*#?\\s*)?\\d+")) {
                     title = meta.title();
                 }
+            } else {
+                if (!LEETCODE_INDEX_BY_NUMBER.containsKey(number) && !indexLoaded) {
+                    ensureLeetCodeIndexLoaded();
+                }
+                if (LEETCODE_INDEX_BY_NUMBER.containsKey(number)) {
+                    LeetCodeMeta meta = LEETCODE_INDEX_BY_NUMBER.get(number);
+                    slug = meta.slug();
+                    if (title == null || title.isBlank() || title.matches("(?:(?i)leetcode\\s*#?\\s*)?\\d+")) {
+                        title = meta.title();
+                    }
+                }
             }
         } else if (slug != null) {
-            if (!LEETCODE_INDEX_BY_SLUG.containsKey(slug) && !indexLoaded) {
-                ensureLeetCodeIndexLoaded();
-            }
-            if (LEETCODE_INDEX_BY_SLUG.containsKey(slug)) {
-                LeetCodeMeta meta = LEETCODE_INDEX_BY_SLUG.get(slug);
+            Optional<LeetCodeCatalogService.CanonicalProblemMeta> metaOpt = catalogService.findBySlug(slug);
+            if (metaOpt.isPresent()) {
+                LeetCodeCatalogService.CanonicalProblemMeta meta = metaOpt.get();
                 if (number == null) number = meta.number();
                 if (title == null || title.isBlank()) title = meta.title();
+            } else {
+                if (!LEETCODE_INDEX_BY_SLUG.containsKey(slug) && !indexLoaded) {
+                    ensureLeetCodeIndexLoaded();
+                }
+                if (LEETCODE_INDEX_BY_SLUG.containsKey(slug)) {
+                    LeetCodeMeta meta = LEETCODE_INDEX_BY_SLUG.get(slug);
+                    if (number == null) number = meta.number();
+                    if (title == null || title.isBlank()) title = meta.title();
+                }
             }
         }
 

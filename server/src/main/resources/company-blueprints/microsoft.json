@@ -1,0 +1,191 @@
+{
+  "companyId": "microsoft",
+  "displayName": "Microsoft",
+  "aliases": [
+    "msft",
+    "microsoft corporation",
+    "microsoft india",
+    "microsoft us",
+    "microsoft corp"
+  ],
+  "assessmentPlatform": "Variable (Codility / HackerRank / Teams Live Coding depending on org and campus vs experienced track)",
+  "stages": [
+    {
+      "stageId": "msft-oa",
+      "name": "Online Technical Assessment",
+      "studyAllocationPercent": 35,
+      "format": "Automated coding assessment (typically 2-3 algorithmic problems in 70-90 minutes)",
+      "rubricTraps": [
+        "Hidden edge cases (integer overflow, empty inputs, null pointer handling)",
+        "Time complexity penalties on sub-optimal O(N^2) approaches",
+        "Failure to compile or handle custom test cases cleanly"
+      ],
+      "coreTopics": [
+        "Arrays & Strings",
+        "Hash Tables & Two Pointers",
+        "Tree Traversal & Depth-First Search",
+        "Dynamic Programming & Sliding Window"
+      ],
+      "evidenceRefs": [
+        "https://careers.microsoft.com/v2/global/en/hiring-tips/technical-interviewing.html"
+      ]
+    },
+    {
+      "stageId": "msft-tech-problem-solving",
+      "name": "Technical Problem Solving & Data Structures",
+      "studyAllocationPercent": 35,
+      "format": "Interactive live coding interview with an engineer (45-60 minutes on whiteboard/virtual editor)",
+      "rubricTraps": [
+        "Jumping straight into coding without clarifying requirements and constraints",
+        "Failing to explain thought process and trade-offs before typing",
+        "Weak dry-running and missing edge case validation",
+        "Writing monolithic code without modular helper functions"
+      ],
+      "coreTopics": [
+        "Graph Algorithms (BFS/DFS, Topological Sort)",
+        "Design Structures (LRU Cache, Linked Lists)",
+        "Binary Trees & BST validation",
+        "Heap & Priority Queue operations"
+      ],
+      "evidenceRefs": [
+        "https://careers.microsoft.com/v2/global/en/hiring-tips/technical-interviewing.html"
+      ]
+    },
+    {
+      "stageId": "msft-collab-behavioral",
+      "name": "Collaborative Engineering & Growth Mindset",
+      "studyAllocationPercent": 30,
+      "format": "System & architecture discussion combined with competency-based behavioral evaluation (45-60 minutes)",
+      "rubricTraps": [
+        "Fixed mindset ('I already know everything' instead of 'learn-it-all')",
+        "Inability to discuss lessons learned from past technical failures",
+        "Lack of customer empathy or ignoring non-functional requirements (scalability, availability, privacy)",
+        "Blaming others instead of demonstrating accountability and constructive conflict resolution"
+      ],
+      "coreTopics": [
+        "System Architecture & API Design",
+        "Scalability, Caching & Concurrency",
+        "Growth Mindset & Constructive Feedback",
+        "Customer Obsession & Cross-Team Impact"
+      ],
+      "evidenceRefs": [
+        "https://careers.microsoft.com/v2/global/en/hiring-tips/technical-interviewing.html"
+      ]
+    }
+  ],
+  "highFrequencyLeetCodeIds": [
+    1,
+    48,
+    146,
+    253,
+    200,
+    207,
+    79,
+    138,
+    297,
+    443,
+    124,
+    215,
+    56,
+    460,
+    42
+  ],
+  "roleSkills": [
+    "Data Structures & Algorithms",
+    "System Design & Modularity",
+    "Concurrency & Multithreading",
+    "Clean Code & Testability",
+    "Growth Mindset & Inclusive Collaboration"
+  ],
+  "behavioralFramework": {
+    "name": "Microsoft Competencies & Growth Mindset",
+    "principles": [
+      "Growth Mindset (learn-it-all vs know-it-all)",
+      "Customer Obsession & Empathy",
+      "Diverse & Inclusive Perspectives",
+      "One Microsoft Collaboration",
+      "Values & Personal Accountability"
+    ],
+    "sampleQuestions": [
+      "Describe a time when you received tough critical feedback and how you adapted your approach.",
+      "Tell me about a complex project where you collaborated across team or organization boundaries to deliver impact.",
+      "How do you approach mastering an unfamiliar technology stack under tight deadline pressure?",
+      "Walk me through an engineering trade-off where you had to balance feature delivery speed against architectural debt."
+    ]
+  },
+  "verifiedDocs": [
+    {
+      "title": "Technical Interviewing at Microsoft",
+      "url": "https://careers.microsoft.com/v2/global/en/hiring-tips/technical-interviewing.html",
+      "topic": "Official Hiring Guidance & Technical Evaluation Rubric",
+      "category": "OFFICIAL_CAREERS"
+    },
+    {
+      "title": "DirectML Tensor Strides and Memory Layout",
+      "url": "https://learn.microsoft.com/en-us/windows/ai/directml/dml-strides",
+      "topic": "Tensor strides, buffer layout, and row-major memory representations",
+      "category": "TECHNICAL_DOCS"
+    }
+  ],
+  "sourceEvidence": [
+    {
+      "title": "Microsoft Technical Interview Guidance",
+      "url": "https://careers.microsoft.com/v2/global/en/hiring-tips/technical-interviewing.html",
+      "organization": "Microsoft Careers",
+      "category": "TIER_1_OFFICIAL",
+      "supportedClaims": [
+        "Emphasis on interactive problem solving, requirement clarification, and code structure",
+        "Assessment of growth mindset and learning agility alongside technical depth",
+        "Focus on data structures, algorithms, and modular design principles"
+      ],
+      "confidence": "HIGH",
+      "dateChecked": "2026-03-01"
+    },
+    {
+      "title": "Engineering Fundamentals & Software Development Principles",
+      "url": "https://learn.microsoft.com/en-us/training/paths/software-development-fundamentals/",
+      "organization": "Microsoft Learn",
+      "category": "TIER_2_TECHNICAL",
+      "supportedClaims": [
+        "Expectations around clean architecture, error handling, and testability",
+        "System performance, concurrency, and resource management"
+      ],
+      "confidence": "HIGH",
+      "dateChecked": "2026-03-01"
+    },
+    {
+      "title": "DirectML Tensor Strides and Memory Layout",
+      "url": "https://learn.microsoft.com/en-us/windows/ai/directml/dml-strides",
+      "organization": "Microsoft Windows AI Documentation",
+      "category": "TIER_2_TECHNICAL",
+      "supportedClaims": [
+        "Tensor strides, memory buffer offsets, row-major versus column-major layout, and contiguous versus strided traversal in hardware acceleration"
+      ],
+      "confidence": "HIGH",
+      "dateChecked": "2026-03-01"
+    },
+    {
+      "title": "ONNX Runtime High-Performance Inference & Tensor Memory Architecture",
+      "url": "https://onnxruntime.ai/docs/performance/",
+      "organization": "Microsoft ONNX Runtime Team",
+      "category": "TIER_2_TECHNICAL",
+      "supportedClaims": [
+        "Tensor memory layout, contiguous array traversal, and cache spatial locality for high-throughput inference"
+      ],
+      "confidence": "HIGH",
+      "dateChecked": "2026-03-01"
+    },
+    {
+      "title": "Aggregated Candidate Reports & Historical Problem Distributions",
+      "url": "https://leetcode.com/company/microsoft/",
+      "organization": "Community Assessment Data",
+      "category": "TIER_3_COMMUNITY",
+      "supportedClaims": [
+        "High recurrence of LRU Cache, Graph traversals, Matrix transformations, and Interval merging problems reported in candidate submissions",
+        "Assessment platform variations between Codility and internal Teams coding platforms across business divisions"
+      ],
+      "confidence": "MEDIUM",
+      "dateChecked": "2026-03-01"
+    }
+  ]
+}

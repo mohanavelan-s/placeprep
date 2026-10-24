@@ -142,6 +142,10 @@ public class AssessmentRepository {
             sql.append(", metadata = ?::jsonb");
             params.add(JsonUtil.toJson(updates.getMetadata()));
         }
+        if (updates.getStartedAt() != null) {
+            sql.append(", started_at = ?");
+            params.add(Timestamp.from(updates.getStartedAt().toInstant()));
+        }
         if (updates.getSubmittedAt() != null) {
             sql.append(", submitted_at = ?");
             params.add(Timestamp.from(updates.getSubmittedAt().toInstant()));
